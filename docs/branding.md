@@ -4,12 +4,14 @@ MURAL uses two complementary marks.
 
 ## Primary mascot
 
-The primary mark is the **muralist robot** painting a three-panel capital M. The robot makes the
-system approachable; the M-shaped page mosaic connects the character to presentation authoring;
-the raised amber paint roller represents revision as a first-class action rather than an afterthought.
+The primary mark is a **three-agent muralist team** painting one shared, three-panel capital M. The
+larger foreground robot represents the coordinator, while the two smaller agents visibly own
+different parts of the same mural. The M-shaped page mosaic connects the team to presentation
+authoring; the raised amber paint roller represents revision as a first-class action rather than an
+afterthought.
 
 Use the mascot for the GitHub avatar, project site, launch material, and large-format identity.
-The transparent master is `assets/logo/mural-logo-mark-v2.png`.
+The transparent multi-agent master is `assets/logo/mural-logo-mark-v3.png`.
 
 ## Compact mark
 
@@ -33,7 +35,8 @@ would lose legibility. The transparent master is `assets/logo/mural-logo-mark-v1
 - Do not recolor the cyan eyes or use amber as the dominant color.
 - Do not place text over the robot face, roller, or M silhouette.
 - Use the compact mark for small UI surfaces instead of shrinking the mascot indefinitely.
+- In horizontal lockups, the amber initials map M/U/R/A/L to Multi-Agent, Unified,
+  Revision-Aware, Authoring, and Long-Horizon; “Presentations” names the authored artifact.
 - Do not use the mascot as evidence inside technical diagrams; the paper figures use a simplified
   line-art face derived from the same character.
 - Rebuild exports with `python tools/build_logo_assets.py` after changing a source mark.
-

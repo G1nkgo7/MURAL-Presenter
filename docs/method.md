@@ -1,6 +1,6 @@
 # Method overview
 
-MURAL — **Multi-Agent Unified Revision-Aware Authoring** — models presentation creation as a
+MURAL — **Multi-Agent Unified Revision-Aware Authoring for Long-Horizon Presentations** — models presentation creation as a
 full lifecycle with persistent, externalized state.
 
 ## Long-horizon state
@@ -54,4 +54,3 @@ but to avoid restarting the complete lifecycle for a change that can be safely l
 HTML/CSS/SVG keep text, layout, media, and graphics separately addressable and make browser pixels
 the inspection target. Delivery adapters can export PPTX, PDF, and images, but each adapter has its
 own fidelity and editability limits.
-

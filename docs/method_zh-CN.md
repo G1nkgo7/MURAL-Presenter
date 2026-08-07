@@ -1,6 +1,6 @@
 # 方法简介
 
-MURAL（**Multi-Agent Unified Revision-Aware Authoring**）把演示文稿创作建模为一个具有外置、
+MURAL（**Multi-Agent Unified Revision-Aware Authoring for Long-Horizon Presentations**）把演示文稿创作建模为一个具有外置、
 持久状态的完整生命周期。
 
 ## 长程状态
@@ -47,4 +47,3 @@ whole-deck Review，检查事实口径、术语、setup/response、视觉语义�
 
 HTML/CSS/SVG 让文字、布局、媒体与图形保持独立可寻址，并以浏览器像素作为检查对象。
 系统可以导出 PPTX、PDF 与图片，但不同适配层具有各自的保真度和可编辑性边界。
-

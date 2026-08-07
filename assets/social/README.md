@@ -1,13 +1,14 @@
 # Social card
 
-`mural-og-1200x630.png` is the release-ready Open Graph card. It was generated
-from `mural-og-source.png`, then resized and exported at 1200 × 630 pixels.
+`mural-og-1200x630.png` is the release-ready Open Graph card. It is composed
+deterministically from the approved multi-agent mark by `tools/build_logo_assets.py`, then copied
+to `site/public/og.png`. The earlier `mural-og-source.png` is retained as an exploration source.
 
-## Generation prompt
+## Original exploration prompt
 
 Create a polished 1.91:1 Open Graph launch card for an academic open-source
-project called “MURAL”. Use the project mascot: a small white muralist robot
-with a dark rounded face, cyan eyes, and a warm amber paint roller, standing on
+project called “MURAL”. Use the project mascot: a coordinated team of small white muralist robots
+with dark rounded faces, cyan eyes, and warm amber painting tools, standing on
 the right beside a three-panel wall whose negative space forms a subtle letter
 M. Keep the left side editorial and spacious. Use an off-white paper background,
 deep charcoal typography, restrained teal and amber accents, crisp flat-vector

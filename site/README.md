@@ -1,7 +1,7 @@
 # MURAL project site
 
 This directory contains the bilingual, deployable project site for MURAL — Multi-Agent Unified
-Revision-Aware Authoring.
+Revision-Aware Authoring for Long-Horizon Presentations.
 
 ## Routes
 
@@ -25,4 +25,3 @@ claims, author metadata, or licenses until those artifacts are frozen.
 
 Brand and paper-figure sources live one level above this directory. Copies in `public/` are deployment
 assets and should be refreshed when their approved source changes.
-

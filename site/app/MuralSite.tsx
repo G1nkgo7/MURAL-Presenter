@@ -17,7 +17,7 @@ const copy = {
       "MURAL is a Skill-driven multi-agent framework that carries deck decisions through research, planning, grouped authoring, rendered review, and later human edits.",
     primaryCta: "Explore the lifecycle",
     secondaryCta: "See release status",
-    markLabel: "Multi-Agent Unified Revision-Aware Authoring",
+    markLabel: "Multi-Agent Unified Revision-Aware Authoring for Long-Horizon Presentations",
     artNote: "One shared M. One revision-aware authoring lifecycle.",
     horizonKicker: "The actual horizon",
     horizonTitle: "Decisions must survive in three directions.",
@@ -91,7 +91,7 @@ const copy = {
       "MURAL 是一个技能驱动多智能体框架，让整册决策贯穿资料接地、规划、分组制作、渲染复审和后续人工修改。",
     primaryCta: "查看完整生命周期",
     secondaryCta: "了解发布状态",
-    markLabel: "Multi-Agent Unified Revision-Aware Authoring",
+    markLabel: "Multi-Agent Unified Revision-Aware Authoring for Long-Horizon Presentations",
     artNote: "一个共享的 M，一条修改感知的创作生命周期。",
     horizonKicker: "真正的 long horizon",
     horizonTitle: "一项决策需要沿三个方向持续有效。",
@@ -299,4 +299,3 @@ export function MuralSite({ language }: { language: Language }) {
     </main>
   );
 }
-

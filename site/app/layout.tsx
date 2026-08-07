@@ -4,7 +4,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "MURAL",
   description:
-    "Multi-Agent Unified Revision-Aware Authoring for long-horizon presentations.",
+    "Multi-Agent Unified Revision-Aware Authoring for Long-Horizon Presentations.",
   icons: {
     icon: "/favicon.png",
     shortcut: "/favicon.png",
@@ -32,4 +32,3 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     </html>
   );
 }
-

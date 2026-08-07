@@ -11,7 +11,9 @@ from PIL import Image, ImageDraw, ImageFont
 ROOT = Path(__file__).resolve().parents[1]
 LOGO_DIR = ROOT / "assets" / "logo"
 EXPORT_DIR = LOGO_DIR / "exports"
-PRIMARY_SOURCE = LOGO_DIR / "mural-logo-mark-v2.png"
+SOCIAL_DIR = ROOT / "assets" / "social"
+SITE_PUBLIC_DIR = ROOT / "site" / "public"
+PRIMARY_SOURCE = LOGO_DIR / "mural-logo-mark-v3.png"
 COMPACT_SOURCE = LOGO_DIR / "mural-logo-mark-v1.png"
 FONT = (
     ROOT.parent
@@ -70,6 +72,22 @@ def draw_letterspaced(
         x += int(draw.textlength(char, font=font)) + spacing
 
 
+def draw_colored_segments(
+    draw: ImageDraw.ImageDraw,
+    xy: tuple[int, int],
+    segments: tuple[tuple[str, str], ...],
+    font: ImageFont.FreeTypeFont,
+    gap: int = 0,
+) -> None:
+    """Draw an acronym expansion with deterministic initial highlighting."""
+    x, y = xy
+    for index, (text, color) in enumerate(segments):
+        draw.text((x, y), text, font=font, fill=color, anchor="la")
+        x += int(draw.textlength(text, font=font))
+        if index < len(segments) - 1:
+            x += gap
+
+
 def export_square(mark: Image.Image, name: str, sizes: tuple[int, ...]) -> None:
     EXPORT_DIR.mkdir(parents=True, exist_ok=True)
     for size in sizes:
@@ -92,26 +110,45 @@ def build_mark_exports(primary: Image.Image, compact: Image.Image) -> None:
 
 
 def build_lockup(mark: Image.Image, *, dark: bool) -> Image.Image:
-    width, height = 1800, 560
+    width, height = 1800, 620
     background = DARK if dark else OFF_WHITE
     canvas = Image.new("RGB", (width, height), background)
-    mark_fit = contain(mark, (430, 430))
+    mark_fit = contain(mark, (470, 470))
     canvas.paste(mark_fit, (72, (height - mark_fit.height) // 2), mark_fit)
 
     draw = ImageDraw.Draw(canvas)
     word_font = ImageFont.truetype(str(FONT), 224)
-    tag_font = ImageFont.truetype(str(FONT), 47)
+    tag_font = ImageFont.truetype(str(FONT), 39)
     word_color = OFF_WHITE if dark else INK
     tag_color = MINT if dark else TEAL
     start_x = 565
-    word_y = 92
+    word_y = 72
     draw_letterspaced(draw, (start_x, word_y), "MURAL", word_font, word_color, 12)
-    draw.rounded_rectangle((start_x, 357, start_x + 96, 369), radius=6, fill=AMBER)
-    draw.text(
-        (start_x + 122, 333),
-        "Multi-Agent Unified Revision-Aware Authoring",
-        font=tag_font,
-        fill=tag_color,
+    draw.rounded_rectangle((start_x, 348, start_x + 96, 360), radius=6, fill=AMBER)
+    draw_colored_segments(
+        draw,
+        (start_x + 122, 322),
+        (
+            ("M", AMBER),
+            ("ulti-Agent   ", tag_color),
+            ("U", AMBER),
+            ("nified   ", tag_color),
+            ("R", AMBER),
+            ("evision-Aware   ", tag_color),
+            ("A", AMBER),
+            ("uthoring", tag_color),
+        ),
+        tag_font,
+    )
+    draw_colored_segments(
+        draw,
+        (start_x + 122, 384),
+        (
+            ("for ", tag_color),
+            ("L", AMBER),
+            ("ong-Horizon Presentations", tag_color),
+        ),
+        tag_font,
     )
     return canvas
 
@@ -119,12 +156,12 @@ def build_lockup(mark: Image.Image, *, dark: bool) -> Image.Image:
 def build_brand_sheet(
     primary: Image.Image, compact: Image.Image, light: Image.Image, dark: Image.Image
 ) -> None:
-    canvas = Image.new("RGB", (2000, 1320), "#FFFFFF")
+    canvas = Image.new("RGB", (2000, 1500), "#FFFFFF")
     draw = ImageDraw.Draw(canvas)
     title_font = ImageFont.truetype(str(FONT), 72)
     label_font = ImageFont.truetype(str(FONT), 34)
     draw.text((90, 62), "MURAL Logo System", font=title_font, fill=INK)
-    draw.text((92, 150), "Muralist robot + living M · release candidate v2", font=label_font, fill=TEAL)
+    draw.text((92, 150), "Multi-agent muralists + living M · primary identity", font=label_font, fill=TEAL)
 
     avatar = Image.open(EXPORT_DIR / "mural-github-avatar-1024.png").resize(
         (430, 430), Image.Resampling.LANCZOS
@@ -143,13 +180,13 @@ def build_brand_sheet(
     small_label_font = ImageFont.truetype(str(FONT), 27)
     draw.text((90, 1035), "Compact mark / favicon", font=small_label_font, fill=INK)
 
-    light_small = light.resize((1280, 398), Image.Resampling.LANCZOS)
+    light_small = light.resize((1280, 441), Image.Resampling.LANCZOS)
     canvas.paste(light_small, (620, 230))
-    draw.text((620, 650), "Horizontal lockup · light", font=label_font, fill=INK)
+    draw.text((620, 695), "Horizontal lockup · light", font=label_font, fill=INK)
 
-    dark_small = dark.resize((1280, 398), Image.Resampling.LANCZOS)
-    canvas.paste(dark_small, (620, 760))
-    draw.text((620, 1180), "Horizontal lockup · dark", font=label_font, fill=INK)
+    dark_small = dark.resize((1280, 441), Image.Resampling.LANCZOS)
+    canvas.paste(dark_small, (620, 805))
+    draw.text((620, 1270), "Horizontal lockup · dark", font=label_font, fill=INK)
 
     swatches = [(TEAL, "Teal"), (INK, "Ink"), (AMBER, "Revision"), (OFF_WHITE, "Canvas")]
     for index, (color, label) in enumerate(swatches):
@@ -161,6 +198,52 @@ def build_brand_sheet(
         draw.text((x + 76, y + 16), label, font=small_label_font, fill=INK)
 
     canvas.save(EXPORT_DIR / "mural-logo-system-sheet.png", optimize=True)
+
+
+def build_social_card(mark: Image.Image) -> None:
+    """Build the release social card with exact typography and the approved mark."""
+    width, height = 1200, 630
+    canvas = Image.new("RGB", (width, height), OFF_WHITE)
+    draw = ImageDraw.Draw(canvas)
+
+    # Quiet registration lines echo the grid used by the paper figures.
+    grid = "#CDE2DE"
+    draw.line((35, 0, 35, height), fill=TEAL, width=1)
+    draw.line((0, 582, width, 582), fill=TEAL, width=1)
+    draw.ellipse((31, 578, 39, 586), fill=TEAL)
+
+    brand_font = ImageFont.truetype(str(FONT), 46)
+    headline_font = ImageFont.truetype(str(FONT), 75)
+    badge_font = ImageFont.truetype(str(FONT), 22)
+    draw_letterspaced(draw, (72, 50), "MURAL", brand_font, TEAL, 2)
+
+    headline = ("A presentation", "is not a stack", "of slides.")
+    for row, text in enumerate(headline):
+        draw.text((74, 154 + row * 82), text, font=headline_font, fill=INK)
+
+    draw.rounded_rectangle((78, 446, 342, 500), radius=13, fill="#F2A51A")
+    draw.text((100, 459), "RESEARCH PREVIEW", font=badge_font, fill=INK)
+
+    # A subtle page trail links the headline to the shared mural.
+    for index in range(5):
+        x = 420 + index * 35
+        y = 356 + index * 14
+        draw.rounded_rectangle(
+            (x, y, x + 105, y + 76),
+            radius=6,
+            fill="#F8FBFA",
+            outline=grid,
+            width=2,
+        )
+        draw.rectangle((x + 65, y + 18, x + 92, y + 25), fill=TEAL)
+
+    mark_fit = contain(mark, (570, 570))
+    canvas.paste(mark_fit, (610, (height - mark_fit.height) // 2), mark_fit)
+
+    SOCIAL_DIR.mkdir(parents=True, exist_ok=True)
+    SITE_PUBLIC_DIR.mkdir(parents=True, exist_ok=True)
+    canvas.save(SOCIAL_DIR / "mural-og-1200x630.png", optimize=True)
+    canvas.save(SITE_PUBLIC_DIR / "og.png", optimize=True)
 
 
 def main() -> None:
@@ -179,6 +262,7 @@ def main() -> None:
     light.save(EXPORT_DIR / "mural-logo-lockup-light.png", optimize=True)
     dark.save(EXPORT_DIR / "mural-logo-lockup-dark.png", optimize=True)
     build_brand_sheet(primary, compact, light, dark)
+    build_social_card(primary)
 
     print(f"Built MURAL logo exports in {EXPORT_DIR}")
 

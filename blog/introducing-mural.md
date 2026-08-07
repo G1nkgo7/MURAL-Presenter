@@ -29,7 +29,7 @@ We call this a long-horizon authoring problem. The horizon is not simply the num
 time required to generate them. It is the distance over which a fact, narrative promise, design rule,
 or user requirement must remain valid across stages, pages, and revisions.
 
-MURAL — Multi-Agent Unified Revision-Aware Authoring — is our attempt to make that lifecycle explicit.
+MURAL — Multi-Agent Unified Revision-Aware Authoring for Long-Horizon Presentations — is our attempt to make that lifecycle explicit.
 It is a Skill-driven multi-agent framework for editable HTML presentations, built around a shared deck
 blueprint, slide-group ownership, rendered inspection at two levels, and revision routing by impact
 scope.
@@ -162,4 +162,3 @@ ledgers, redistribution review, and licenses appropriate to each artifact.
 MURAL starts from a simple premise: a presentation is not a pile of independently acceptable slides.
 It is a designed argument that persists through evidence, planning, production, review, and change. The
 system should be organized around that lifecycle too.
-

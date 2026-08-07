@@ -9,6 +9,7 @@ const copy = {
       ["Lifecycle", "#lifecycle"],
       ["Revision", "#revision"],
       ["THREAD-Bench", "#benchmark"],
+      ["Blog", "/blog"],
     ],
     badge: "Research preview · August 2026",
     heroTitleA: "A presentation is not",
@@ -16,7 +17,8 @@ const copy = {
     heroBody:
       "MURAL is a Skill-driven multi-agent framework that carries deck decisions through research, planning, grouped authoring, rendered review, and later human edits.",
     primaryCta: "Explore the lifecycle",
-    secondaryCta: "See release status",
+    secondaryCta: "Read the launch article",
+    secondaryCtaHref: "/blog",
     markLabel: "Multi-Agent Unified Revision-Aware Authoring for Long-Horizon Presentations",
     artNote: "One shared M. One revision-aware authoring lifecycle.",
     horizonKicker: "The actual horizon",
@@ -83,6 +85,7 @@ const copy = {
       ["完整生命周期", "#lifecycle"],
       ["修改路由", "#revision"],
       ["THREAD-Bench", "#benchmark"],
+      ["宣传文章", "/zh/blog"],
     ],
     badge: "Research preview · 2026 年 8 月",
     heroTitleA: "演示文稿不是",
@@ -90,7 +93,8 @@ const copy = {
     heroBody:
       "MURAL 是一个技能驱动多智能体框架，让整册决策贯穿资料接地、规划、分组制作、渲染复审和后续人工修改。",
     primaryCta: "查看完整生命周期",
-    secondaryCta: "了解发布状态",
+    secondaryCta: "阅读宣传文章",
+    secondaryCtaHref: "/zh/blog",
     markLabel: "Multi-Agent Unified Revision-Aware Authoring for Long-Horizon Presentations",
     artNote: "一个共享的 M，一条修改感知的创作生命周期。",
     horizonKicker: "真正的 long horizon",
@@ -160,7 +164,7 @@ export function MuralSite({ language }: { language: Language }) {
       <header className="nav-shell">
         <a className="brand" href="#top" aria-label="MURAL home">
           <img src="/mural-mark.png" alt="" />
-          <span>MURAL</span>
+          <span className="brand-wordmark">MURAL</span>
         </a>
         <nav aria-label={isZh ? "页面导航" : "Page navigation"}>
           {t.nav.map(([label, href]) => (
@@ -177,14 +181,14 @@ export function MuralSite({ language }: { language: Language }) {
           <p>{t.heroBody}</p>
           <div className="hero-actions">
             <a className="button button-primary" href="#lifecycle">{t.primaryCta}<span>↘</span></a>
-            <a className="button button-secondary" href="#release">{t.secondaryCta}</a>
+            <a className="button button-secondary" href={t.secondaryCtaHref}>{t.secondaryCta}</a>
           </div>
           <div className="expansion"><span>MURAL</span>{t.markLabel}</div>
         </div>
-        <div className="hero-art" aria-label={isZh ? "MURAL 壁画师机器人" : "MURAL muralist robot"}>
+        <div className="hero-art" aria-label={isZh ? "MURAL 多智能体壁画师团队" : "MURAL multi-agent muralist team"}>
           <div className="page-shadow page-shadow-a" />
           <div className="page-shadow page-shadow-b" />
-          <img src="/mural-mascot.png" alt={isZh ? "机器人正在为 M 形页面墙涂上修改色" : "A robot painting an M-shaped wall of presentation pages"} />
+          <img src="/mural-mascot.png" alt={isZh ? "三个机器人共同为 M 形页面墙涂色" : "Three robots jointly painting an M-shaped wall of presentation pages"} />
           <div className="art-caption"><span>01 → N</span>{t.artNote}</div>
         </div>
       </section>
@@ -292,8 +296,9 @@ export function MuralSite({ language }: { language: Language }) {
       </section>
 
       <footer className="section-shell">
-        <div className="brand footer-brand"><img src="/mural-mark.png" alt="" /><span>MURAL</span></div>
+        <div className="brand footer-brand"><img src="/mural-mark.png" alt="" /><span className="brand-wordmark">MURAL</span></div>
         <p>{t.footer}</p>
+        <a href={isZh ? "/zh/blog" : "/blog"}>{isZh ? "宣传文章" : "Launch article"}</a>
         <a href="#top">↑ {isZh ? "返回顶部" : "Back to top"}</a>
       </footer>
     </main>

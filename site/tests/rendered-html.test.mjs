@@ -47,6 +47,26 @@ test("server-renders the Chinese MURAL launch page", async () => {
   assert.match(html, /href="\/">English<\/a>/);
 });
 
+test("server-renders the English launch article", async () => {
+  const response = await render("/blog");
+  assert.equal(response.status, 200);
+  const html = await response.text();
+  assert.match(html, /A presentation is not a stack of slides/);
+  assert.match(html, /The missing unit between a deck and a slide/);
+  assert.match(html, /Turning the lifecycle into an executable Skill/);
+  assert.match(html, /MURAL-Presenter/);
+});
+
+test("server-renders the Chinese launch article", async () => {
+  const response = await render("/zh/blog");
+  assert.equal(response.status, 200);
+  const html = await response.text();
+  assert.match(html, /演示文稿不是一摞页面/);
+  assert.match(html, /整册和单页之间，缺少一个责任单元/);
+  assert.match(html, /把完整生命周期写成可执行 Skill/);
+  assert.match(html, /href="\/blog">English<\/a>/);
+});
+
 test("ships the approved brand and paper assets without starter remnants", async () => {
   const required = [
     "../public/favicon.png",
@@ -68,4 +88,3 @@ test("ships the approved brand and paper assets without starter remnants", async
   assert.match(layout, /mural-mark|favicon\.png|og\.png/);
   assert.doesNotMatch(packageJson, /starter|react-loading-skeleton/);
 });
-

@@ -72,6 +72,48 @@ def draw_letterspaced(
         x += int(draw.textlength(char, font=font)) + spacing
 
 
+def draw_segmented_wordmark(
+    canvas: Image.Image,
+    xy: tuple[int, int],
+    text: str,
+    font: ImageFont.FreeTypeFont,
+    *,
+    top_color: str,
+    lower_color: str,
+    revision_color: str,
+    background: str,
+    spacing: int,
+) -> None:
+    """Render a mural-like wordmark with one shared lower band and an amber R."""
+    start_x, y = xy
+    probe = ImageDraw.Draw(canvas)
+    positions: list[tuple[int, int]] = []
+    cursor = start_x
+    for char in text:
+        width = int(probe.textlength(char, font=font))
+        positions.append((cursor, width))
+        cursor += width + spacing
+
+    mask = Image.new("L", canvas.size, 0)
+    mask_draw = ImageDraw.Draw(mask)
+    draw_letterspaced(mask_draw, xy, text, font, 255, spacing)
+
+    fill = Image.new("RGB", canvas.size, top_color)
+    fill_draw = ImageDraw.Draw(fill)
+    split_y = y + int(font.size * 0.73)
+    fill_draw.rectangle((start_x, split_y, cursor, y + font.size + 20), fill=lower_color)
+
+    # R owns the revision accent while every glyph remains on the same shared band.
+    if len(positions) >= 3:
+        r_x, r_width = positions[2]
+        fill_draw.rectangle((r_x, split_y, r_x + r_width, y + font.size + 20), fill=revision_color)
+
+    # The canvas-colored seam turns the letters into a shared five-tile mural.
+    seam = max(5, font.size // 30)
+    fill_draw.rectangle((start_x, split_y - seam // 2, cursor, split_y + seam // 2), fill=background)
+    canvas.paste(fill, (0, 0), mask)
+
+
 def draw_colored_segments(
     draw: ImageDraw.ImageDraw,
     xy: tuple[int, int],
@@ -123,8 +165,21 @@ def build_lockup(mark: Image.Image, *, dark: bool) -> Image.Image:
     tag_color = MINT if dark else TEAL
     start_x = 565
     word_y = 72
-    draw_letterspaced(draw, (start_x, word_y), "MURAL", word_font, word_color, 12)
-    draw.rounded_rectangle((start_x, 348, start_x + 96, 360), radius=6, fill=AMBER)
+    draw_segmented_wordmark(
+        canvas,
+        (start_x, word_y),
+        "MURAL",
+        word_font,
+        top_color=word_color,
+        lower_color=MINT if dark else TEAL,
+        revision_color=AMBER,
+        background=background,
+        spacing=12,
+    )
+    tile_y = 348
+    for index, color in enumerate((TEAL, MINT, AMBER, MINT, TEAL)):
+        x = start_x + index * 21
+        draw.rounded_rectangle((x, tile_y, x + 16, tile_y + 12), radius=5, fill=color)
     draw_colored_segments(
         draw,
         (start_x + 122, 322),

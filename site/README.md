@@ -5,8 +5,10 @@ Revision-Aware Authoring for Long-Horizon Presentations.
 
 ## Routes
 
-- `/` — English project story and launch article
-- `/zh` — Chinese project story and launch article
+- `/` — English project page
+- `/zh` — Chinese project page
+- `/blog` — English launch article
+- `/zh/blog` — Chinese launch article
 
 ## Local development
 

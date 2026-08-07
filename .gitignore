@@ -1,0 +1,37 @@
+# OS and editors
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+
+# Node / site builds
+node_modules/
+.vinext/
+.wrangler/
+dist/
+.next/
+
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Paper and experiment scratch
+*.aux
+*.bbl
+*.blg
+*.log
+*.out
+*.synctex.gz
+results/private/
+data/private/
+

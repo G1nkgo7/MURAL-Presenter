@@ -1,0 +1,46 @@
+name: Reproducible authoring failure
+description: Report a shareable MURAL, presentation, or export-fidelity failure.
+title: "[Failure] "
+labels: ["failure-case"]
+body:
+  - type: markdown
+    attributes:
+      value: Do not include credentials, private URLs, proprietary documents, or personal data.
+  - type: textarea
+    id: brief
+    attributes:
+      label: Shareable input brief
+      description: Provide the smallest synthetic or redistributable brief that reproduces the issue.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: observed
+    attributes:
+      label: Observed behavior
+    validations:
+      required: true
+  - type: input
+    id: slides
+    attributes:
+      label: Affected slides or revision turns
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Surface
+      options: [HTML, PPTX, PDF, PNG, Planning, Group authoring, Review, Revision]
+    validations:
+      required: true
+  - type: checkboxes
+    id: permissions
+    attributes:
+      label: Sharing confirmation
+      options:
+        - label: I have the right to share every attached artifact.
+          required: true
+

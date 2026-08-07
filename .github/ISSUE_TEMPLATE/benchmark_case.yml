@@ -1,0 +1,32 @@
+name: THREAD-Bench case proposal
+description: Propose a checkable long-horizon presentation task.
+title: "[THREAD case] "
+labels: ["benchmark-case"]
+body:
+  - type: textarea
+    id: task
+    attributes:
+      label: Task and intended audience
+    validations:
+      required: true
+  - type: textarea
+    id: requirements
+    attributes:
+      label: Atomic requirements
+      description: Separate knowledge, deck-level, and page-level checks.
+    validations:
+      required: true
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Long-range dependencies
+      description: Identify anchor, targets, observable predicate, relation type, and span.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Judge evidence and redistribution rights
+    validations:
+      required: true
+

@@ -114,20 +114,47 @@ def draw_segmented_wordmark(
     canvas.paste(fill, (0, 0), mask)
 
 
-def draw_colored_segments(
+def draw_acronym_row(
     draw: ImageDraw.ImageDraw,
     xy: tuple[int, int],
-    segments: tuple[tuple[str, str], ...],
-    font: ImageFont.FreeTypeFont,
-    gap: int = 0,
+    terms: tuple[tuple[str, str, str], ...],
+    *,
+    text_font: ImageFont.FreeTypeFont,
+    initial_font: ImageFont.FreeTypeFont,
+    text_color: str,
+    badge_text_color: str,
+    connector: str | None = None,
 ) -> None:
-    """Draw an acronym expansion with deterministic initial highlighting."""
+    """Draw explicit initial-to-term mappings for the MURAL expansion."""
     x, y = xy
-    for index, (text, color) in enumerate(segments):
-        draw.text((x, y), text, font=font, fill=color, anchor="la")
-        x += int(draw.textlength(text, font=font))
-        if index < len(segments) - 1:
-            x += gap
+    badge_size = 44
+    term_gap = 25
+    if connector:
+        draw.text((x, y + badge_size // 2), connector, font=text_font, fill=text_color, anchor="lm")
+        x += int(draw.textlength(connector, font=text_font)) + 14
+
+    for initial, remainder, badge_color in terms:
+        draw.rounded_rectangle(
+            (x, y, x + badge_size, y + badge_size),
+            radius=11,
+            fill=badge_color,
+        )
+        draw.text(
+            (x + badge_size // 2, y + badge_size // 2),
+            initial,
+            font=initial_font,
+            fill=DARK if badge_color == AMBER else badge_text_color,
+            anchor="mm",
+        )
+        x += badge_size + 8
+        draw.text(
+            (x, y + badge_size // 2),
+            remainder,
+            font=text_font,
+            fill=text_color,
+            anchor="lm",
+        )
+        x += int(draw.textlength(remainder, font=text_font)) + term_gap
 
 
 def export_square(mark: Image.Image, name: str, sizes: tuple[int, ...]) -> None:
@@ -160,7 +187,8 @@ def build_lockup(mark: Image.Image, *, dark: bool) -> Image.Image:
 
     draw = ImageDraw.Draw(canvas)
     word_font = ImageFont.truetype(str(FONT), 224)
-    tag_font = ImageFont.truetype(str(FONT), 39)
+    tag_font = ImageFont.truetype(str(FONT), 36)
+    initial_font = ImageFont.truetype(str(FONT), 29)
     word_color = OFF_WHITE if dark else INK
     tag_color = MINT if dark else TEAL
     start_x = 565
@@ -176,34 +204,33 @@ def build_lockup(mark: Image.Image, *, dark: bool) -> Image.Image:
         background=background,
         spacing=12,
     )
-    tile_y = 348
-    for index, color in enumerate((TEAL, MINT, AMBER, MINT, TEAL)):
-        x = start_x + index * 21
-        draw.rounded_rectangle((x, tile_y, x + 16, tile_y + 12), radius=5, fill=color)
-    draw_colored_segments(
+    badge_text_color = DARK if dark else OFF_WHITE
+    badge_color = MINT if dark else TEAL
+    draw_acronym_row(
         draw,
-        (start_x + 122, 322),
+        (start_x, 330),
         (
-            ("M", AMBER),
-            ("ulti-Agent   ", tag_color),
-            ("U", AMBER),
-            ("nified   ", tag_color),
-            ("R", AMBER),
-            ("evision-Aware   ", tag_color),
-            ("A", AMBER),
-            ("uthoring", tag_color),
+            ("M", "ulti-Agent", badge_color),
+            ("U", "nified", badge_color),
+            ("R", "evision-Aware", AMBER),
+            ("A", "uthoring", badge_color),
         ),
-        tag_font,
+        text_font=tag_font,
+        initial_font=initial_font,
+        text_color=tag_color,
+        badge_text_color=badge_text_color,
     )
-    draw_colored_segments(
+    draw_acronym_row(
         draw,
-        (start_x + 122, 384),
+        (start_x, 394),
         (
-            ("for ", tag_color),
-            ("L", AMBER),
-            ("ong-Horizon Presentations", tag_color),
+            ("L", "ong-Horizon Presentations", badge_color),
         ),
-        tag_font,
+        text_font=tag_font,
+        initial_font=initial_font,
+        text_color=tag_color,
+        badge_text_color=badge_text_color,
+        connector="for",
     )
     return canvas
 

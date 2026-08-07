@@ -87,8 +87,14 @@ p { line-height: 1.72; }
 .button-primary { background: var(--ink); color: white; box-shadow: 0 14px 28px rgba(38,50,56,.14); }
 .button-primary span { color: var(--mint); font-size: 1.2rem; }
 .button-secondary { border: 1px solid var(--line); background: rgba(255,255,255,.75); }
-.expansion { display: flex; gap: 13px; align-items: center; font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-soft); }
-.expansion span { color: var(--teal); font-weight: 850; font-size: .9rem; }
+.acronym-expansion { display: grid; gap: 8px; color: var(--ink-soft); }
+.acronym-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; }
+.acronym-row-secondary { gap: 8px; }
+.acronym-term { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; font-size: .82rem; font-weight: 740; letter-spacing: .015em; }
+.acronym-term b { width: 26px; height: 26px; display: inline-grid; place-items: center; border-radius: 7px; background: var(--teal); color: white; font-size: .78rem; line-height: 1; }
+.acronym-term.revision b { background: var(--amber); color: var(--ink); }
+.acronym-connector { margin-right: 2px; color: var(--ink-soft); font-size: .76rem; font-style: italic; }
+.acronym-object { margin-left: 2px; color: var(--teal-deep); font-size: .82rem; font-weight: 740; }
 .hero-art { position: relative; min-height: 590px; display: grid; place-items: center; isolation: isolate; }
 .hero-art::before { content: ""; position: absolute; inset: 6% 0 4% 5%; border-radius: 48% 44% 48% 42%; background: radial-gradient(circle at 55% 38%, #fffdf7 0 32%, #dceee9 64%, #c8e4de 100%); box-shadow: inset 0 0 0 1px rgba(19,127,123,.1), 0 30px 70px rgba(7,91,89,.12); z-index: -2; }
 .hero-art img { width: min(620px, 96%); filter: drop-shadow(0 26px 22px rgba(38,50,56,.15)); z-index: 3; }
@@ -349,6 +355,8 @@ footer > a { color: var(--teal); font-weight: 700; }
   .hero { padding: 58px 0 72px; gap: 18px; }
   .hero h1 { font-size: clamp(3.1rem, 15vw, 5rem); }
   .hero-copy > p { font-size: 1rem; }
+  .acronym-row { gap: 8px 12px; }
+  .acronym-term { font-size: .76rem; }
   .hero-art { min-height: 410px; }
   .art-caption { right: 0; bottom: 0; max-width: 220px; }
   .horizon, .figure-section, .lifecycle, .html-section, .benchmark { padding: 78px 0; }

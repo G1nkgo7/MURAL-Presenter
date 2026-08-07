@@ -155,6 +155,34 @@ const copy = {
   },
 } as const;
 
+function AcronymExpansion({ label }: { label: string }) {
+  const terms = [
+    ["M", "ulti-Agent", ""],
+    ["U", "nified", ""],
+    ["R", "evision-Aware", "revision"],
+    ["A", "uthoring", ""],
+  ] as const;
+
+  return (
+    <div className="acronym-expansion" aria-label={label}>
+      <div className="acronym-row">
+        {terms.map(([initial, remainder, modifier]) => (
+          <span className={`acronym-term ${modifier}`} key={initial}>
+            <b>{initial}</b><span>{remainder}</span>
+          </span>
+        ))}
+      </div>
+      <div className="acronym-row acronym-row-secondary">
+        <span className="acronym-connector">for</span>
+        <span className="acronym-term">
+          <b>L</b><span>ong-Horizon</span>
+        </span>
+        <span className="acronym-object">Presentations</span>
+      </div>
+    </div>
+  );
+}
+
 export function MuralSite({ language }: { language: Language }) {
   const t = copy[language];
   const isZh = language === "zh";
@@ -183,7 +211,7 @@ export function MuralSite({ language }: { language: Language }) {
             <a className="button button-primary" href="#lifecycle">{t.primaryCta}<span>↘</span></a>
             <a className="button button-secondary" href={t.secondaryCtaHref}>{t.secondaryCta}</a>
           </div>
-          <div className="expansion"><span>MURAL</span>{t.markLabel}</div>
+          <AcronymExpansion label={t.markLabel} />
         </div>
         <div className="hero-art" aria-label={isZh ? "MURAL 多智能体壁画师团队" : "MURAL multi-agent muralist team"}>
           <div className="page-shadow page-shadow-a" />

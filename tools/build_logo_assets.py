@@ -31,6 +31,7 @@ INK = "#263238"
 MINT = "#B8DDD7"
 AMBER = "#D89A45"
 DARK = "#172428"
+SLATE = "#536168"
 
 
 def trim_alpha(image: Image.Image, pad: int = 0) -> Image.Image:
@@ -123,39 +124,39 @@ def draw_acronym_row(
     text_font: ImageFont.FreeTypeFont,
     initial_font: ImageFont.FreeTypeFont,
     text_color: str,
-    badge_text_color: str,
+    separator_color: str,
     connector: str | None = None,
 ) -> None:
-    """Draw explicit initial-to-term mappings for the MURAL expansion."""
+    """Draw a compact editorial signature with explicit acronym initials."""
     x, y = xy
-    badge_size = 44
-    term_gap = 25
+    line_mid = y + 25
+    term_gap = 30
     if connector:
-        draw.text((x, y + badge_size // 2), connector, font=text_font, fill=text_color, anchor="lm")
+        draw.text((x, line_mid), connector, font=text_font, fill=text_color, anchor="lm")
         x += int(draw.textlength(connector, font=text_font)) + 14
 
-    for initial, remainder, badge_color in terms:
+    for index, (initial, remainder, initial_color) in enumerate(terms):
+        initial_x = x
+        draw.text((x, line_mid), initial, font=initial_font, fill=initial_color, anchor="lm")
+        initial_width = int(draw.textlength(initial, font=initial_font))
         draw.rounded_rectangle(
-            (x, y, x + badge_size, y + badge_size),
-            radius=11,
-            fill=badge_color,
+            (initial_x, y + 46, initial_x + initial_width, y + 50),
+            radius=2,
+            fill=initial_color,
         )
+        x += initial_width + 4
         draw.text(
-            (x + badge_size // 2, y + badge_size // 2),
-            initial,
-            font=initial_font,
-            fill=DARK if badge_color == AMBER else badge_text_color,
-            anchor="mm",
-        )
-        x += badge_size + 8
-        draw.text(
-            (x, y + badge_size // 2),
+            (x, line_mid),
             remainder,
             font=text_font,
             fill=text_color,
             anchor="lm",
         )
-        x += int(draw.textlength(remainder, font=text_font)) + term_gap
+        x += int(draw.textlength(remainder, font=text_font))
+        if index < len(terms) - 1:
+            dot_x = x + term_gap // 2
+            draw.ellipse((dot_x - 3, line_mid - 3, dot_x + 3, line_mid + 3), fill=separator_color)
+            x += term_gap
 
 
 def export_square(mark: Image.Image, name: str, sizes: tuple[int, ...]) -> None:
@@ -189,9 +190,9 @@ def build_lockup(mark: Image.Image, *, dark: bool) -> Image.Image:
     draw = ImageDraw.Draw(canvas)
     word_font = ImageFont.truetype(str(FONT), 224)
     tag_font = ImageFont.truetype(str(HAND_FONT), 49)
-    initial_font = ImageFont.truetype(str(FONT), 29)
+    initial_font = ImageFont.truetype(str(FONT), 35)
     word_color = OFF_WHITE if dark else INK
-    tag_color = MINT if dark else TEAL
+    tag_color = MINT if dark else SLATE
     start_x = 565
     word_y = 72
     draw_segmented_wordmark(
@@ -205,32 +206,34 @@ def build_lockup(mark: Image.Image, *, dark: bool) -> Image.Image:
         background=background,
         spacing=12,
     )
-    badge_text_color = DARK if dark else OFF_WHITE
-    badge_color = MINT if dark else TEAL
+    initial_color = MINT if dark else TEAL
+    separator_color = TEAL if dark else MINT
+    draw.rounded_rectangle((start_x, 328, start_x + 5, 454), radius=3, fill=AMBER)
+    signature_x = start_x + 24
     draw_acronym_row(
         draw,
-        (start_x, 330),
+        (signature_x, 326),
         (
-            ("M", "ulti-Agent", badge_color),
-            ("U", "nified", badge_color),
+            ("M", "ulti-Agent", initial_color),
+            ("U", "nified", initial_color),
             ("R", "evision-Aware", AMBER),
-            ("A", "uthoring", badge_color),
+            ("A", "uthoring", initial_color),
         ),
         text_font=tag_font,
         initial_font=initial_font,
         text_color=tag_color,
-        badge_text_color=badge_text_color,
+        separator_color=separator_color,
     )
     draw_acronym_row(
         draw,
-        (start_x, 394),
+        (signature_x, 392),
         (
-            ("L", "ong-Horizon Presentations", badge_color),
+            ("L", "ong-Horizon Presentations", initial_color),
         ),
         text_font=tag_font,
         initial_font=initial_font,
         text_color=tag_color,
-        badge_text_color=badge_text_color,
+        separator_color=separator_color,
         connector="for",
     )
     return canvas

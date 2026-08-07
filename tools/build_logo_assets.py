@@ -23,6 +23,7 @@ FONT = (
     / "assets"
     / "Archivo.ttf"
 )
+HAND_FONT = LOGO_DIR / "fonts" / "Caveat-VariableFont_wght.ttf"
 
 OFF_WHITE = "#F2F8F6"
 TEAL = "#137F7B"
@@ -187,7 +188,7 @@ def build_lockup(mark: Image.Image, *, dark: bool) -> Image.Image:
 
     draw = ImageDraw.Draw(canvas)
     word_font = ImageFont.truetype(str(FONT), 224)
-    tag_font = ImageFont.truetype(str(FONT), 36)
+    tag_font = ImageFont.truetype(str(HAND_FONT), 49)
     initial_font = ImageFont.truetype(str(FONT), 29)
     word_color = OFF_WHITE if dark else INK
     tag_color = MINT if dark else TEAL
@@ -335,6 +336,8 @@ def main() -> None:
         raise FileNotFoundError(COMPACT_SOURCE)
     if not FONT.exists():
         raise FileNotFoundError(FONT)
+    if not HAND_FONT.exists():
+        raise FileNotFoundError(HAND_FONT)
 
     primary = trim_alpha(Image.open(PRIMARY_SOURCE), pad=8)
     compact = trim_alpha(Image.open(COMPACT_SOURCE), pad=8)

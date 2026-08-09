@@ -26,6 +26,7 @@ dist/
 *.key
 
 # Paper and experiment scratch
+tmp/
 *.aux
 *.bbl
 *.blg
@@ -35,3 +36,11 @@ dist/
 results/private/
 data/private/
 
+# Generated datasets and runtime artifacts
+data/raw/
+data/interim/
+data/processed/
+data/cache/
+artifacts/runs/
+artifacts/cache/
+artifacts/exports/

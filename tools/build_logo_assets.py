@@ -184,17 +184,23 @@ def build_lockup(mark: Image.Image, *, dark: bool) -> Image.Image:
     width, height = 1800, 620
     background = DARK if dark else OFF_WHITE
     canvas = Image.new("RGB", (width, height), background)
-    mark_fit = contain(mark, (470, 470))
-    canvas.paste(mark_fit, (72, (height - mark_fit.height) // 2), mark_fit)
+    mark_fit = contain(mark, (490, 490))
+    canvas.paste(mark_fit, (54, (height - mark_fit.height) // 2 + 8), mark_fit)
 
     draw = ImageDraw.Draw(canvas)
-    word_font = ImageFont.truetype(str(FONT), 224)
-    tag_font = ImageFont.truetype(str(HAND_FONT), 49)
-    initial_font = ImageFont.truetype(str(FONT), 35)
+    word_font = ImageFont.truetype(str(FONT), 210)
+    kicker_font = ImageFont.truetype(str(FONT), 18)
+    badge_font = ImageFont.truetype(str(FONT), 21)
+    initial_font = ImageFont.truetype(str(FONT), 54)
+    label_font = ImageFont.truetype(str(FONT), 20)
+    long_label_font = ImageFont.truetype(str(FONT), 17)
     word_color = OFF_WHITE if dark else INK
-    tag_color = MINT if dark else SLATE
+    secondary = MINT if dark else SLATE
+    panel = "#203238" if dark else "#E8F2EF"
+    panel_alt = "#3C3020" if dark else "#FFF1D6"
+    panel_rule = "#476167" if dark else "#C6DAD6"
     start_x = 565
-    word_y = 72
+    word_y = 48
     draw_segmented_wordmark(
         canvas,
         (start_x, word_y),
@@ -206,35 +212,80 @@ def build_lockup(mark: Image.Image, *, dark: bool) -> Image.Image:
         background=background,
         spacing=12,
     )
-    initial_color = MINT if dark else TEAL
-    separator_color = TEAL if dark else MINT
-    draw.rounded_rectangle((start_x, 328, start_x + 5, 454), radius=3, fill=AMBER)
-    signature_x = start_x + 24
-    draw_acronym_row(
-        draw,
-        (signature_x, 326),
-        (
-            ("M", "ulti-Agent", initial_color),
-            ("U", "nified", initial_color),
-            ("R", "evision-Aware", AMBER),
-            ("A", "uthoring", initial_color),
-        ),
-        text_font=tag_font,
-        initial_font=initial_font,
-        text_color=tag_color,
-        separator_color=separator_color,
+
+    # PRESENTER behaves as an editorial edition mark rather than a loose suffix.
+    badge_w = 214
+    badge_x = width - badge_w - 72
+    draw.rounded_rectangle(
+        (badge_x, 83, badge_x + badge_w, 129),
+        radius=8,
+        fill=TEAL if dark else INK,
     )
-    draw_acronym_row(
+    badge_text = "PRESENTER"
+    badge_text_w = letterspaced_width(draw, badge_text, badge_font, 3)
+    draw_letterspaced(
         draw,
-        (signature_x, 392),
-        (
-            ("L", "ong-Horizon Presentations", initial_color),
-        ),
-        text_font=tag_font,
-        initial_font=initial_font,
-        text_color=tag_color,
-        separator_color=separator_color,
-        connector="for",
+        (badge_x + (badge_w - badge_text_w) // 2, 93),
+        badge_text,
+        badge_font,
+        OFF_WHITE,
+        3,
+    )
+
+    decoder_y = 316
+    draw.text(
+        (start_x, decoder_y),
+        "THE NAME IS THE METHOD",
+        font=kicker_font,
+        fill=TEAL if dark else TEAL,
+    )
+    kicker_w = int(draw.textlength("THE NAME IS THE METHOD", font=kicker_font))
+    draw.line(
+        (start_x + kicker_w + 22, decoder_y + 12, width - 72, decoder_y + 12),
+        fill=panel_rule,
+        width=2,
+    )
+
+    cards = (
+        ("M", ("MULTI-AGENT",), False),
+        ("U", ("UNIFIED",), False),
+        ("R", ("REVISION-AWARE",), True),
+        ("A", ("AUTHORING",), False),
+        ("L", ("LONG-HORIZON", "PRESENTATIONS"), False),
+    )
+    card_y = 354
+    card_h = 132
+    gap = 8
+    available = width - 72 - start_x
+    card_w = (available - gap * 4) // 5
+    for index, (initial, labels, is_revision) in enumerate(cards):
+        x = start_x + index * (card_w + gap)
+        fill = panel_alt if is_revision else panel
+        initial_color = AMBER if is_revision else (MINT if dark else TEAL)
+        draw.rounded_rectangle(
+            (x, card_y, x + card_w, card_y + card_h),
+            radius=10,
+            fill=fill,
+            outline=panel_rule,
+            width=1,
+        )
+        draw.text((x + 18, card_y + 12), initial, font=initial_font, fill=initial_color)
+        draw.rectangle((x + 18, card_y + 80, x + 58, card_y + 84), fill=initial_color)
+        active_font = long_label_font if initial in {"R", "L"} else label_font
+        label_y = card_y + 91
+        for row, label in enumerate(labels):
+            draw.text(
+                (x + 18, label_y + row * 20),
+                label,
+                font=active_font,
+                fill=word_color,
+            )
+
+    draw.text(
+        (start_x, 520),
+        "ONE SHARED DECK STATE  /  BRIEF → GROUPS → REVIEW → REVISION",
+        font=kicker_font,
+        fill=secondary,
     )
     return canvas
 
@@ -328,8 +379,13 @@ def build_social_card(mark: Image.Image) -> None:
 
     SOCIAL_DIR.mkdir(parents=True, exist_ok=True)
     SITE_PUBLIC_DIR.mkdir(parents=True, exist_ok=True)
-    canvas.save(SOCIAL_DIR / "mural-og-1200x630.png", optimize=True)
-    canvas.save(SITE_PUBLIC_DIR / "og.png", optimize=True)
+    canvas.save(SOCIAL_DIR / "mural-og-fallback-1200x630.png", optimize=True)
+
+    # The public OG image may be an art-directed release asset. Keep the deterministic
+    # composition as a clean-clone fallback without overwriting an approved social card.
+    public_card = SITE_PUBLIC_DIR / "og.png"
+    if not public_card.exists():
+        canvas.save(public_card, optimize=True)
 
 
 def main() -> None:

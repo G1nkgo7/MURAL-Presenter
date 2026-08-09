@@ -1,0 +1,14 @@
+.env
+.external-runtime/
+runtime/
+vendor/
+**/.venv/
+**/__pycache__/
+**/.pytest_cache/
+studio/data/
+distillation/data/
+distillation/runs/
+distillation/logs/
+*.db
+*.db-*
+*.log

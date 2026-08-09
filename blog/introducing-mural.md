@@ -8,7 +8,7 @@ status: research-preview
 
 # A presentation is not a stack of slides
 
-## Introducing MURAL, a full-lifecycle approach to long-horizon presentation authoring
+## Introducing MURAL-Presenter, a full-lifecycle approach to long-horizon presentation authoring
 
 Making a presentation rarely starts with a blank slide and ends when the last page appears. A real
 authoring process begins earlier: deciding what the talk is for, who will hear it, and what they should
@@ -29,10 +29,21 @@ We call this a long-horizon authoring problem. The horizon is not simply the num
 time required to generate them. It is the distance over which a fact, narrative promise, design rule,
 or user requirement must remain valid across stages, pages, and revisions.
 
-MURAL — Multi-Agent Unified Revision-Aware Authoring for Long-Horizon Presentations — is our attempt to make that lifecycle explicit.
+MURAL-Presenter (MURAL) — Multi-Agent Unified Revision-Aware Authoring for Long-Horizon Presentations — is our attempt to make that lifecycle explicit.
 It is a Skill-driven multi-agent framework for editable HTML presentations, built around a shared deck
 blueprint, slide-group ownership, rendered inspection at two levels, and revision routing by impact
 scope.
+
+| | The name is the method | What it changes |
+| :---: | --- | --- |
+| **M** | **Multi-Agent** | Specialists can work in parallel without turning every slide into an isolated task. |
+| **U** | **Unified** | One shared deck blueprint carries evidence, narrative, terminology, and design decisions. |
+| **R** | **Revision-Aware** | Later work resumes at page, group, evidence, or deck scope according to impact. |
+| **A** | **Authoring** | The system executes a reusable lifecycle rather than a one-shot generation prompt. |
+| **L** | **Long-Horizon Presentations** | Decisions remain accountable across distant stages, slides, and revision turns. |
+
+In short, MURAL does not merely divide a long workflow. It aligns agent ownership with deck
+dependencies, then restores whole-deck closure after parallel production.
 
 ![The MURAL authoring lifecycle](../assets/figures/authoring-lifecycle.png)
 

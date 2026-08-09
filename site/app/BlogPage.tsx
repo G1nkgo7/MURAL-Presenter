@@ -1,3 +1,5 @@
+import { BrandLockup } from "./MuralSite";
+
 type Language = "en" | "zh";
 
 type ArticleSection = {
@@ -16,12 +18,13 @@ const article = {
     homeLabel: "Project home",
     languageLabel: "中文",
     languageHref: "/zh/blog",
-    eyebrow: "MURAL research preview · August 2026",
+    eyebrow: "MURAL Presenter · Field Note 01",
     title: "A presentation is not a stack of slides.",
-    subtitle: "Introducing MURAL: lifecycle authoring for long-horizon presentations",
+    subtitle: "Introducing MURAL-Presenter: lifecycle authoring for long-horizon presentations",
     dek:
       "Presentation agents can already draft outlines, retrieve evidence, write slides, and respond to local edits. The harder problem is carrying one set of decisions through the complete deck—and through the edits that follow.",
     readTime: "Launch article · 9 min read",
+    brandTagline: "One shared deck state, carried from the first brief through every later revision.",
     contents: "In this article",
     closing:
       "MURAL starts from a simple premise: a presentation is a designed argument that persists through evidence, planning, production, review, and change. The system should be organized around that lifecycle too.",
@@ -98,12 +101,13 @@ const article = {
     homeLabel: "项目主页",
     languageLabel: "English",
     languageHref: "/blog",
-    eyebrow: "MURAL Research Preview · 2026 年 8 月",
+    eyebrow: "MURAL Presenter · 研究札记 01",
     title: "演示文稿不是一摞页面。",
-    subtitle: "介绍 MURAL：面向长程演示文稿完整生命周期的创作框架",
+    subtitle: "介绍 MURAL-Presenter：面向长程演示文稿完整生命周期的创作框架",
     dek:
       "演示文稿 Agent 已经能够列提纲、查资料、写单页和响应局部修改。更难的问题，是让同一组事实、叙事和设计决策贯穿整册，并在后续修改中继续有效。",
     readTime: "发布文章 · 约 9 分钟",
+    brandTagline: "让一份共享的整册状态，从最初需求一直延续到后续每一轮修改。",
     contents: "本文内容",
     closing:
       "MURAL 的出发点并不复杂：演示文稿不是一摞分别合格的页面，而是一段贯穿证据、规划、制作、复审与修改的设计论证。系统本身也应该围绕这条生命周期组织。",
@@ -182,14 +186,29 @@ export function BlogPage({ language }: { language: Language }) {
   const t = article[language];
   const isZh = language === "zh";
   const homeHref = isZh ? "/zh" : "/";
+  const paperHref = isZh ? "/zh/paper" : "/paper";
   const sections = t.sections as readonly ArticleSection[];
+  const acronym = isZh
+    ? [
+        ["M", "Multi-Agent", "多角色并行"],
+        ["U", "Unified", "共享整册状态"],
+        ["R", "Revision-Aware", "按影响范围续作"],
+        ["A", "Authoring", "可执行创作流程"],
+        ["L", "Long-Horizon Presentations", "跨阶段、页面与修改"],
+      ] as const
+    : [
+        ["M", "Multi-Agent", "parallel specialists"],
+        ["U", "Unified", "one shared deck state"],
+        ["R", "Revision-Aware", "resume by impact"],
+        ["A", "Authoring", "an executable lifecycle"],
+        ["L", "Long-Horizon Presentations", "decisions persist"],
+      ] as const;
 
   return (
-    <main className="blog-page" lang={isZh ? "zh-CN" : "en"}>
+    <main className="blog-page" lang={isZh ? "zh-CN" : "en"} id="top">
       <header className="nav-shell blog-nav">
         <a className="brand" href={homeHref} aria-label={t.homeLabel}>
-          <img src="/mural-mark.png" alt="" />
-          <span className="brand-wordmark">MURAL</span>
+          <BrandLockup />
         </a>
         <nav aria-label={isZh ? "文章导航" : "Article navigation"}>
           <a href={homeHref}>{t.homeLabel}</a>
@@ -203,17 +222,52 @@ export function BlogPage({ language }: { language: Language }) {
       <article>
         <header className="blog-hero section-shell">
           <div className="blog-hero-copy">
-            <span className="kicker">{t.eyebrow}</span>
-            <h1>{t.title}</h1>
-            <p className="blog-subtitle">{t.subtitle}</p>
-            <p className="blog-dek">{t.dek}</p>
-            <div className="blog-meta">{t.readTime}</div>
+            <div className="blog-hero-title">
+              <span className="kicker">{t.eyebrow}</span>
+              <h1>{t.title}</h1>
+            </div>
+            <div className="blog-hero-intro">
+              <p className="blog-subtitle">{t.subtitle}</p>
+              <p className="blog-dek">{t.dek}</p>
+              <div className="blog-meta">{t.readTime}</div>
+              <div className="blog-project-actions" aria-label={isZh ? "项目资源" : "Project resources"}>
+                <a href="https://github.com/G1nkgo7/MURAL-Presenter" target="_blank" rel="noreferrer">GitHub <span>↗</span></a>
+                <a href={paperHref}>Paper <small>{isZh ? "本地预览" : "LOCAL PREVIEW"}</small></a>
+                <a href={homeHref}>{isZh ? "项目主页" : "Project page"} <span>→</span></a>
+              </div>
+            </div>
           </div>
-          <div className="blog-hero-art">
-            <img
-              src="/mural-mascot.png"
-              alt={isZh ? "三个 MURAL Agent 共同绘制一面 M 形壁画" : "Three MURAL agents jointly painting one M-shaped mural"}
-            />
+          <div className="blog-brand-hero">
+            <div className="blog-brand-art">
+              <picture>
+                <source media="(max-width: 680px)" srcSet="/mural-mascot.png" />
+                <img
+                  src="/mural-blog-hero-source.png"
+                  alt={isZh ? "三个 MURAL Agent 共同绘制 M 形壁画" : "Three MURAL agents jointly painting an M-shaped mural"}
+                />
+              </picture>
+            </div>
+            <div className="blog-brand-copy">
+              <div className="blog-brand-label"><span>RESEARCH PREVIEW</span><span>01 → N</span></div>
+              <div className="blog-brand-word"><strong>MURAL</strong><em>PRESENTER</em></div>
+              <div className="blog-brand-expansion">
+                <div className="blog-brand-expansion-label">
+                  <span>{isZh ? "MURAL 的五个字母分别代表" : "What MURAL stands for"}</span>
+                  <i aria-hidden="true" />
+                </div>
+                <div className="blog-brand-legend" aria-label="Multi-Agent Unified Revision-Aware Authoring for Long-Horizon Presentations">
+                  {acronym.map(([initial, term, meaning], index) => (
+                    <span className={initial === "R" ? "is-revision" : ""} key={initial}>
+                      <i>0{index + 1}</i>
+                      <b>{initial}</b>
+                      <strong>{term}</strong>
+                      <small>{meaning}</small>
+                    </span>
+                  ))}
+                </div>
+              </div>
+              <p>{t.brandTagline}</p>
+            </div>
           </div>
         </header>
 
@@ -235,6 +289,12 @@ export function BlogPage({ language }: { language: Language }) {
                 {section.paragraphs.map((paragraph) => <p key={paragraph}>{paragraph}</p>)}
                 {section.figure && (
                   <figure className="article-figure">
+                    <div className="figure-bar">
+                      <span>{section.id === "groups" ? "FIGURE 01" : "FIGURE 02"}</span>
+                      <strong>{section.id === "groups"
+                        ? (isZh ? "责任拓扑" : "Responsibility topology")
+                        : (isZh ? "完整生命周期" : "Full lifecycle")}</strong>
+                    </div>
                     <img src={section.figure.src} alt={section.figure.alt} />
                     <figcaption>{section.figure.caption}</figcaption>
                   </figure>
@@ -255,8 +315,7 @@ export function BlogPage({ language }: { language: Language }) {
 
       <footer className="section-shell">
         <a className="brand footer-brand" href={homeHref}>
-          <img src="/mural-mark.png" alt="" />
-          <span className="brand-wordmark">MURAL</span>
+          <BrandLockup />
         </a>
         <p>{t.eyebrow}</p>
         <a href="#top">↑ {isZh ? "返回顶部" : "Back to top"}</a>

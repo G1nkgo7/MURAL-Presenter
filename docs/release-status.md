@@ -1,6 +1,6 @@
 # Release status and evidence boundary
 
-Last reviewed: 2026-08-07
+Last reviewed: 2026-08-09
 
 MURAL is a research project under active development. This repository intentionally separates
 what has been observed in the working system from what has been experimentally demonstrated or
@@ -13,6 +13,12 @@ cleared for public release.
 - Publication diagrams for the execution topology and full lifecycle.
 - Bilingual method, benchmark, and launch documentation.
 - A deployable project site.
+- A documented repository scaffold for query synthesis, data preparation, inference, QC, and the
+  target Studio service boundary.
+- A sanitized SenseNova Present WebUI compatibility bundle. It can run as a UI preview; model
+  services, generation Skills, Harnesses, credentials, and production data remain external.
+- Bilingual working-paper PDFs whose main bodies fit the nine-page target; all effectiveness
+  result slots remain explicitly pending.
 
 ## Implemented in the working system, not yet released here
 
@@ -27,7 +33,9 @@ These statements describe inspected mechanisms, not measured quality improvement
 ## Planned or awaiting a freeze
 
 - A clean public implementation commit and versioned MURAL Authoring Skill.
-- Approximately 1,000 accepted long-horizon agentic training trajectories.
+- Extraction of the compatibility bundle's server routes into the versioned `services/api` boundary.
+- Rollouts and accepted agentic trajectories derived from the current 1,000 query specifications
+  (850 Chinese and 150 English); completion, acceptance, and training counts are not yet frozen.
 - A canonical 50-case THREAD-Bench release and calibrated judges.
 - Final model identities, training configuration, and accepted-data counts.
 - Main effectiveness results, ablations, statistical analysis, and cost diagnostics.
@@ -47,4 +55,3 @@ Measured claims require a frozen code and Skill version, reproducible configurat
 schema, judge protocol, raw run ledger, and traceable aggregation. Public code or data additionally
 requires a license and a review for credentials, private endpoints, proprietary material, and
 third-party redistribution restrictions.
-

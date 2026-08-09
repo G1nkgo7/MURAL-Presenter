@@ -11,16 +11,16 @@ const copy = {
       ["THREAD-Bench", "#benchmark"],
       ["Blog", "/blog"],
     ],
-    badge: "Research preview · August 2026",
+    badge: "MURAL Presenter · Research preview",
     heroTitleA: "A presentation is not",
     heroTitleB: "a stack of slides.",
     heroBody:
-      "MURAL is a Skill-driven multi-agent framework that carries deck decisions through research, planning, grouped authoring, rendered review, and later human edits.",
+      "MURAL does more than split a workflow. It aligns agent ownership with deck dependencies, then carries shared decisions through research, grouped authoring, rendered review, and later human edits.",
     primaryCta: "Explore the lifecycle",
     secondaryCta: "Read the launch article",
     secondaryCtaHref: "/blog",
     markLabel: "Multi-Agent Unified Revision-Aware Authoring for Long-Horizon Presentations",
-    artNote: "One shared M. One revision-aware authoring lifecycle.",
+    artNote: "Three collaborators. One shared deck state.",
     horizonKicker: "The actual horizon",
     horizonTitle: "Decisions must survive in three directions.",
     horizonIntro:
@@ -87,16 +87,16 @@ const copy = {
       ["THREAD-Bench", "#benchmark"],
       ["宣传文章", "/zh/blog"],
     ],
-    badge: "Research preview · 2026 年 8 月",
+    badge: "MURAL Presenter · Research preview",
     heroTitleA: "演示文稿不是",
     heroTitleB: "一摞页面。",
     heroBody:
-      "MURAL 是一个技能驱动多智能体框架，让整册决策贯穿资料接地、规划、分组制作、渲染复审和后续人工修改。",
+      "MURAL 不只是把工作流拆成子任务，而是让 Agent 的责任边界匹配整册依赖结构，并让共享决策贯穿资料接地、分组制作、渲染复审和后续人工修改。",
     primaryCta: "查看完整生命周期",
     secondaryCta: "阅读宣传文章",
     secondaryCtaHref: "/zh/blog",
     markLabel: "Multi-Agent Unified Revision-Aware Authoring for Long-Horizon Presentations",
-    artNote: "一个共享的 M，一条修改感知的创作生命周期。",
+    artNote: "三个协作者，一份持续共享的整册状态。",
     horizonKicker: "真正的 long horizon",
     horizonTitle: "一项决策需要沿三个方向持续有效。",
     horizonIntro:
@@ -155,44 +155,64 @@ const copy = {
   },
 } as const;
 
-function AcronymExpansion({ label }: { label: string }) {
-  const terms = [
-    ["M", "ulti-Agent", ""],
-    ["U", "nified", ""],
-    ["R", "evision-Aware", "revision"],
-    ["A", "uthoring", ""],
-  ] as const;
+export function AcronymExpansion({ label, language }: { label: string; language: Language }) {
+  const terms = language === "zh"
+    ? [
+        ["M", "Multi-Agent", "多角色并行", ""],
+        ["U", "Unified", "共享整册状态", ""],
+        ["R", "Revision-Aware", "按影响范围续作", "acronym-revision"],
+        ["A", "Authoring", "贯穿创作生命周期", ""],
+        ["L", "Long-Horizon Presentations", "跨阶段、页面与修改", ""],
+      ] as const
+    : [
+        ["M", "Multi-Agent", "parallel specialists", ""],
+        ["U", "Unified", "one shared deck state", ""],
+        ["R", "Revision-Aware", "resume by impact", "acronym-revision"],
+        ["A", "Authoring", "an executable lifecycle", ""],
+        ["L", "Long-Horizon Presentations", "decisions persist", ""],
+      ] as const;
 
   return (
     <div className="acronym-expansion" aria-label={label}>
+      <div className="acronym-intro">
+        <span>THE NAME IS<br />THE METHOD</span>
+        <small>{language === "zh" ? "五个字母 · 一套方法" : "05 LETTERS · 01 SYSTEM"}</small>
+      </div>
       <div className="acronym-row">
-        {terms.map(([initial, remainder, modifier]) => (
-          <span className={`acronym-term ${modifier}`} key={initial}>
-            <b>{initial}</b><span>{remainder}</span>
+        {terms.map(([initial, term, meaning, modifier], index) => (
+          <span className={`acronym-unit ${modifier}`} key={initial}>
+            <span className="acronym-index">0{index + 1}</span>
+            <span className="acronym-term">
+              <b>{initial}</b><strong>{term}</strong>
+              <small>{meaning}</small>
+            </span>
           </span>
         ))}
       </div>
-      <div className="acronym-row acronym-row-secondary">
-        <span className="acronym-connector">for</span>
-        <span className="acronym-term">
-          <b>L</b><span>ong-Horizon</span>
-        </span>
-        <span className="acronym-object">Presentations</span>
-      </div>
     </div>
+  );
+}
+
+export function BrandLockup() {
+  return (
+    <span className="brand-lockup" aria-label="MURAL Presenter">
+      <span className="brand-name">MURAL</span>
+      <span className="brand-divider" aria-hidden="true" />
+      <span className="brand-suffix">PRESENTER</span>
+    </span>
   );
 }
 
 export function MuralSite({ language }: { language: Language }) {
   const t = copy[language];
   const isZh = language === "zh";
+  const paperHref = isZh ? "/zh/paper" : "/paper";
 
   return (
     <main lang={isZh ? "zh-CN" : "en"}>
       <header className="nav-shell">
         <a className="brand" href="#top" aria-label="MURAL home">
-          <img src="/mural-mark.png" alt="" />
-          <span className="brand-wordmark">MURAL</span>
+          <BrandLockup />
         </a>
         <nav aria-label={isZh ? "页面导航" : "Page navigation"}>
           {t.nav.map(([label, href]) => (
@@ -203,21 +223,40 @@ export function MuralSite({ language }: { language: Language }) {
       </header>
 
       <section className="hero section-shell" id="top">
+        <AcronymExpansion label={t.markLabel} language={language} />
         <div className="hero-copy">
           <div className="status-badge"><span />{t.badge}</div>
+          <div className="hero-project-word" aria-label="MURAL Presenter">
+            <strong>MURAL</strong><span>PRESENTER</span>
+          </div>
           <h1>{t.heroTitleA}<br /><em>{t.heroTitleB}</em></h1>
           <p>{t.heroBody}</p>
           <div className="hero-actions">
-            <a className="button button-primary" href="#lifecycle">{t.primaryCta}<span>↘</span></a>
-            <a className="button button-secondary" href={t.secondaryCtaHref}>{t.secondaryCta}</a>
+            <a className="button button-primary" href="https://github.com/G1nkgo7/MURAL-Presenter" target="_blank" rel="noreferrer">GitHub<span>↗</span></a>
+            <a className="button button-secondary" href={t.secondaryCtaHref}>{t.secondaryCta}<span>→</span></a>
           </div>
-          <AcronymExpansion label={t.markLabel} />
         </div>
         <div className="hero-art" aria-label={isZh ? "MURAL 多智能体壁画师团队" : "MURAL multi-agent muralist team"}>
-          <div className="page-shadow page-shadow-a" />
-          <div className="page-shadow page-shadow-b" />
+          <div className="hero-stage-label"><span>MURAL CREW</span><b>03 AGENTS · 01 DECK</b></div>
           <img src="/mural-mascot.png" alt={isZh ? "三个机器人共同为 M 形页面墙涂色" : "Three robots jointly painting an M-shaped wall of presentation pages"} />
+          <div className="hero-stage-rail" aria-hidden="true">
+            <span>PLAN</span><i>→</i><span>GROUP</span><i>→</i><span>REVIEW</span><i>→</i><span>REVISE</span>
+          </div>
           <div className="art-caption"><span>01 → N</span>{t.artNote}</div>
+        </div>
+        <div className="resource-shelf" aria-label={isZh ? "项目资源" : "Project resources"}>
+          <a className="resource-link resource-github" href="https://github.com/G1nkgo7/MURAL-Presenter" target="_blank" rel="noreferrer">
+            <span className="resource-index">01</span><strong>GitHub</strong><small>{isZh ? "代码、更新与发布" : "Code, updates & releases"}</small><i>↗</i>
+          </a>
+          <a className="resource-link resource-paper" href={paperHref}>
+            <span className="resource-index">02</span><strong>Paper</strong><small>{isZh ? "本地论文预览" : "Local manuscript preview"}</small><i>→</i>
+          </a>
+          <a className="resource-link" href={t.secondaryCtaHref}>
+            <span className="resource-index">03</span><strong>{isZh ? "项目文章" : "Project story"}</strong><small>{isZh ? "完整动机与设计思路" : "Motivation & design rationale"}</small><i>→</i>
+          </a>
+          <a className="resource-link resource-benchmark" href="#benchmark">
+            <span className="resource-index">04</span><strong>THREAD-Bench</strong><small>{isZh ? "长程一致性评测预览" : "Long-horizon evaluation preview"}</small><i>↓</i>
+          </a>
         </div>
       </section>
 
@@ -244,6 +283,7 @@ export function MuralSite({ language }: { language: Language }) {
           <p>{t.topologyBody}</p>
         </div>
         <figure className="paper-figure">
+          <div className="figure-bar"><span>FIGURE 01</span><strong>{isZh ? "责任拓扑" : "Responsibility topology"}</strong></div>
           <img src="/execution-topologies.png" alt={isZh ? "顺序式、完整上下文并行和 MURAL 页面组拓扑" : "Sequential, full-context parallel, and MURAL slide-group topologies"} />
           <figcaption>{t.topologyCaption}</figcaption>
         </figure>
@@ -262,6 +302,7 @@ export function MuralSite({ language }: { language: Language }) {
           ))}
         </div>
         <figure className="paper-figure lifecycle-figure">
+          <div className="figure-bar"><span>FIGURE 02</span><strong>{isZh ? "完整创作与修改生命周期" : "Full authoring and revision lifecycle"}</strong></div>
           <img src="/authoring-lifecycle.png" alt={isZh ? "MURAL 完整创作与修改生命周期" : "MURAL full authoring and revision lifecycle"} />
           <figcaption>{t.lifecycleCaption}</figcaption>
         </figure>
@@ -319,13 +360,14 @@ export function MuralSite({ language }: { language: Language }) {
       </section>
 
       <section className="closing section-shell">
-        <img src="/mural-mark.png" alt="" />
+        <div className="closing-brand"><BrandLockup /></div>
         <blockquote>{t.closing}</blockquote>
       </section>
 
       <footer className="section-shell">
-        <div className="brand footer-brand"><img src="/mural-mark.png" alt="" /><span className="brand-wordmark">MURAL</span></div>
+        <div className="brand footer-brand"><BrandLockup /></div>
         <p>{t.footer}</p>
+        <a href="https://github.com/G1nkgo7/MURAL-Presenter" target="_blank" rel="noreferrer">GitHub ↗</a>
         <a href={isZh ? "/zh/blog" : "/blog"}>{isZh ? "宣传文章" : "Launch article"}</a>
         <a href="#top">↑ {isZh ? "返回顶部" : "Back to top"}</a>
       </footer>

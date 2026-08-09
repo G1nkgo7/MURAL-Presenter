@@ -28,7 +28,13 @@ contributions should stay within the artifacts already present in this repositor
 - Do not add measured results without a frozen evaluation configuration and traceable evidence.
 - Do not add implementation copied from the private working system.
 
+Before submitting a public-surface change, run:
+
+```bash
+python tools/check_public_release.py
+cd site && npm run lint && npm test
+```
+
 By contributing, you confirm that you have the right to share the submitted material. A project
 license and contributor terms will be published with the first code-bearing release; until then,
 maintainers may defer code contributions that would create unclear licensing obligations.
-

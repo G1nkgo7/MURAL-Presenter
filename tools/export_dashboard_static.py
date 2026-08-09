@@ -14,17 +14,17 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SITE = ROOT / "site"
 CLIENT = SITE / "dist" / "client"
-DEFAULT_TARGET = Path(
-    "/mnt/afs/hejiatong/multimodal_design/ppt-agent/dashboard/static/mural"
-)
-PUBLIC_PREFIX = "/static/mural"
-EXTERNAL_BASE = "http://10.210.6.10:19117/static/mural"
+DEFAULT_TARGET = ROOT / "dist" / "dashboard-static"
+DEFAULT_PUBLIC_PREFIX = "/static/mural"
+DEFAULT_EXTERNAL_BASE = "http://localhost:8000/static/mural"
 
 ROUTES = {
     "/": "index.html",
     "/zh": "zh.html",
     "/blog": "blog.html",
     "/zh/blog": "zh-blog.html",
+    "/paper": "paper.html",
+    "/zh/paper": "zh-paper.html",
 }
 
 
@@ -35,7 +35,7 @@ def fetch(origin: str, route: str) -> str:
         return response.read().decode("utf-8")
 
 
-def make_static(html: str) -> str:
+def make_static(html: str, public_prefix: str, external_base: str) -> str:
     # The pages contain no client-side interactions. Removing the RSC runtime
     # makes this export independent from a persistent Node process.
     html = re.sub(r"<script\b[^>]*>.*?</script>", "", html, flags=re.I | re.S)
@@ -47,10 +47,12 @@ def make_static(html: str) -> str:
     )
 
     route_links = {
-        'href="/zh/blog"': f'href="{PUBLIC_PREFIX}/zh-blog.html"',
-        'href="/blog"': f'href="{PUBLIC_PREFIX}/blog.html"',
-        'href="/zh"': f'href="{PUBLIC_PREFIX}/zh.html"',
-        'href="/"': f'href="{PUBLIC_PREFIX}/index.html"',
+        'href="/zh/paper"': f'href="{public_prefix}/zh-paper.html"',
+        'href="/paper"': f'href="{public_prefix}/paper.html"',
+        'href="/zh/blog"': f'href="{public_prefix}/zh-blog.html"',
+        'href="/blog"': f'href="{public_prefix}/blog.html"',
+        'href="/zh"': f'href="{public_prefix}/zh.html"',
+        'href="/"': f'href="{public_prefix}/index.html"',
     }
     for source, target in route_links.items():
         html = html.replace(source, target)
@@ -60,14 +62,19 @@ def make_static(html: str) -> str:
         "fonts/",
         "mural-mark.png",
         "mural-mascot.png",
+        "mural-blog-hero-source.png",
+        "mural-paper.pdf",
+        "mural-paper-zh.pdf",
+        "mural-paper-cover-en.png",
+        "mural-paper-cover-zh.png",
         "execution-topologies.png",
         "authoring-lifecycle.png",
         "favicon.png",
         "og.png",
     ):
-        html = html.replace(f'"/{asset_root}', f'"{PUBLIC_PREFIX}/{asset_root}')
+        html = html.replace(f'"/{asset_root}', f'"{public_prefix}/{asset_root}')
 
-    html = html.replace("http://localhost:3000/og.png", f"{EXTERNAL_BASE}/og.png")
+    html = html.replace("http://localhost:3000/og.png", f"{external_base}/og.png")
     return html
 
 
@@ -81,7 +88,12 @@ def inline_handwriting_font(target: Path) -> None:
         css_path.write_text(css, encoding="utf-8")
 
 
-def export(origin: str, target: Path) -> None:
+def export(
+    origin: str,
+    target: Path,
+    public_prefix: str,
+    external_base: str,
+) -> None:
     if not (CLIENT / "_next").is_dir():
         raise FileNotFoundError("Run the site build before exporting")
 
@@ -98,7 +110,10 @@ def export(origin: str, target: Path) -> None:
 
     inline_handwriting_font(target)
     for route, filename in ROUTES.items():
-        (target / filename).write_text(make_static(fetch(origin, route)), encoding="utf-8")
+        (target / filename).write_text(
+            make_static(fetch(origin, route), public_prefix, external_base),
+            encoding="utf-8",
+        )
 
     print(f"Exported {len(ROUTES)} pages to {target}")
 
@@ -107,8 +122,25 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--origin", default="http://127.0.0.1:3100")
     parser.add_argument("--target", type=Path, default=DEFAULT_TARGET)
+    parser.add_argument(
+        "--public-prefix",
+        default=DEFAULT_PUBLIC_PREFIX,
+        help="URL path at which the exported directory will be served",
+    )
+    parser.add_argument(
+        "--external-base",
+        default=DEFAULT_EXTERNAL_BASE,
+        help="Absolute public URL base used by social metadata",
+    )
     args = parser.parse_args()
-    export(args.origin, args.target.resolve())
+    public_prefix = "/" + args.public_prefix.strip("/")
+    external_base = args.external_base.rstrip("/")
+    export(
+        args.origin,
+        args.target.resolve(),
+        public_prefix,
+        external_base,
+    )
 
 
 if __name__ == "__main__":

@@ -40,3 +40,17 @@ would lose legibility. The transparent master is `assets/logo/mural-logo-mark-v1
 - Do not use the mascot as evidence inside technical diagrams; the paper figures use a simplified
   line-art face derived from the same character.
 - Rebuild exports with `python tools/build_logo_assets.py` after changing a source mark.
+
+## Public lockups
+
+| Asset | Intended use |
+| --- | --- |
+| [`mural-logo-lockup-light.png`](../assets/logo/exports/mural-logo-lockup-light.png) | GitHub README, light landing pages, and press material |
+| [`mural-logo-lockup-dark.png`](../assets/logo/exports/mural-logo-lockup-dark.png) | Dark presentation or video backgrounds |
+| [`mural-social-card.png`](../assets/logo/exports/mural-social-card.png) | Social preview and launch-post cover |
+| [`mural-logo-system-sheet.png`](../assets/logo/exports/mural-logo-system-sheet.png) | Internal reference for the mark, wordmark, acronym, and palette |
+
+The horizontal lockup deliberately explains the acronym at first contact. Keep the five letter
+cards in order and preserve amber for **R / Revision-Aware**. The final line—shared state, briefs,
+groups, review, revision—connects the name to the paper's responsibility topology without turning
+the logo into a full architecture diagram.

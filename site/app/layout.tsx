@@ -1,7 +1,12 @@
 import type { Metadata } from "next";
 import "./globals.css";
 
+// Deployments should set NEXT_PUBLIC_SITE_URL to their public canonical base.
+// The localhost fallback keeps public source free of environment-specific hosts.
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000/";
+
 export const metadata: Metadata = {
+  metadataBase: new URL(siteUrl),
   title: "MURAL",
   description:
     "Multi-Agent Unified Revision-Aware Authoring for Long-Horizon Presentations.",
@@ -14,14 +19,19 @@ export const metadata: Metadata = {
     description:
       "A full-lifecycle, revision-aware approach to long-horizon presentation authoring.",
     type: "website",
-    images: ["/og.png"],
+    images: [{
+      url: "og.png",
+      width: 1734,
+      height: 907,
+      alt: "MURAL Presenter — long-horizon, multi-agent presentation authoring",
+    }],
   },
   twitter: {
     card: "summary_large_image",
     title: "MURAL — A presentation is not a stack of slides",
     description:
       "Full-lifecycle authoring for editable, long-horizon presentations.",
-    images: ["/og.png"],
+    images: ["og.png"],
   },
 };
 

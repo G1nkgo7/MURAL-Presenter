@@ -26,6 +26,7 @@ dist/
 *.key
 
 # Paper and experiment scratch
+tmp/
 *.aux
 *.bbl
 *.blg
@@ -34,4 +35,3 @@ dist/
 *.synctex.gz
 results/private/
 data/private/
-

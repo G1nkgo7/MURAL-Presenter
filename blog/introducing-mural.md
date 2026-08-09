@@ -34,6 +34,17 @@ It is a Skill-driven multi-agent framework for editable HTML presentations, buil
 blueprint, slide-group ownership, rendered inspection at two levels, and revision routing by impact
 scope.
 
+| | The name is the method | What it changes |
+| :---: | --- | --- |
+| **M** | **Multi-Agent** | Specialists can work in parallel without turning every slide into an isolated task. |
+| **U** | **Unified** | One shared deck blueprint carries evidence, narrative, terminology, and design decisions. |
+| **R** | **Revision-Aware** | Later work resumes at page, group, evidence, or deck scope according to impact. |
+| **A** | **Authoring** | The system executes a reusable lifecycle rather than a one-shot generation prompt. |
+| **L** | **Long-Horizon Presentations** | Decisions remain accountable across distant stages, slides, and revision turns. |
+
+In short, MURAL does not merely divide a long workflow. It aligns agent ownership with deck
+dependencies, then restores whole-deck closure after parallel production.
+
 ![The MURAL authoring lifecycle](../assets/figures/authoring-lifecycle.png)
 
 ## The missing unit between a deck and a slide

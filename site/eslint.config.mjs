@@ -23,6 +23,12 @@ const eslintConfig = defineConfig([
   jsxA11y.flatConfigs.recommended,
   next.configs["core-web-vitals"],
   {
+    // The project intentionally serves checked-in, publication-resolution assets and
+    // supports a dependency-free static dashboard export, so framework image rewriting
+    // is not used for these figures and brand illustrations.
+    rules: {
+      "@next/next/no-img-element": "off",
+    },
     languageOptions: {
       globals: {
         ...globals.browser,

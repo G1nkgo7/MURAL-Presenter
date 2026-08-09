@@ -27,6 +27,17 @@ MURAL 的全称是 Multi-Agent Unified Revision-Aware Authoring for Long-Horizon
 技能驱动多智能体框架，围绕 shared deck blueprint、页面组共同负责、两级渲染检查和按影响范围执行修改来组织
 完整生命周期。
 
+| | 名字就是方法 | 在系统中的落点 |
+| :---: | --- | --- |
+| **M** | **Multi-Agent** | 专业角色可以并行，但不会把每一页都变成彼此孤立的任务。 |
+| **U** | **Unified** | 一份 shared deck blueprint 持续承载证据、叙事、术语与设计决策。 |
+| **R** | **Revision-Aware** | 后续工作按影响范围，从单页、页面组、证据阶段或整册规划处继续。 |
+| **A** | **Authoring** | 系统执行一条可复用生命周期，而不是一次性生成 prompt。 |
+| **L** | **Long-Horizon Presentations** | 决策跨越远距阶段、页面与修改轮次仍有明确责任。 |
+
+换句话说，MURAL 不只是把一条长工作流拆成子任务，而是让 Agent 的责任边界匹配整册依赖，
+并在并行制作后重新恢复 whole-deck closure。
+
 ![MURAL 完整创作生命周期](../assets/figures/authoring-lifecycle.png)
 
 ## 整册和单页之间，缺少一个责任单元

@@ -1,13 +1,17 @@
 <p align="center">
-  <img src="assets/logo/exports/mural-logo-lockup-light.png" width="780" alt="MURAL logo">
+  <img src="assets/logo/exports/mural-logo-lockup-light.png" width="1000" alt="MURAL Presenter — Multi-Agent Unified Revision-Aware Authoring for Long-Horizon Presentations">
 </p>
 
 <p align="center">
-  <strong>Multi-Agent Unified Revision-Aware Authoring for Long-Horizon Presentations</strong>
+  <strong>Lifecycle authoring for editable, long-horizon presentations.</strong>
 </p>
 
 <p align="center">
-  <a href="README.md">English</a> · <a href="README_zh-CN.md">简体中文</a>
+  <a href="README.md">English</a> ·
+  <a href="README_zh-CN.md">简体中文</a> ·
+  <a href="blog/introducing-mural.md">Project story</a> ·
+  <a href="site/public/mural-paper.pdf">Paper draft</a> ·
+  <a href="docs/thread-bench.md">THREAD-Bench</a>
 </p>
 
 > [!NOTE]
@@ -16,7 +20,20 @@
 > THREAD-Bench cases, training data, checkpoints, and measured results will be released only
 > after their versions and public-use boundaries are frozen.
 
-## What is MURAL?
+## The name is the method
+
+| Letter | Stands for | Method implication |
+| :---: | --- | --- |
+| **M** | **Multi-Agent** | Specialist roles can run in parallel without making every slide an isolated task. |
+| **U** | **Unified** | A shared deck blueprint carries audience, evidence, terminology, narrative, and design decisions. |
+| **R** | **Revision-Aware** | Work resumes at page, group, or deck scope according to the edit's actual impact. |
+| **A** | **Authoring** | The reusable object is an executable lifecycle, not a one-shot image-generation prompt. |
+| **L** | **Long-Horizon Presentations** | Decisions must survive across stages, distant slides, and later revision turns. |
+
+> **MURAL does not merely split a long workflow. It aligns agent ownership with the deck's
+> dependency structure, then restores whole-deck closure after parallel production.**
+
+## At a glance
 
 MURAL is a Skill-driven multi-agent framework for the full lifecycle of editable HTML
 presentations. It treats presentation creation as an authoring process rather than a one-shot
@@ -29,12 +46,19 @@ stages, slides, and revision turns. An audience assumption set at the beginning 
 entire deck; a definition introduced on slide 3 may be consumed on slide 18; a later edit may
 need to update several related slides without disturbing the rest.
 
-## Why another execution unit?
+- **Shared state, scoped views.** Global decisions are externalized once and projected into
+  group and page briefs instead of being reconstructed from a growing conversation.
+- **Slide-group ownership.** Narratively or visually dependent pages have one accountable
+  producer and one joint render–inspect–revise loop, even when the pages are non-contiguous.
+- **Revision-aware continuation.** Later edits reuse the same lifecycle and restart only the
+  smallest scope that can reliably preserve deck-level decisions.
+
+## The missing middle: deck → slide group → page
 
 Single-agent authoring preserves one continuous context, but its execution history grows with
 the deck and later edits. Per-slide parallelism shortens each trajectory, but moves cross-slide
-relationships into state handoffs between independent workers. MURAL inserts a middle unit:
-the **slide group**.
+relationships into state handoffs between independent workers. This is a responsibility problem,
+not merely a scheduling problem. MURAL inserts a middle unit: the **slide group**.
 
 Slides that share a narrative responsibility, visual system, asset series, or explicit
 dependency are assigned to one Group Agent for joint authoring and inspection. Different groups
@@ -90,7 +114,7 @@ evidence boundary and [THREAD-Bench overview](docs/thread-bench.md) for the plan
 | [`docs/`](docs/) | Method, benchmark, branding, and release notes |
 | [`blog/`](blog/) | Platform-neutral English and Chinese launch articles |
 | [`site/`](site/) | Deployable bilingual project site and blog |
-| [`tools/`](tools/) | Deterministic builders for public visual assets |
+| [`tools/`](tools/) | Deterministic asset builders, static exporter, and public-release checks |
 
 ## Project status
 
@@ -98,7 +122,7 @@ evidence boundary and [THREAD-Bench overview](docs/thread-bench.md) for the plan
 | --- | --- |
 | Public narrative and system diagrams | Available |
 | Brand system | Available |
-| Paper manuscript | In preparation |
+| Bilingual paper manuscript | Working draft available; results pending |
 | MURAL Authoring Skill | Pending version freeze |
 | THREAD-Bench | Pending schema and judge calibration |
 | Training data and checkpoints | Pending reproducibility and release review |
@@ -112,7 +136,8 @@ reports. Please read [CONTRIBUTING.md](CONTRIBUTING.md) before opening an issue 
 
 ## Citation and license
 
-Citation metadata, authorship, the paper URL, and licenses will be added when the corresponding
-artifacts are made public. Until then, the absence of a license does **not** grant permission to
-redistribute or reuse unreleased implementation or data.
-
+The current [English](site/public/mural-paper.pdf) and
+[Chinese](site/public/mural-paper-zh.pdf) manuscripts are working drafts, not archival releases.
+Citation metadata, authorship, the archival paper URL, and licenses will be added when the
+corresponding artifacts are public. Until then, the absence of a license does **not** grant
+permission to redistribute or reuse unreleased implementation or data.

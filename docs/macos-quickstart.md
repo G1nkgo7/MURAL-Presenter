@@ -1,5 +1,8 @@
 # Run MURAL-Presenter on macOS
 
+> Looking for Linux or Windows too? Use the
+> [cross-platform local deployment guide](local-deployment.md).
+
 This guide is for someone who receives either the GitHub URL or a ZIP archive and wants to run the
 web services locally on a Mac.
 

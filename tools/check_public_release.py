@@ -146,6 +146,8 @@ def check_brand_and_paper() -> list[str]:
 def check_repository_scaffold() -> list[str]:
     errors: list[str] = []
     required = (
+        "docs/local-deployment.md",
+        "docs/local-deployment_zh-CN.md",
         "docs/repository-layout.md",
         "docs/repository-layout_zh-CN.md",
         "src/mural_presenter/README.md",

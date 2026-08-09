@@ -20,25 +20,55 @@ $ProjectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 # $env:SENSENOVA_SEARCH_BASE_URL = "https://google.serper.dev"
 # $env:SENSENOVA_SEARCH_API_KEY = "..."
 
-$Python = Get-Command py -ErrorAction SilentlyContinue
-if ($Python) {
-  $PythonArgs = @("-3.12")
-} else {
-  $Python = Get-Command python3.12 -ErrorAction SilentlyContinue
-  if (-not $Python) {
-    $Python = Get-Command python -ErrorAction SilentlyContinue
-  }
-  $PythonArgs = @()
-}
-if (-not $Python) { throw "Python 3.12+ is required." }
+$PythonExe = $env:SENSENOVA_BOOTSTRAP_PYTHON
+$PythonArgs = @()
 
-& $Python.Source @PythonArgs -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 12) else 1)"
+if (-not $PythonExe) {
+  $Python312 = Get-Command python3.12 -ErrorAction SilentlyContinue
+  if ($Python312) {
+    $PythonExe = $Python312.Source
+  }
+}
+
+if (-not $PythonExe) {
+  $PyLauncher = Get-Command py -ErrorAction SilentlyContinue
+  if ($PyLauncher) {
+    & $PyLauncher.Source -3.12 -c "import sys" 2>$null
+    if ($LASTEXITCODE -eq 0) {
+      $PythonExe = $PyLauncher.Source
+      $PythonArgs = @("-3.12")
+    }
+  }
+}
+
+if (-not $PythonExe) {
+  $UvCommand = Get-Command uv -ErrorAction SilentlyContinue
+  if ($UvCommand) {
+    $UvPython = (& $UvCommand.Source python find 3.12 2>$null | Select-Object -First 1)
+    if ($LASTEXITCODE -eq 0 -and $UvPython) {
+      $PythonExe = $UvPython.Trim()
+    }
+  }
+}
+
+if (-not $PythonExe) {
+  $PythonFallback = Get-Command python -ErrorAction SilentlyContinue
+  if ($PythonFallback) {
+    $PythonExe = $PythonFallback.Source
+  }
+}
+
+if (-not $PythonExe) {
+  throw "Python 3.12+ is required. Install it directly or run: uv python install 3.12"
+}
+
+& $PythonExe @PythonArgs -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 12) else 1)"
 if ($LASTEXITCODE -ne 0) { throw "Python 3.12+ is required." }
 
 if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
   Write-Host "[SenseNova Present] Installing uv for the current user..."
-  & $Python.Source @PythonArgs -m pip install --user uv
-  $UserBase = (& $Python.Source @PythonArgs -m site --user-base).Trim()
+  & $PythonExe @PythonArgs -m pip install --user uv
+  $UserBase = (& $PythonExe @PythonArgs -m site --user-base).Trim()
   $env:Path = "$UserBase\Scripts;$env:Path"
 }
 
@@ -55,5 +85,5 @@ if ($NoBrowserInstall) { $ArgsList += "--no-browser-install" }
 if ($Reload) { $ArgsList += "--reload" }
 if ($Check) { $ArgsList += "--check" }
 
-& $Python.Source @PythonArgs @ArgsList
+& $PythonExe @PythonArgs @ArgsList
 exit $LASTEXITCODE

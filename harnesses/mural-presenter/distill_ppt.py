@@ -1205,7 +1205,7 @@ def _revision_brief(seed, revision):
 把现有 plan、HTML、素材、讲稿和渲染结果视为真相源。先按 Skill 的“6. 编辑已有演示文稿”做只读影响分析，再选择且只选择一条路径：
 
 - 简单编辑：委派唯一 Review，goal 标明 `mode=simple_edit`；不派 Slide、Image、Research 或第二个 Review。
-- 复杂编辑：由 Orchestrator 写影响图，按缺口并行委派 Research / Material / Image / 受影响的完整 Slide Groups，最后委派唯一 Review，goal 标明 `mode=final_review`。
+- 复杂编辑：由 Orchestrator 写影响图并按真实依赖委派。存在新附件时，先并行完成 Material、读完 `materials/summaries/`，再决定是否需要 Research；证据更新完成后，Image 与受影响的完整 Slide Groups 按素材依赖推进，最后委派唯一 Review，goal 标明 `mode=final_review`。
 
 只修改满足追加要求所必需的文件；保留无关页面和整册视觉语言。复用仍有效的 Research 与素材，确有新缺口才补充。修改后按影响范围批量重渲，完成最终像素复审，并重新生成 `speech.md` 与 `present.html`。不要重新设计或覆盖无关页面。"""
 

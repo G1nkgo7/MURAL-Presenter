@@ -244,6 +244,15 @@ def read_file(agent, path, offset=1, limit=500, **_extra):
         )
     if (
         str(getattr(agent, "role", "") or "").lower() == "orchestrator"
+        and re.match(r"^materials/(?:_raw|_work)(?:/|$)", normalized, re.I)
+    ):
+        return (
+            "read_file 已阻止编排器直接读取附件正文或解析中间物。"
+            "请先委派 Material；其 ready/complete 后，只读取 "
+            "materials/summaries/<assignment_id>.md，再结合原始 query 决定 Research。"
+        )
+    if (
+        str(getattr(agent, "role", "") or "").lower() == "orchestrator"
         and re.search(
             r"(?:^|/)_trace/(?:[^/]+/)*subagents/[^/]+/"
             r"(?:messages|tool_log|system_prompt|tools)\.(?:json|md)$",
@@ -577,6 +586,14 @@ def terminal(agent, command, timeout=None, **_extra):
             "terminal 拒绝:环境和工作区预检已经由 Harness 在模型调用前完成。"
             "不要重复 preflight，也不要自主检查或修复 Python、字体、Chromium/Playwright；"
             "请直接开始任务解析和正式产出。"
+        )
+    if (
+        str(getattr(agent, "role", "") or "").lower() == "orchestrator"
+        and re.search(r"(?:^|[\s'\"=])materials/(?:_raw|_work)(?:/|[\s'\";|&]|$)", command, re.I)
+    ):
+        return (
+            "terminal 拒绝:编排器不得通过 shell 读取 materials/_raw 或 materials/_work。"
+            "请先委派 Material，并在其完成后读取 materials/summaries/ 的正式摘要。"
         )
     if _is_unbounded_host_scan(command):
         return (

@@ -84,6 +84,8 @@ ${MURAL_RUNTIME_PYTHON:-python} ${SKILL_DIR:-skills/mural-presenter}/scripts/dec
 - 当前阶段选中的角色卡、reference 和文本文件必须读到末尾；看到续读 offset 就按该 offset 继续，直到不再出现截断提示；
 - 不扫描无关工作区，也不通读当前阶段没有选择的 references。
 
+编排器只用原始 query 与 `materials/attachments.json` 判断附件范围，不直接读取或通过终端查看 `materials/_raw/`、`materials/_work/` 的正文和页图。附件内容由 Material 完整解析；编排器随后只读取 `materials/summaries/` 的正式摘要。
+
 所有附件必须取得 `coverage: complete`，或明确返回无法继续的缺口；输入未读完时，不开始写计划或页面。
 
 ### Step 1：解析任务
@@ -272,6 +274,10 @@ build 可能因便携字体打包重新渲染页面。构建完成后，Review �
 自包含项目目录至少包括：
 
 ```text
+materials/_raw/                   # 用户附件原件
+materials/_work/<assignment_id>/  # Material 解析中间物
+materials/summaries/<assignment_id>.md  # 正式附件摘要
+research/research.md              # 启动 Research 时的外部核验结果
 plan/grounded-knowledge.md       # 启动 Material / Research 时的事实与边界
 plan/design-brief.md             # 整册视觉方案
 plan/deck.md                     # 结构、节奏与页面组

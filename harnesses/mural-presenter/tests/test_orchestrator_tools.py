@@ -2118,6 +2118,21 @@ class OrchestratorToolSurfaceTest(unittest.TestCase):
         self.assertIn("完整轨迹", response)
         self.assertIn("handoff.json", response)
 
+    def test_orchestrator_cannot_bypass_material_with_raw_attachment_reads(self):
+        class Agent:
+            role = "orchestrator"
+            ws = "/tmp/does-not-matter"
+
+            def read_path(self, path):
+                raise AssertionError("raw attachment must be blocked before filesystem access")
+
+        direct = tools.read_file(Agent(), "materials/_raw/brief.md")
+        self.assertIn("阻止编排器直接读取附件", direct)
+        intermediate = tools.read_file(Agent(), "materials/_work/A1/catalog.json")
+        self.assertIn("materials/summaries", intermediate)
+        shell = tools.terminal(Agent(), "cat materials/_raw/brief.md | head -100")
+        self.assertIn("编排器不得通过 shell", shell)
+
     def test_consumed_vision_images_leave_active_context_without_lifetime_quota(self):
         messages = [{
             "role": "user",

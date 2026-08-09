@@ -10,6 +10,7 @@ Thumbs.db
 __pycache__/
 *.py[cod]
 .venv/
+harnesses/*/CONCURRENCY
 
 # Node / site builds
 node_modules/

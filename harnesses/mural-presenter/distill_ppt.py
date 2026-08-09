@@ -945,9 +945,9 @@ def _review_pixel_freshness(ws, review):
             mtime = os.stat(fp).st_mtime_ns
         except OSError:
             continue
-        # A deterministic build may rewrite a PNG with identical bytes.  The
-        # visual judgment remains valid in that case; only changed bytes (or a
-        # visual source newer than its current render) invalidate it.
+        # Final build is pixel-immutable.  Hash equality proves the evidence is
+        # still the exact bitmap Review inspected; any changed bytes (or a
+        # visual source newer than its render) invalidate that judgment.
         if isinstance(item, dict) and item.get("sha256") == digest:
             current_evidence.add(rel)
 

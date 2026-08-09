@@ -1277,7 +1277,7 @@ class OrchestratorToolSurfaceTest(unittest.TestCase):
                 hashlib.sha256(b"pixel bytes").hexdigest(),
             )
 
-    def test_review_gets_same_role_closeout_after_post_build_pixels_change(self):
+    def test_review_gets_same_role_closeout_when_final_pixels_change(self):
         class Trace:
             def __init__(self, root):
                 self.sub_dir = str(root / "_trace")
@@ -1306,7 +1306,7 @@ class OrchestratorToolSurfaceTest(unittest.TestCase):
                 self.vision_paths = ["renders/slide_01.png"]
                 self.vision_evidence = {
                     "renders/slide_01.png": {
-                        "sha256": hashlib.sha256(b"before build").hexdigest(),
+                        "sha256": hashlib.sha256(b"reviewed pixels").hexdigest(),
                         "mtime_ns": 2_000_000_000,
                     },
                 }
@@ -1343,7 +1343,7 @@ class OrchestratorToolSurfaceTest(unittest.TestCase):
             (root / "base.css").write_text(".slide{}", encoding="utf-8")
             (root / "plan/theme.css").write_text(":root{}", encoding="utf-8")
             (root / "slides/slide_01.html").write_text("<section/>", encoding="utf-8")
-            (root / "renders/slide_01.png").write_bytes(b"after build")
+            (root / "renders/slide_01.png").write_bytes(b"unexpected changed pixels")
             for source in (
                 root / "base.css", root / "plan/theme.css",
                 root / "slides/slide_01.html",
@@ -1364,7 +1364,7 @@ class OrchestratorToolSurfaceTest(unittest.TestCase):
                 self.assertTrue(agent_core.run_loop(child))
             self.assertEqual(len(seen_prompts), 2)
             self.assertTrue(any("最终像素证据未闭环" in line for line in child.logs))
-            self.assertIn("不得再修改、渲染或 build", seen_prompts[1])
+            self.assertIn("不得再修改、prepare 或渲染", seen_prompts[1])
 
     def test_slide_focus_contact_sheet_covers_fresh_group_pages(self):
         with tempfile.TemporaryDirectory() as temporary:

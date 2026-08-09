@@ -1350,20 +1350,22 @@ def run_loop(agent):
                     dirty = ",".join(pixel_state["dirty_sources"][:8]) or "none"
                     if kind == "review" and language == "en":
                         reminder = (
-                            "Final Review stopped before its post-build pixel proof was current. "
+                            "Final Review stopped before its delivery pixel proof was current. "
                             f"Missing final coverage: {missing}; pixels changed after inspection: "
                             f"{stale}; unrendered visual sources: {dirty}. Inspect the current "
-                            "post-build review contact groups and open only the listed changed or "
-                            "ambiguous pages at full resolution. Do not edit, render, or build after "
-                            "that final inspection. Then return the exact Review contract."
+                            "review contact groups and open only the listed changed or ambiguous "
+                            "pages at full resolution. Then run only the pixel-immutable build. Do "
+                            "not edit, prepare, or render after that final inspection. Return the "
+                            "exact Review contract only when build succeeds without changing pixels."
                         )
                     elif kind == "review":
                         reminder = (
-                            "最终 Review 在 build 后的像素证据完整前停止了。"
+                            "最终 Review 在交付像素证据完整前停止了。"
                             f"缺少最终覆盖：{missing}；检查后像素发生变化：{stale}；"
-                            f"尚未重渲源文件：{dirty}。请查看当前 build 产出的 review 联系表批次，"
-                            "并只对上述变化页或总览无法判断的页面打开最终单页。完成这次检查后"
-                            "不得再修改、渲染或 build，然后按 Review 角色卡返回准确合同。"
+                            f"尚未重渲源文件：{dirty}。请查看当前 review 联系表批次，并只对上述"
+                            "变化页或总览无法判断的页面打开最终单页；随后只能运行不改变像素的 build。"
+                            "最终检查后不得再修改、prepare 或渲染；只有 build 成功且像素未变时，"
+                            "才按 Review 角色卡返回准确合同。"
                         )
                     elif language == "en":
                         reminder = (
@@ -1933,11 +1935,11 @@ def _slide_pixel_state(agent, assigned_pages):
 def _review_pixel_state(agent):
     """Return current final-review coverage before the Review worker may stop.
 
-    ``deck.py build`` may package fonts and deterministically re-render pages.
-    A re-render with identical bytes does not invalidate an earlier visual
-    judgment, but a changed PNG does.  Therefore Review freshness follows
-    content hashes rather than mtimes while still requiring every current PNG
-    to be newer than its HTML and shared styles.
+    ``deck.py build`` is pixel-immutable: prepare has already frozen fonts and
+    runtime assets, while Review has already rendered and inspected the final
+    pages.  Freshness therefore follows content hashes and also requires every
+    current PNG to be newer than its HTML and shared styles.  Any changed PNG
+    invalidates the earlier visual judgment instead of asking build to repair it.
     """
     workspace = str(getattr(agent, "ws", "") or "")
     if not workspace:
@@ -3030,14 +3032,14 @@ def _run_child(parent, task, ticket):
     if missing_pixel_pages:
         fin = False
         contract["validation_error"] = (
-            ("Review 缺少 build 后最终像素覆盖: " if kind == "review"
+            ("Review 缺少最终交付像素覆盖: " if kind == "review"
              else "Slide Group 缺少逐页最终像素自检: ")
             + ",".join(f"{page:02d}" for page in missing_pixel_pages)
         )
     if stale_pixel_pages:
         fin = False
         contract["validation_error"] = (
-            ("Review build 后最终像素证据已过期: " if kind == "review"
+            ("Review 最终交付像素证据已过期: " if kind == "review"
              else "Slide Group 最终像素证据已过期: ")
             + ",".join(f"{page:02d}" for page in stale_pixel_pages)
         )

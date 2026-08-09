@@ -57,7 +57,6 @@ from bundle_fonts import (
     _load_custom_config,
     _validate_font_allowlist,
     bundle_workspace,
-    render_all,
     validate_font_bundle,
     validate_render_freshness,
 )
@@ -129,26 +128,18 @@ def _build_player(root: Path, expected: int | None = None):
         return 1
     base = str(root)
     try:
-        manifest = bundle_workspace(Path(base))
-    except Exception as exc:
-        print(f"字体打包失败: {exc}", file=sys.stderr)
-        return 1
-    font_errors = validate_font_bundle(Path(base))
-    if font_errors:
-        print("字体交付校验失败: " + "; ".join(font_errors), file=sys.stderr)
+        manifest = _validate_prepared_runtime(Path(base))
+    except (OSError, ValueError, RuntimeError) as exc:
+        print(f"构建前置状态无效: {exc}", file=sys.stderr)
         return 1
     freshness_errors = validate_render_freshness(Path(base))
     if freshness_errors:
-        print("检测到陈旧 PNG，正使用 Deck 自带字体重新渲染", file=sys.stderr)
-        try:
-            render_all(Path(base))
-        except Exception as exc:
-            print(f"便携字体重渲失败: {exc}", file=sys.stderr)
-            return 1
-        freshness_errors = validate_render_freshness(Path(base))
-        if freshness_errors:
-            print("渲染新鲜度校验失败: " + "; ".join(freshness_errors), file=sys.stderr)
-            return 1
+        print(
+            "渲染新鲜度校验失败: " + "; ".join(freshness_errors)
+            + "。build 不会自动修改或重渲页面；请重新渲染变化页并完成像素验收。",
+            file=sys.stderr,
+        )
+        return 1
     rel = [os.path.relpath(f, base).replace(os.sep, "/") for f in files]
     cw, ch = _detect_canvas(base)
     html = (TPL.replace("__SLIDES__", json.dumps(rel, ensure_ascii=False))
@@ -678,8 +669,8 @@ def _ensure_canvas_reset(root: Path) -> None:
     """Keep the browser viewport and the 1600×900 canvas edge-aligned.
 
     ``base.css`` is materialized during prepare.  The browser's default 8px body
-    margin is runtime plumbing rather than art direction, so build still adds
-    this tiny idempotent reset if an edited legacy stylesheet omitted it.
+    margin is runtime plumbing rather than art direction, so prepare adds this
+    tiny idempotent reset before any authored page is rendered or reviewed.
     """
     path = root / "base.css"
     if not path.is_file():
@@ -692,15 +683,43 @@ def _ensure_canvas_reset(root: Path) -> None:
         _atomic_text(path, _CANVAS_RESET + "\n" + text.lstrip())
 
 
-def _normalize_runtime_references(root: Path) -> None:
-    """Rewrite every ECharts reference to the Deck-local portable copy."""
-    for slide in (root / "slides").glob("slide_*.html"):
+def _validate_prepared_runtime(root: Path) -> dict:
+    """Validate prepare-time assets without changing reviewed pixel sources."""
+    errors = []
+    base_css = root / "base.css"
+    try:
+        css = base_css.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        css = ""
+    if _CANVAS_RESET_MARKER not in css:
+        errors.append("base.css 缺少 prepare 生成的画布 reset")
+
+    source = Path(__file__).resolve().parent.parent / "assets/vendor/echarts.min.js"
+    runtime = root / "assets/vendor/echarts.min.js"
+    if not runtime.is_file() or not runtime.stat().st_size:
+        errors.append("assets/vendor/echarts.min.js 缺失；请重新运行 prepare")
+    elif source.is_file() and runtime.read_bytes() != source.read_bytes():
+        errors.append("assets/vendor/echarts.min.js 与 Skill 运行资源不一致")
+
+    for slide in sorted((root / "slides").glob("slide_*.html")):
         text = slide.read_text(encoding="utf-8", errors="ignore")
-        normalized = _ECHARTS_SCRIPT_RE.sub(
-            lambda match: match.group(1) + _ECHARTS_LOCAL_SRC + match.group(3), text
-        )
-        if normalized != text:
-            _atomic_text(slide, normalized)
+        for match in _ECHARTS_SCRIPT_RE.finditer(text):
+            if match.group(2).strip() != _ECHARTS_LOCAL_SRC:
+                errors.append(
+                    f"{slide.relative_to(root).as_posix()} 的 ECharts 必须引用 "
+                    f"{_ECHARTS_LOCAL_SRC}，得到 {match.group(2).strip()}"
+                )
+
+    errors.extend(validate_font_bundle(root))
+    manifest_path = root / "assets/fonts/manifest.json"
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        manifest = {}
+        errors.append("assets/fonts/manifest.json 缺失或不可读；请重新运行 prepare")
+    if errors:
+        raise ValueError("prepared runtime validation failed:\n" + "\n".join(errors))
+    return manifest
 
 
 def _is_external_reference(value: str) -> bool:
@@ -1440,6 +1459,68 @@ def _contact_snapshot(render_dir: Path, pages: list[int]):
     return evidence
 
 
+def _validate_review_contact(root: Path, expected: int | None = None) -> None:
+    """Require the Review contact sheet to describe the current page PNGs.
+
+    The final build deliberately does not regenerate contact sheets.  Rewriting
+    them after Vision would invalidate the exact evidence Review inspected and
+    would hide a stale page behind a newly packaged overview.
+    """
+    render_dir = root / "renders"
+    manifest_path = render_dir / "review-contact.json"
+    try:
+        payload = json.loads(manifest_path.read_text(encoding="utf-8")).get("full") or {}
+    except (OSError, ValueError, TypeError, AttributeError):
+        raise ValueError("缺少有效 renders/review-contact.json；请在最终 Review 前运行 deck.py contact")
+
+    pages = []
+    for raw in payload.get("pages") or []:
+        try:
+            pages.append(int(raw))
+        except (TypeError, ValueError):
+            pass
+    wanted = list(range(1, (expected or (max(pages) if pages else 0)) + 1))
+    if pages != wanted:
+        raise ValueError(
+            "review contact 页码覆盖不完整："
+            f"expected={wanted or 'none'} actual={pages or 'none'}"
+        )
+
+    evidence = {
+        int(item.get("page")): item
+        for item in payload.get("evidence") or []
+        if isinstance(item, dict) and str(item.get("page") or "").isdigit()
+    }
+    stale = []
+    for page in wanted:
+        png = render_dir / f"slide_{page:02d}.png"
+        item = evidence.get(page) or {}
+        try:
+            digest = hashlib.sha256(png.read_bytes()).hexdigest()
+        except OSError:
+            stale.append(f"{page:02d}:missing")
+            continue
+        if item.get("sha256") != digest:
+            stale.append(f"{page:02d}:changed")
+    if stale:
+        raise ValueError(
+            "Review 联系表早于当前逐页 PNG：" + ",".join(stale)
+            + "；请重新运行 deck.py contact 并复验变化页"
+        )
+
+    required = [payload.get("overview")]
+    required.extend(
+        item.get("path") for item in payload.get("groups") or []
+        if isinstance(item, dict)
+    )
+    missing = [
+        str(path) for path in required
+        if not path or not (root / str(path)).is_file()
+    ]
+    if missing:
+        raise ValueError("Review 联系表文件缺失：" + ",".join(missing))
+
+
 def _contact_label(label: str | None, pages: list[int]):
     raw = label or "pages-" + "-".join(f"{page:02d}" for page in pages)
     safe = re.sub(r"[^A-Za-z0-9._-]+", "-", raw.strip()).strip("-._")
@@ -1745,9 +1826,6 @@ def main(argv=None):
                 needs_review=args.needs_review, rejected=args.rejected,
             )
         elif args.command == "build":
-            _ensure_canvas_reset(root)
-            _ensure_runtime_assets(root)
-            _normalize_runtime_references(root)
             _validate_no_pictographs(root, args.expected, include_html=True)
             _validate_image_presentations(root, args.expected)
             _sync_speech(root, args.expected)
@@ -1756,7 +1834,7 @@ def main(argv=None):
             if _build_player(root, args.expected):
                 return 1
             _validate_runtime_dependencies(root, args.expected)
-            _build_contact(root, args.expected)
+            _validate_review_contact(root, args.expected)
         else:
             _validate_no_pictographs(root, args.expected, include_html=True)
             _validate_image_presentations(root, args.expected)

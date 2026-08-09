@@ -1,17 +1,17 @@
 {
   "schema": "mural_presenter.public_snapshot.v1",
-  "created_at_utc": "2026-08-09T08:54:41Z",
+  "created_at_utc": "2026-08-09T09:00:50Z",
   "source_git_head": "475089e94bb71ea262d3438569a4be9dc4cc387e",
   "source_has_local_changes": true,
-  "tracked_diff_sha256": "dc69dd4e97c95f7d5c486547616eccbb7ab0932ea1bd8e22a67e92a6ad263a9e",
+  "tracked_diff_sha256": "85d1d83e05793681f05261b3c45e04d7dd4c163bc7a58aae2a6ff2e3f6918bb1",
   "public_sanitization": [
     "bundled the paired raw recorder in place of a machine-specific fallback",
     "removed machine-specific font discovery",
     "generalized network-filesystem documentation"
   ],
-  "harness_tree_sha256": "c4feb9b5a3bb4f55427a94fa1003e90280fae6aa2af9b1b33dedcac54ec70970",
+  "harness_tree_sha256": "f85bc0b6bcdf70862989fe95a4c3df4efe151e392c85a75fe9421d9411afa184",
   "harness_file_count": 18,
-  "skill_tree_sha256": "704e95ba2fb35e61116191eebe36c08db3c78e7dacb8e66d968571b941e26269",
+  "skill_tree_sha256": "eeb11054614aae9639bdcd8134cb63e682b1d01c90ee8e9533efa705809b3a51",
   "skill_file_count": 42,
   "nova_recorder_sha256": "a2eda1be72c022dd66a131988cc04d0bc4e3e3c49d3c49ead8512ace9562bed3"
 }

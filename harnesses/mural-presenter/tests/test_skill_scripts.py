@@ -406,13 +406,14 @@ class ConsolidatedScriptTest(unittest.TestCase):
             )
             source.write_text(original, encoding="utf-8")
             with mock.patch.object(
-                deck, "bundle_workspace", return_value={"faces": []}
-            ), mock.patch.object(
-                deck, "validate_font_bundle", return_value=[]
-            ), mock.patch.object(
+                deck, "_validate_prepared_runtime", return_value={"faces": []}
+            ) as validate_runtime, mock.patch.object(
                 deck, "validate_render_freshness", return_value=[]
-            ):
+            ), mock.patch.object(deck, "bundle_workspace") as bundle:
                 self.assertEqual(0, deck._build_player(root, expected=1))
+
+            validate_runtime.assert_called_once_with(root)
+            bundle.assert_not_called()
 
             player = (root / "present.html").read_text(encoding="utf-8")
             self.assertEqual(original, source.read_text(encoding="utf-8"))
@@ -658,22 +659,63 @@ class ConsolidatedScriptTest(unittest.TestCase):
             self.assertEqual(css.count("deck-runtime-canvas-reset"), 1)
             self.assertTrue(css.startswith("/* deck-runtime-canvas-reset */"))
 
-    def test_echarts_is_normalized_to_portable_deck_asset(self):
+    def test_build_rejects_unprepared_echarts_without_rewriting_slide(self):
         deck = _load_deck_module()
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             (root / "slides").mkdir()
+            (root / "assets/fonts").mkdir(parents=True)
             slide = root / "slides/slide_01.html"
-            slide.write_text(
-                '<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>',
-                encoding="utf-8",
+            original = (
+                '<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/'
+                'echarts.min.js"></script>'
+            )
+            slide.write_text(original, encoding="utf-8")
+            (root / "base.css").write_text(
+                "/* deck-runtime-canvas-reset */\nhtml,body{margin:0}", encoding="utf-8"
             )
             deck._ensure_runtime_assets(root)
-            deck._normalize_runtime_references(root)
-            deck._validate_runtime_dependencies(root, expected=1)
-            self.assertIn(
-                '../assets/vendor/echarts.min.js', slide.read_text(encoding="utf-8")
+            (root / "assets/fonts/manifest.json").write_text(
+                '{"faces":[]}', encoding="utf-8"
             )
+            with mock.patch.object(deck, "validate_font_bundle", return_value=[]):
+                with self.assertRaisesRegex(ValueError, "必须引用"):
+                    deck._validate_prepared_runtime(root)
+            self.assertEqual(original, slide.read_text(encoding="utf-8"))
+
+    def test_build_requires_current_review_contact_without_regenerating_it(self):
+        deck = _load_deck_module()
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            renders = root / "renders"
+            renders.mkdir()
+            (renders / "slide_01.png").write_bytes(b"reviewed pixels")
+            (renders / "contact-sheet.png").write_bytes(b"overview")
+            (renders / "contact-sheet-review-01.png").write_bytes(b"group")
+            payload = {
+                "full": {
+                    "pages": [1],
+                    "overview": "renders/contact-sheet.png",
+                    "groups": [{
+                        "path": "renders/contact-sheet-review-01.png",
+                        "pages": [1],
+                    }],
+                    "evidence": [{
+                        "page": 1,
+                        "path": "renders/slide_01.png",
+                        "sha256": hashlib.sha256(b"reviewed pixels").hexdigest(),
+                    }],
+                },
+            }
+            manifest = renders / "review-contact.json"
+            manifest.write_text(json.dumps(payload), encoding="utf-8")
+            before = {path: path.read_bytes() for path in renders.iterdir()}
+            deck._validate_review_contact(root, expected=1)
+            self.assertEqual(before, {path: path.read_bytes() for path in renders.iterdir()})
+
+            (renders / "slide_01.png").write_bytes(b"changed after review")
+            with self.assertRaisesRegex(ValueError, "早于当前逐页 PNG"):
+                deck._validate_review_contact(root, expected=1)
 
     def test_missing_local_script_is_a_delivery_error(self):
         deck = _load_deck_module()

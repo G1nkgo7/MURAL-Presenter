@@ -49,15 +49,16 @@ bbox、boxoverflow、装饰相交和稀疏提示只用于定位。像素没有�
 
 1. 查看 overview、目标页 PNG 和用户要求，一次列完修改项。
 2. 备份目标页，集中修改 HTML、逐页计划和讲稿。
-3. 屏显文案或字体改变时运行 `deck.py prepare`。
+3. 屏显文案或字体角色改变时运行 `deck.py prepare`，随后再修改目标页并渲染；prepare 不得放在最终像素验收之后。
 4. 批量重渲目标页，生成 focus 联系表，确认修改方向没有退化。
-5. 同步讲稿并运行 `deck.py build`；构建可能因便携字体打包而重渲页面。
-6. 查看 build 生成的当前联系表和目标页最终 PNG。此后不得再修改、渲染或 build。
+5. 查看目标页最终 PNG，确认修改方向没有退化后，重新生成全册联系表清单，再同步讲稿并运行 `deck.py build`。
+6. build 只校验和封装，不能修改 HTML/CSS 或重渲页面；若报告 stale render，回到重渲与像素复验，不能沿用旧证据。
 
 ```bash
 python ${SKILL_DIR:-skills/mural-presenter}/scripts/render.py --batch . --pages NN,NN
-python ${SKILL_DIR:-skills/mural-presenter}/scripts/deck.py build . --expected <总页数>
 python ${SKILL_DIR:-skills/mural-presenter}/scripts/deck.py contact . --focus NN,NN --label final
+python ${SKILL_DIR:-skills/mural-presenter}/scripts/deck.py contact . --expected <总页数>
+python ${SKILL_DIR:-skills/mural-presenter}/scripts/deck.py build . --expected <总页数>
 ```
 
 局部编辑不得破坏未受影响页面和全册视觉语言。
@@ -110,11 +111,11 @@ python ${SKILL_DIR:-skills/mural-presenter}/scripts/deck.py contact . --focus NN
 
 先做一轮集中修复。只要新的像素证据仍在明确改善页面，就继续处理残余硬伤；一轮修复后问题账本没有减少、缺陷只是移位或新增退化时，恢复已验证的最佳版本、换稳定解法或返回 `blocked`。不按固定轮数截断，也不为清除机检提示反复改动已经成立的页面。
 
-问题清零后同步讲稿并运行 `deck.py build`。构建可能在字体打包后重新渲染页面；因此 build 完成后，必须查看它生成的当前联系表批次，并对特殊页、复杂页、变化页和可疑页打开最终单页。build 后的这次 Vision 才是最终像素验收。最终 Vision 之后不得再修改 HTML/CSS、渲染或再次 build。
+问题清零后，重新运行一次全册 `deck.py contact`，再对受影响的联系表分片和最终变化页完成像素验收；然后同步讲稿并运行 `deck.py build`。字体与运行资源已经由 `prepare` 前置冻结；build 只验证并封装，不得修改 HTML/CSS、重做联系表或自动重渲。如果 build 因 stale render、stale contact 或前置资源错误失败，修复后重新渲染、生成联系表并复验变化页，再次 build；不得用 build 后的新产物冒充此前的 Review 证据。
 
 ## 6. 完成条件
 
-只有实际调用 Vision 查看最新一次 build 之后的最终 PNG，才能填写 `final_pixels_inspected: yes`。Vision 一次装不下时按联系表分批看完，不设全册累计图片上限。最终 Vision 后只允许返回合同；任何写文件、渲染或 build 都会让该结论失效。
+只有实际调用 Vision 查看最终 HTML/CSS 对应的新鲜 PNG，才能填写 `final_pixels_inspected: yes`。Vision 一次装不下时按联系表分批看完，不设全册累计图片上限。最终 Vision 后，只有不会改变像素源的 `deck.py build` 可以执行；任何 HTML/CSS 修改、prepare 或渲染都会让该结论失效。
 
 最终回复可以先简述结果，但必须以以下合同结束，合同后不再追加正文：
 

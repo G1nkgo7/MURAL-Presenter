@@ -16,7 +16,9 @@
 
 > [!NOTE]
 > This repository is currently a **research preview**. It publishes the project narrative,
-> system diagrams, and brand assets first. The implementation, MURAL Authoring Skill,
+> system diagrams, brand assets, and a documented implementation scaffold first. The reserved
+> source directories define ownership and artifact boundaries; they do not yet contain the private
+> working implementation. The implementation, MURAL Authoring Skill,
 > THREAD-Bench cases, training data, checkpoints, and measured results will be released only
 > after their versions and public-use boundaries are frozen.
 
@@ -109,12 +111,25 @@ evidence boundary and [THREAD-Bench overview](docs/thread-bench.md) for the plan
 
 | Path | Contents |
 | --- | --- |
+| [`src/mural_presenter/`](src/mural_presenter/) | Reserved Python core: query synthesis, data preparation, orchestration, inference, rendering, and QC |
+| [`configs/`](configs/) | Versioned, non-secret configuration and query-pool contracts |
+| [`apps/studio/`](apps/studio/) | Reserved product Web UI for authoring, review, revision, and export |
+| [`services/api/`](services/api/) | Reserved server boundary between the Web UI and MURAL runtimes |
+| [`scripts/`](scripts/) | Thin future CLI entrypoints; reusable logic belongs in `src/` |
+| [`tests/`](tests/) | Unit, integration, end-to-end, and fixture conventions |
+| [`data/`](data/) | Dataset layout and release rules; generated data is not committed |
+| [`artifacts/`](artifacts/) | Run-artifact contract; generated runs and exports are ignored |
+| [`skills/mural_authoring/`](skills/mural_authoring/) | Reserved public home of the MURAL Authoring Skill |
+| [`benchmarks/thread_bench/`](benchmarks/thread_bench/) | Reserved public home of THREAD-Bench cases, judges, and aggregation |
 | [`assets/logo/`](assets/logo/) | Primary mascot, compact mark, lockups, and reproducible exports |
 | [`assets/figures/`](assets/figures/) | Publication figures in PNG and PDF |
 | [`docs/`](docs/) | Method, benchmark, branding, and release notes |
 | [`blog/`](blog/) | Platform-neutral English and Chinese launch articles |
-| [`site/`](site/) | Deployable bilingual project site and blog |
+| [`site/`](site/) | Deployable bilingual **project website and blog**, distinct from the product Web UI |
 | [`tools/`](tools/) | Deterministic asset builders, static exporter, and public-release checks |
+
+The module boundaries, expected inputs/outputs, and run-directory contract are documented in
+[Repository layout](docs/repository-layout.md).
 
 ## Project status
 
@@ -122,6 +137,7 @@ evidence boundary and [THREAD-Bench overview](docs/thread-bench.md) for the plan
 | --- | --- |
 | Public narrative and system diagrams | Available |
 | Brand system | Available |
+| Public code and Web UI layout | Documented scaffold available; implementation pending release review |
 | Bilingual paper manuscript | Working draft available; results pending |
 | MURAL Authoring Skill | Pending version freeze |
 | THREAD-Bench | Pending schema and judge calibration |

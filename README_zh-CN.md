@@ -15,7 +15,8 @@
 </p>
 
 > [!NOTE]
-> 本仓库目前处于 **research preview** 阶段，先公开项目叙事、系统图与品牌资产。
+> 本仓库目前处于 **research preview** 阶段，先公开项目叙事、系统图、品牌资产和代码目录骨架。
+> 这些预留目录只定义模块职责和产物边界，并不包含当前私有工作系统的实现代码。
 > 实现代码、MURAL Authoring Skill、THREAD-Bench case、训练数据、模型权重和正式实验结果，
 > 会在版本与公开边界冻结后再发布。
 
@@ -98,12 +99,24 @@ Decks*），同时检查过程证据与最终产物，覆盖知识准确性、�
 
 | 路径 | 内容 |
 | --- | --- |
+| [`src/mural_presenter/`](src/mural_presenter/) | 预留 Python 核心：Query 合成、数据处理、调度、推理、渲染和 QC |
+| [`configs/`](configs/) | 可版本化、无密钥的配置与 Query 池约定 |
+| [`apps/studio/`](apps/studio/) | 预留产品 Web UI，用于创作、复审、修改与导出 |
+| [`services/api/`](services/api/) | Web UI 与 MURAL 运行时之间的服务端边界 |
+| [`scripts/`](scripts/) | 未来的轻量 CLI 入口；可复用逻辑统一放在 `src/` |
+| [`tests/`](tests/) | 单元、集成、端到端测试与 Fixture 约定 |
+| [`data/`](data/) | 数据目录及发布边界；生成数据不进入 Git |
+| [`artifacts/`](artifacts/) | 单次运行的产物约定；生成的 run 与 export 默认忽略 |
+| [`skills/mural_authoring/`](skills/mural_authoring/) | MURAL Authoring Skill 的预留公开位置 |
+| [`benchmarks/thread_bench/`](benchmarks/thread_bench/) | THREAD-Bench case、Judge 与聚合代码的预留位置 |
 | [`assets/logo/`](assets/logo/) | 主角色、紧凑标记、横版组合与可复现导出文件 |
 | [`assets/figures/`](assets/figures/) | PNG 与 PDF 论文配图 |
 | [`docs/`](docs/) | 方法、评测、品牌与发布说明 |
 | [`blog/`](blog/) | 中英文、平台无关的宣传文章 |
-| [`site/`](site/) | 可部署的双语项目主页与 Blog |
+| [`site/`](site/) | 可部署的双语**项目主页与 Blog**，不等同于产品 Web UI |
 | [`tools/`](tools/) | 视觉资产构建、静态导出与公开边界检查脚本 |
+
+模块边界、输入输出以及单次运行的落盘约定，见[仓库结构说明](docs/repository-layout_zh-CN.md)。
 
 ## 当前状态
 
@@ -111,6 +124,7 @@ Decks*），同时检查过程证据与最终产物，覆盖知识准确性、�
 | --- | --- |
 | 公开叙事与系统图 | 已提供 |
 | 品牌系统 | 已提供 |
+| 公开代码与 Web UI 目录 | 已提供结构骨架；实现等待发布审查 |
 | 中英文论文工作稿 | 已提供；实验结果待补 |
 | MURAL Authoring Skill | 等待版本冻结 |
 | THREAD-Bench | 等待 schema 与 Judge 校准 |

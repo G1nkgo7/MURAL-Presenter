@@ -35,3 +35,12 @@ tmp/
 *.synctex.gz
 results/private/
 data/private/
+
+# Generated datasets and runtime artifacts
+data/raw/
+data/interim/
+data/processed/
+data/cache/
+artifacts/runs/
+artifacts/cache/
+artifacts/exports/

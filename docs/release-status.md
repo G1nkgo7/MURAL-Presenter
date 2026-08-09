@@ -13,6 +13,8 @@ cleared for public release.
 - Publication diagrams for the execution topology and full lifecycle.
 - Bilingual method, benchmark, and launch documentation.
 - A deployable project site.
+- A documented repository scaffold for query synthesis, data preparation, inference, QC, the
+  product Web UI, and its server boundary. The scaffold contains interface documentation only.
 - Bilingual working-paper PDFs whose main bodies fit the nine-page target; all effectiveness
   result slots remain explicitly pending.
 
@@ -29,6 +31,7 @@ These statements describe inspected mechanisms, not measured quality improvement
 ## Planned or awaiting a freeze
 
 - A clean public implementation commit and versioned MURAL Authoring Skill.
+- The functional MURAL Studio Web UI and API service; their current directories are placeholders.
 - Rollouts and accepted agentic trajectories derived from the current 1,000 query specifications
   (850 Chinese and 150 English); completion, acceptance, and training counts are not yet frozen.
 - A canonical 50-case THREAD-Bench release and calibrated judges.

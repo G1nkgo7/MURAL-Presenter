@@ -134,6 +134,35 @@ def check_brand_and_paper() -> list[str]:
     return errors
 
 
+def check_repository_scaffold() -> list[str]:
+    errors: list[str] = []
+    required = (
+        "docs/repository-layout.md",
+        "docs/repository-layout_zh-CN.md",
+        "src/mural_presenter/README.md",
+        "src/mural_presenter/query_synthesis/README.md",
+        "src/mural_presenter/data_pipeline/README.md",
+        "src/mural_presenter/orchestration/README.md",
+        "src/mural_presenter/inference/README.md",
+        "src/mural_presenter/rendering/README.md",
+        "src/mural_presenter/quality_control/README.md",
+        "src/mural_presenter/schemas/README.md",
+        "configs/README.md",
+        "apps/studio/README.md",
+        "services/api/README.md",
+        "scripts/README.md",
+        "tests/README.md",
+        "data/README.md",
+        "artifacts/README.md",
+        "skills/mural_authoring/README.md",
+        "benchmarks/thread_bench/README.md",
+    )
+    for filename in required:
+        if not (ROOT / filename).is_file():
+            errors.append(f"missing repository scaffold file: {filename}")
+    return errors
+
+
 def main() -> None:
     files = public_text_files()
     link_count, link_errors = check_markdown_links(files)
@@ -142,6 +171,7 @@ def main() -> None:
         *link_errors,
         *check_mirrors(),
         *check_brand_and_paper(),
+        *check_repository_scaffold(),
     ]
     if errors:
         raise SystemExit("Public release check failed:\n- " + "\n- ".join(errors))

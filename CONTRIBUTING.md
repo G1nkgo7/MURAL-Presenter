@@ -10,6 +10,8 @@ contributions should stay within the artifacts already present in this repositor
 - Propose a THREAD-Bench case with observable, checkable long-range dependencies.
 - Improve accessibility, localization, or documentation structure.
 - Improve a deterministic public asset builder without changing the scientific claim.
+- Improve the documented repository interfaces without presenting placeholder modules as a
+  runnable implementation.
 
 ## Before opening an issue
 
@@ -27,6 +29,8 @@ contributions should stay within the artifacts already present in this repositor
 - Rebuild derived logo or figure assets with the checked-in builder when applicable.
 - Do not add measured results without a frozen evaluation configuration and traceable evidence.
 - Do not add implementation copied from the private working system.
+- Keep reusable workflow logic in `src/mural_presenter/`; `scripts/` should remain thin entrypoints,
+  and `apps/studio/` must call model/runtime functionality through `services/api/`.
 
 Before submitting a public-surface change, run:
 

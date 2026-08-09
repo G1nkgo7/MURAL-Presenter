@@ -9,6 +9,7 @@ public artifact exists and has passed its stated gate.
 - [x] Publish the brand system and system diagrams.
 - [x] Publish bilingual project and method documentation.
 - [x] Publish a bilingual launch article and deployable project site.
+- [x] Reserve the public implementation, data, evaluation, and product Web UI boundaries.
 
 ## Paper and evaluation
 
@@ -27,4 +28,3 @@ public artifact exists and has passed its stated gate.
 - [ ] Release training-data documentation and permitted trajectory subset.
 - [ ] Release model checkpoints when reproducibility and safety review are complete.
 - [ ] Add archival citation metadata and checksums.
-

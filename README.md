@@ -11,13 +11,15 @@
   <a href="README_zh-CN.md">简体中文</a> ·
   <a href="blog/introducing-mural.md">Project story</a> ·
   <a href="site/public/mural-paper.pdf">Paper draft</a> ·
+  <a href="apps/studio/sensenova_present/README.md">SenseNova Present WebUI</a> ·
   <a href="docs/thread-bench.md">THREAD-Bench</a>
 </p>
 
 > [!NOTE]
 > This repository is currently a **research preview**. It publishes the project narrative,
-> system diagrams, brand assets, implementation scaffold, and the SenseNova Present WebUI
-> compatibility bundle. The MURAL runtime, MURAL Authoring Skill, THREAD-Bench cases, training
+> system diagrams, brand assets, implementation scaffold, and the runnable **SenseNova Present**
+> authoring WebUI. Full generation still relies on separately configured runtimes and model
+> services. The reusable MURAL runtime, MURAL Authoring Skill, THREAD-Bench cases, training
 > data, checkpoints, and measured results remain gated until their versions and public-use
 > boundaries are frozen.
 
@@ -69,6 +71,8 @@ can still run in parallel. After assembly, a whole-deck review restores the glob
   <img src="assets/figures/execution-topologies.png" width="100%" alt="Sequential, full-context parallel, and MURAL execution topologies">
 </p>
 
+<p align="center"><em>Figure 1. MURAL assigns dependency-related slides to shared Group Agents and restores whole-deck closure after parallel authoring.</em></p>
+
 ## Full-lifecycle authoring
 
 MURAL externalizes the lifecycle as the reusable **MURAL Authoring Skill**:
@@ -81,6 +85,8 @@ MURAL externalizes the lifecycle as the reusable **MURAL Authoring Skill**:
 <p align="center">
   <img src="assets/figures/authoring-lifecycle.png" width="100%" alt="MURAL full authoring and revision lifecycle">
 </p>
+
+<p align="center"><em>Figure 2. The MURAL Authoring Skill spans material grounding, deck planning, group authoring, whole-deck review, impact-aware revision, and multi-format delivery.</em></p>
 
 The revision router selects the smallest reliable scope:
 
@@ -112,7 +118,7 @@ evidence boundary and [THREAD-Bench overview](docs/thread-bench.md) for the plan
 | --- | --- |
 | [`src/mural_presenter/`](src/mural_presenter/) | Reserved Python core: query synthesis, data preparation, orchestration, inference, rendering, and QC |
 | [`configs/`](configs/) | Versioned, non-secret configuration and query-pool contracts |
-| [`apps/studio/`](apps/studio/) | SenseNova Present product WebUI compatibility bundle for authoring, review, revision, and export |
+| [`apps/studio/`](apps/studio/) | Integrated SenseNova Present WebUI for authoring, review, revision, and export, plus its deployment adapters |
 | [`services/api/`](services/api/) | Target extraction boundary between the WebUI and reusable MURAL runtimes |
 | [`scripts/`](scripts/) | Thin future CLI entrypoints; reusable logic belongs in `src/` |
 | [`tests/`](tests/) | Unit, integration, end-to-end, and fixture conventions |
@@ -136,7 +142,7 @@ The module boundaries, expected inputs/outputs, and run-directory contract are d
 | --- | --- |
 | Public narrative and system diagrams | Available |
 | Brand system | Available |
-| SenseNova Present WebUI | Compatibility bundle available; generation runtimes remain external |
+| SenseNova Present WebUI | Runnable UI-only preview available; full generation runtimes and model services remain external |
 | Reusable MURAL runtime modules | Documented scaffold; implementation pending release review |
 | Bilingual paper manuscript | Working draft available; results pending |
 | MURAL Authoring Skill | Pending version freeze |

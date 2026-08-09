@@ -7,7 +7,7 @@ const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000/";
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
-  title: "MURAL",
+  title: "MURAL Presenter",
   description:
     "Multi-Agent Unified Revision-Aware Authoring for Long-Horizon Presentations.",
   icons: {
@@ -15,7 +15,7 @@ export const metadata: Metadata = {
     shortcut: "/favicon.png",
   },
   openGraph: {
-    title: "MURAL — A presentation is not a stack of slides",
+    title: "MURAL Presenter — A presentation is not a stack of slides",
     description:
       "A full-lifecycle, revision-aware approach to long-horizon presentation authoring.",
     type: "website",
@@ -28,7 +28,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "MURAL — A presentation is not a stack of slides",
+    title: "MURAL Presenter — A presentation is not a stack of slides",
     description:
       "Full-lifecycle authoring for editable, long-horizon presentations.",
     images: ["og.png"],

@@ -1,6 +1,6 @@
 # Method overview
 
-MURAL — **Multi-Agent Unified Revision-Aware Authoring for Long-Horizon Presentations** — models presentation creation as a
+**MURAL-Presenter** (MURAL; **Multi-Agent Unified Revision-Aware Authoring for Long-Horizon Presentations**) models presentation creation as a
 full lifecycle with persistent, externalized state.
 
 ## Long-horizon state

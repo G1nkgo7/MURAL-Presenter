@@ -37,7 +37,7 @@ test("server-renders the English MURAL launch page", async () => {
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
 
   const html = await response.text();
-  assert.match(html, /<title>MURAL — Long-horizon presentation authoring<\/title>/i);
+  assert.match(html, /<title>MURAL Presenter — Long-horizon presentation authoring<\/title>/i);
   assert.match(html, /A presentation is not/);
   assert.match(html, /THREAD-Bench follows requirements end to end/);
   assert.match(html, /MURAL research preview/);
@@ -67,7 +67,7 @@ test("server-renders the Chinese MURAL launch page", async () => {
   assert.match(html, /共享整册状态/);
   assert.match(html, /按影响范围续作/);
   assert.match(html, /property="og:locale" content="zh_CN"/);
-  assert.match(html, /property="og:title" content="MURAL — 面向长程演示文稿的完整生命周期创作"/);
+  assert.match(html, /property="og:title" content="MURAL Presenter — 面向长程演示文稿的完整生命周期创作"/);
   assert.match(html, /href="\/">English<\/a>/);
 });
 
@@ -95,7 +95,8 @@ test("server-renders the English local manuscript reader", async () => {
   const response = await render("/paper");
   assert.equal(response.status, 200);
   const html = await response.text();
-  assert.match(html, /paper-title-mark">MURAL<\/span><span class="paper-title-rest">Multi-Agent Unified Revision-Aware Authoring/);
+  assert.match(html, /paper-title-mark">MURAL-Presenter<\/span><span class="paper-title-rest">Multi-Agent Unified Revision-Aware Authoring/);
+  assert.match(html, /MURAL-Presenter \(MURAL\) is a Skill-driven multi-agent framework/);
   assert.match(html, /Local draft · Results pending/);
   assert.match(html, /mural-paper-cover-en\.png/);
   assert.match(html, /Read the current working manuscript/);
@@ -107,7 +108,8 @@ test("server-renders the Chinese local manuscript reader", async () => {
   const response = await render("/zh/paper");
   assert.equal(response.status, 200);
   const html = await response.text();
-  assert.match(html, /paper-title-mark">MURAL<\/span><span class="paper-title-rest">Multi-Agent Unified Revision-Aware Authoring/);
+  assert.match(html, /paper-title-mark">MURAL-Presenter<\/span><span class="paper-title-rest">Multi-Agent Unified Revision-Aware Authoring/);
+  assert.match(html, /MURAL-Presenter（简称 MURAL）是一个技能驱动的多智能体框架/);
   assert.match(html, /面向长程演示文稿的多智能体统一、修改感知创作/);
   assert.match(html, /本地草稿 · 实验结果待补/);
   assert.match(html, /mural-paper-cover-zh\.png/);

@@ -1,5 +1,5 @@
 ---
-title: "演示文稿不是一摞页面：介绍 MURAL"
+title: "演示文稿不是一摞页面：介绍 MURAL-Presenter"
 description: "一种面向长程演示文稿完整生成与修改生命周期的方法。"
 date: 2026-08-07
 language: zh-CN
@@ -8,7 +8,7 @@ status: research-preview
 
 # 演示文稿不是一摞页面
 
-## 介绍 MURAL：一种面向长程演示文稿完整生命周期的创作框架
+## 介绍 MURAL-Presenter：一种面向长程演示文稿完整生命周期的创作框架
 
 做一套演示文稿，通常不是从新建空白页开始，也不会在最后一页出现时结束。真正的制作过程要更早一些：
 先弄清这场演讲要解决什么问题，谁会听，以及希望听众带走什么。随后才是整理已有材料、核验事实、寻找图片、
@@ -23,7 +23,7 @@ status: research-preview
 这就是本文所说的 long-horizon authoring。这里的 horizon 不只由页数或生成时间决定，而是事实、叙事承诺、
 设计规则与用户要求，需要跨越阶段、页面和修改轮次保持有效的距离。
 
-MURAL 的全称是 Multi-Agent Unified Revision-Aware Authoring for Long-Horizon Presentations。它是一个面向可编辑 HTML 演示文稿的
+MURAL-Presenter（简称 MURAL）的全称是 Multi-Agent Unified Revision-Aware Authoring for Long-Horizon Presentations。它是一个面向可编辑 HTML 演示文稿的
 技能驱动多智能体框架，围绕 shared deck blueprint、页面组共同负责、两级渲染检查和按影响范围执行修改来组织
 完整生命周期。
 

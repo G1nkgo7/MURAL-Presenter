@@ -35,7 +35,7 @@
 
 ## At a glance
 
-MURAL is a Skill-driven multi-agent framework for the full lifecycle of editable HTML
+**MURAL-Presenter** (MURAL for short) is a Skill-driven multi-agent framework for the full lifecycle of editable HTML
 presentations. It treats presentation creation as an authoring process rather than a one-shot
 rendering problem: understand the request, ground materials and facts, plan the deck, prepare
 assets, author related slides, inspect rendered pixels, review the assembled deck, revise it,

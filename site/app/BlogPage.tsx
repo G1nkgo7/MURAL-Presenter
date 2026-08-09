@@ -20,7 +20,7 @@ const article = {
     languageHref: "/zh/blog",
     eyebrow: "MURAL Presenter · Field Note 01",
     title: "A presentation is not a stack of slides.",
-    subtitle: "Introducing MURAL: lifecycle authoring for long-horizon presentations",
+    subtitle: "Introducing MURAL-Presenter: lifecycle authoring for long-horizon presentations",
     dek:
       "Presentation agents can already draft outlines, retrieve evidence, write slides, and respond to local edits. The harder problem is carrying one set of decisions through the complete deck—and through the edits that follow.",
     readTime: "Launch article · 9 min read",
@@ -103,7 +103,7 @@ const article = {
     languageHref: "/blog",
     eyebrow: "MURAL Presenter · 研究札记 01",
     title: "演示文稿不是一摞页面。",
-    subtitle: "介绍 MURAL：面向长程演示文稿完整生命周期的创作框架",
+    subtitle: "介绍 MURAL-Presenter：面向长程演示文稿完整生命周期的创作框架",
     dek:
       "演示文稿 Agent 已经能够列提纲、查资料、写单页和响应局部修改。更难的问题，是让同一组事实、叙事和设计决策贯穿整册，并在后续修改中继续有效。",
     readTime: "发布文章 · 约 9 分钟",

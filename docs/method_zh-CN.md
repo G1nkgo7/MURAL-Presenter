@@ -1,6 +1,6 @@
 # 方法简介
 
-MURAL（**Multi-Agent Unified Revision-Aware Authoring for Long-Horizon Presentations**）把演示文稿创作建模为一个具有外置、
+**MURAL-Presenter**（简称 MURAL；**Multi-Agent Unified Revision-Aware Authoring for Long-Horizon Presentations**）把演示文稿创作建模为一个具有外置、
 持久状态的完整生命周期。
 
 ## 长程状态

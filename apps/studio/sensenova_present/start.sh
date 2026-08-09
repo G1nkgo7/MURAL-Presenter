@@ -10,9 +10,14 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # export SENSENOVA_SEARCH_BASE_URL="https://google.serper.dev"
 # export SENSENOVA_SEARCH_API_KEY="..."
 
-PYTHON_BIN="${SENSENOVA_BOOTSTRAP_PYTHON:-$(command -v python3 || command -v python || true)}"
+PYTHON_BIN="${SENSENOVA_BOOTSTRAP_PYTHON:-$(command -v python3.12 || command -v python3 || command -v python || true)}"
 if [[ -z "$PYTHON_BIN" ]]; then
-  echo "Python 3.10+ is required." >&2
+  echo "Python 3.12+ is required." >&2
+  exit 1
+fi
+
+if ! "$PYTHON_BIN" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 12) else 1)'; then
+  echo "Python 3.12+ is required; found $("$PYTHON_BIN" --version 2>&1)." >&2
   exit 1
 fi
 

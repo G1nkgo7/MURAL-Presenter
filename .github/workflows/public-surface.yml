@@ -50,3 +50,6 @@ jobs:
           --with pytest
           pytest -q -p no:cacheprovider
           apps/studio/sensenova_present/studio/tests
+      - run: >-
+          apps/studio/sensenova_present/start.sh
+          --ui-only --check --no-install --no-browser-install

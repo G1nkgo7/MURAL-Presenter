@@ -22,12 +22,18 @@ $ProjectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 
 $Python = Get-Command py -ErrorAction SilentlyContinue
 if ($Python) {
-  $PythonArgs = @("-3")
+  $PythonArgs = @("-3.12")
 } else {
-  $Python = Get-Command python -ErrorAction SilentlyContinue
+  $Python = Get-Command python3.12 -ErrorAction SilentlyContinue
+  if (-not $Python) {
+    $Python = Get-Command python -ErrorAction SilentlyContinue
+  }
   $PythonArgs = @()
 }
-if (-not $Python) { throw "Python 3.10+ is required." }
+if (-not $Python) { throw "Python 3.12+ is required." }
+
+& $Python.Source @PythonArgs -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 12) else 1)"
+if ($LASTEXITCODE -ne 0) { throw "Python 3.12+ is required." }
 
 if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
   Write-Host "[SenseNova Present] Installing uv for the current user..."

@@ -4,6 +4,10 @@ SenseNova Present is the interactive authoring application associated with MURAL
 bundle exposes project creation, material upload, model and service configuration, generation
 status, rendered-deck inspection, revision, trajectory monitoring, and delivery views.
 
+For a clean-machine walkthrough, see the
+[English macOS quickstart](../../../docs/macos-quickstart.md) or
+[中文 macOS 使用说明](../../../docs/macos-quickstart_zh-CN.md).
+
 ## Directory map
 
 | Path | Responsibility |

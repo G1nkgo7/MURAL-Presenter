@@ -12,6 +12,7 @@
   <a href="blog/introducing-mural.zh-CN.md">项目文章</a> ·
   <a href="site/public/mural-paper-zh.pdf">论文工作稿</a> ·
   <a href="apps/studio/sensenova_present/README.md">SenseNova Present WebUI</a> ·
+  <a href="docs/macos-quickstart_zh-CN.md">macOS 使用说明</a> ·
   <a href="docs/thread-bench_zh-CN.md">THREAD-Bench</a>
 </p>
 

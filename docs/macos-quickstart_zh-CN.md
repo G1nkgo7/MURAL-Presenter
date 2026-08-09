@@ -1,5 +1,7 @@
 # 在 macOS 上运行 MURAL-Presenter
 
+> 如需 Linux 或 Windows 说明，请查看[跨平台本地部署说明](local-deployment_zh-CN.md)。
+
 这份说明面向拿到 GitHub URL 或 ZIP 包的普通用户，介绍如何在 Mac 本地启动网页服务。
 
 仓库里有两个不同的网页：

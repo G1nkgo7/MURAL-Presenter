@@ -12,7 +12,7 @@
   <a href="blog/introducing-mural.md">Project story</a> ·
   <a href="site/public/mural-paper.pdf">Paper draft</a> ·
   <a href="apps/studio/sensenova_present/README.md">SenseNova Present WebUI</a> ·
-  <a href="docs/macos-quickstart.md">macOS quickstart</a> ·
+  <a href="docs/local-deployment.md">Run locally</a> ·
   <a href="docs/thread-bench.md">THREAD-Bench</a>
 </p>
 

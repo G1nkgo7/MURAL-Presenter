@@ -1542,7 +1542,7 @@ function modelLabel(key) {
 const PIPELINE_LABEL = {
   infer: "Clean infer harness",
   "visual-craft-harness": "Visual Craft Harness",
-  "long-horizon-presenter-harness": "Long-Horizon Presenter Harness",
+  "mural-presenter-harness": "MURAL-Presenter Harness",
   "sense-present-standard-harness": "SenseNova Static HTML Harness",
   "sense-present-dazzle-harness": "SenseNova Dynamic HTML Harness",
 };
@@ -1556,7 +1556,7 @@ const SKILL_LABEL = {
   "long-horizon-grouped": "Long-horizon HTML PPT Grouped",
   "long-horizon-grouped-inline-image": "Long-horizon Grouped · Inline Image",
   "visual-craft": "Visual Craft HTML PPT",
-  "long-horizon-presenter": "Long-Horizon Presenter",
+  "mural-presenter": "MURAL-Presenter",
 };
 
 /* ---------------- 附件(随所选管线能力联动) ---------------- */
@@ -2720,7 +2720,7 @@ function taskConfigData() {
     runtime = `${maxTokens.toLocaleString()} Tokens/轮 · 主 Agent ${mainTurns.toLocaleString()} 轮`;
   } else if (childRaw > 0) {
     runtime = `${maxTokens.toLocaleString()} Tokens/轮 · 主 Agent ${mainTurns.toLocaleString()} 轮 · 子 Agent ${childRaw.toLocaleString()} 轮`;
-  } else if (skillKey === "long-horizon-presenter") {
+  } else if (skillKey === "mural-presenter") {
     runtime = `${maxTokens.toLocaleString()} Tokens/轮 · 主 Agent ${mainTurns.toLocaleString()} 轮 · 页面子 Agent 36–120 轮 · 其他子 Agent ${mainTurns.toLocaleString()} 轮`;
   } else if (skillKey === "visual-craft") {
     runtime = `${maxTokens.toLocaleString()} Tokens/轮 · 主 Agent ${mainTurns.toLocaleString()} 轮 · 页面子 Agent 28 轮 · 其他子 Agent ${mainTurns.toLocaleString()} 轮`;

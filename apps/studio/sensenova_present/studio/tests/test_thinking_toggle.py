@@ -136,8 +136,8 @@ class ThinkingToggleContractTests(unittest.TestCase):
         self.assertFalse(qwen_disabled["effective"])
         qwen_env = engine.selection_env(
             "pptagent-qwen35-27b-ckpt1764",
-            "long-horizon-presenter-harness",
-            "long-horizon-presenter",
+            "mural-presenter-harness",
+            "mural-presenter",
         )
         self.assertEqual(
             qwen_env["STUDIO_THINKING_TRANSPORT"],

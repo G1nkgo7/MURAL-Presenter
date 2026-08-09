@@ -64,13 +64,13 @@ class StaticRevisionWorkspaceTests(unittest.IsolatedAsyncioTestCase):
             (run_dir / "slides/slide_01.html").write_text("<html></html>", encoding="utf-8")
             (run_dir / "present.html").write_text("<html></html>", encoding="utf-8")
             (skill_root / "scripts/deck.py").write_text("# test", encoding="utf-8")
-            row = {"id": 12, "seed_json": "{}", "skill_version": "long-horizon-presenter"}
+            row = {"id": 12, "seed_json": "{}", "skill_version": "mural-presenter"}
             failed = mock.Mock(returncode=1, stdout="", stderr="missing runtime")
             passed = mock.Mock(returncode=0, stdout="PASS", stderr="")
             with (
-                mock.patch.object(jobs.engine, "canon_skill", return_value="long-horizon-presenter"),
+                mock.patch.object(jobs.engine, "canon_skill", return_value="mural-presenter"),
                 mock.patch.dict(jobs.engine.SKILLS, {
-                    "long-horizon-presenter": {"path": str(skill_root)}
+                    "mural-presenter": {"path": str(skill_root)}
                 }, clear=False),
                 mock.patch.object(jobs.engine, "_engine_python", return_value="python"),
                 mock.patch.object(jobs.engine, "log_path", return_value=root / "job.log"),
@@ -111,7 +111,7 @@ class StaticRevisionWorkspaceTests(unittest.IsolatedAsyncioTestCase):
             row = {
                 "id": 14,
                 "seed_json": "{}",
-                "skill_version": "long-horizon-presenter",
+                "skill_version": "mural-presenter",
             }
             with (
                 mock.patch.object(jobs, "_load_deck", return_value=row),

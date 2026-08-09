@@ -58,27 +58,57 @@ VISUAL_CRAFT_HARNESS_ENTRY = os.environ.get(
     "PPTAGENT_VISUAL_CRAFT_HARNESS_ENTRY", "distill_ppt.py"
 )
 VISUAL_CRAFT_MOUNT_ROOT = DATA_DIR / "skill-mounts" / "visual-craft"
-LONG_HORIZON_PRESENTER_SUITE_ROOT = Path(
+
+
+def _bundled_mural_suite_root() -> Path:
+    """Locate the repository-owned MURAL Skill/Harness pair."""
+    start = DISTILL_DIR.parent
+    for candidate in (start, *start.parents):
+        if (
+            (candidate / "skills" / "mural-presenter" / "SKILL.md").is_file()
+            and (candidate / "harnesses" / "mural-presenter" / "distill_ppt.py").is_file()
+        ):
+            return candidate
+    return EXTERNAL_RUNTIME_ROOT / "mural-presenter-suite"
+
+
+MURAL_PRESENTER_SUITE_ROOT = Path(
     os.environ.get(
-        "PPTAGENT_LONG_HORIZON_PRESENTER_SUITE_ROOT",
-        EXTERNAL_RUNTIME_ROOT / "long-horizon-presenter-suite",
+        "PPTAGENT_MURAL_PRESENTER_SUITE_ROOT",
+        os.environ.get(
+            "PPTAGENT_LONG_HORIZON_PRESENTER_SUITE_ROOT",
+            _bundled_mural_suite_root(),
+        ),
     )
 )
-LONG_HORIZON_PRESENTER_SKILL_ROOT = Path(
+MURAL_PRESENTER_SKILL_ROOT = Path(
     os.environ.get(
-        "PPTAGENT_LONG_HORIZON_PRESENTER_SKILL_ROOT",
-        LONG_HORIZON_PRESENTER_SUITE_ROOT / "skills" / "long-horizon-presenter",
+        "PPTAGENT_MURAL_PRESENTER_SKILL_ROOT",
+        os.environ.get(
+            "PPTAGENT_LONG_HORIZON_PRESENTER_SKILL_ROOT",
+            MURAL_PRESENTER_SUITE_ROOT / "skills" / "mural-presenter",
+        ),
     )
 )
-LONG_HORIZON_PRESENTER_HARNESS_ROOT = Path(
+MURAL_PRESENTER_HARNESS_ROOT = Path(
     os.environ.get(
-        "PPTAGENT_LONG_HORIZON_PRESENTER_HARNESS_ROOT",
-        LONG_HORIZON_PRESENTER_SUITE_ROOT / "harnesses" / "long-horizon-presenter",
+        "PPTAGENT_MURAL_PRESENTER_HARNESS_ROOT",
+        os.environ.get(
+            "PPTAGENT_LONG_HORIZON_PRESENTER_HARNESS_ROOT",
+            MURAL_PRESENTER_SUITE_ROOT / "harnesses" / "mural-presenter",
+        ),
     )
 )
-LONG_HORIZON_PRESENTER_HARNESS_ENTRY = os.environ.get(
-    "PPTAGENT_LONG_HORIZON_PRESENTER_HARNESS_ENTRY", "distill_ppt.py"
+MURAL_PRESENTER_HARNESS_ENTRY = os.environ.get(
+    "PPTAGENT_MURAL_PRESENTER_HARNESS_ENTRY",
+    os.environ.get("PPTAGENT_LONG_HORIZON_PRESENTER_HARNESS_ENTRY", "distill_ppt.py"),
 )
+
+# Compatibility aliases for older deployment wrappers.
+LONG_HORIZON_PRESENTER_SUITE_ROOT = MURAL_PRESENTER_SUITE_ROOT
+LONG_HORIZON_PRESENTER_SKILL_ROOT = MURAL_PRESENTER_SKILL_ROOT
+LONG_HORIZON_PRESENTER_HARNESS_ROOT = MURAL_PRESENTER_HARNESS_ROOT
+LONG_HORIZON_PRESENTER_HARNESS_ENTRY = MURAL_PRESENTER_HARNESS_ENTRY
 ENGINE_SITE_PACKAGES = Path(
     os.environ.get(
         "PPTAGENT_ENGINE_SITE_PACKAGES",
@@ -342,40 +372,46 @@ def _visual_craft_skill(
     }
 
 
-def _long_horizon_presenter_skill(
-    skill_root: Path = LONG_HORIZON_PRESENTER_SKILL_ROOT,
-    harness_root: Path = LONG_HORIZON_PRESENTER_HARNESS_ROOT,
+def _mural_presenter_skill(
+    skill_root: Path = MURAL_PRESENTER_SKILL_ROOT,
+    harness_root: Path = MURAL_PRESENTER_HARNESS_ROOT,
 ) -> dict:
-    """Register the renamed static high-design Skill with its paired Harness."""
+    """Register the bundled MURAL-Presenter Skill with its paired Harness."""
     required_files = (
         "SKILL.md",
         "agents/openai.yaml",
+        "assets/base-template.css",
         "assets/licenses/OFL-1.1.txt",
         "assets/vendor/echarts.min.js",
-        "references/base-template.css",
+        "references/charts-and-diagrams.md",
         "references/design-rules.md",
-        "references/design-styles.md",
         "references/editing-contract.md",
         "references/fonts.md",
         "references/layout-patterns.md",
         "references/planning-contract.md",
         "references/quality-checklist.md",
+        "references/scenario-routing.md",
+        "references/shape-grammar.md",
+        "references/style-routing.md",
         "scripts/deck.py",
-        "scripts/font_bundle.py",
+        "scripts/bundle_fonts.py",
+        "scripts/cutout_image.py",
         "scripts/install.sh",
-        "scripts/image_cutout.py",
         "scripts/render.py",
         "scripts/stage_materials.py",
-        "subagents/research.md",
-        "subagents/material.md",
-        "subagents/image.md",
-        "subagents/slide.md",
-        "subagents/review.md",
+        "roles/research.md",
+        "roles/material.md",
+        "roles/image.md",
+        "roles/slide.md",
+        "roles/review.md",
     )
     harness_required = (
-        LONG_HORIZON_PRESENTER_HARNESS_ENTRY,
+        MURAL_PRESENTER_HARNESS_ENTRY,
         "core/__init__.py",
         "core/agent.py",
+        "core/nova_bridge.py",
+        "core/openai_backend.py",
+        "core/stage_memory.py",
         "core/tools.py",
         "core/trace.py",
     )
@@ -383,9 +419,9 @@ def _long_horizon_presenter_skill(
     missing_harness = [relative for relative in harness_required if not (harness_root / relative).is_file()]
     reasons = []
     if missing_skill:
-        reasons.append("Long-Horizon Presenter Skill 缺少：" + ", ".join(missing_skill))
+        reasons.append("MURAL-Presenter Skill 缺少：" + ", ".join(missing_skill))
     if missing_harness:
-        reasons.append("Long-Horizon Presenter Harness 缺少：" + ", ".join(missing_harness))
+        reasons.append("MURAL-Presenter Harness 缺少：" + ", ".join(missing_harness))
     digest = hashlib.sha256()
     if not missing_skill:
         for path in sorted(
@@ -398,24 +434,24 @@ def _long_horizon_presenter_skill(
             digest.update(path.read_bytes())
     ready = not missing_skill and not missing_harness
     return {
-        "label": "Long-Horizon Presenter",
+        "label": "MURAL-Presenter",
         "path": str(skill_root),
         "skills_root": str(skill_root.parent),
-        "name": "long-horizon-presenter",
+        "name": "mural-presenter",
         "language": "zh",
         "deck_language": "auto",
         "force_skill_language": "",
-        "mode": "long-horizon-presenter",
+        "mode": "mural-presenter",
         "status": "current" if ready else "unavailable",
         "ready": ready,
         "unavailable_reason": "；".join(reasons),
         "required_files": list(required_files),
         "source_revision": digest.hexdigest()[:12] if ready else "",
-        "pipeline": "long-horizon-presenter-harness",
+        "pipeline": "mural-presenter-harness",
         "harness_path": str(harness_root),
-        "harness_entry": LONG_HORIZON_PRESENTER_HARNESS_ENTRY,
+        "harness_entry": MURAL_PRESENTER_HARNESS_ENTRY,
         "harness_required_files": list(harness_required),
-        "pairing": "long-horizon-presenter-paired",
+        "pairing": "mural-presenter-paired",
         "caps": ["attachments", "revision", "static_html", "custom_fonts"],
     }
 
@@ -500,7 +536,7 @@ SKILLS = {
         inline_image=True,
     ),
     "visual-craft": _visual_craft_skill(),
-    "long-horizon-presenter": _long_horizon_presenter_skill(),
+    "mural-presenter": _mural_presenter_skill(),
 }
 # Product surface: three static generation modes, each backed by its own paired
 # Harness.  Dynamic generation is selected in its own UI mode and is paired with
@@ -508,9 +544,9 @@ SKILLS = {
 PUBLIC_SKILL_KEYS = (
     "sense-present-standard",
     "visual-craft",
-    "long-horizon-presenter",
+    "mural-presenter",
 )
-DEFAULT_SKILL = "long-horizon-presenter"
+DEFAULT_SKILL = "mural-presenter"
 _SKILL_CATALOG_LOCK = threading.Lock()
 try:
     _SKILL_CATALOG_REFRESH_TTL_S = max(
@@ -555,16 +591,16 @@ def refresh_external_skills(*, force: bool = False) -> dict:
             inline_image=True,
         )
         visual_craft = _visual_craft_skill()
-        long_horizon_presenter = _long_horizon_presenter_skill()
+        mural_presenter = _mural_presenter_skill()
         SKILLS["long-horizon"] = refreshed
         SKILLS["long-horizon-grouped"] = grouped
         SKILLS["long-horizon-grouped-inline-image"] = grouped_inline_image
         SKILLS["visual-craft"] = visual_craft
-        SKILLS["long-horizon-presenter"] = long_horizon_presenter
+        SKILLS["mural-presenter"] = mural_presenter
         if "PIPELINES" in globals():
             PIPELINES["visual-craft-harness"] = _visual_craft_pipeline(visual_craft)
-            PIPELINES["long-horizon-presenter-harness"] = _long_horizon_presenter_pipeline(
-                long_horizon_presenter
+            PIPELINES["mural-presenter-harness"] = _mural_presenter_pipeline(
+                mural_presenter
             )
         _SKILL_CATALOG_REFRESHED_AT = time.monotonic()
     return refreshed
@@ -586,16 +622,16 @@ def _visual_craft_pipeline(skill: dict | None = None) -> dict:
     }
 
 
-def _long_horizon_presenter_pipeline(skill: dict | None = None) -> dict:
-    skill = skill or SKILLS.get("long-horizon-presenter") or _long_horizon_presenter_skill()
+def _mural_presenter_pipeline(skill: dict | None = None) -> dict:
+    skill = skill or SKILLS.get("mural-presenter") or _mural_presenter_skill()
     return {
-        "label": "Long-Horizon Presenter Harness",
-        "path": str(LONG_HORIZON_PRESENTER_HARNESS_ROOT),
-        "entry": LONG_HORIZON_PRESENTER_HARNESS_ENTRY,
+        "label": "MURAL-Presenter Harness",
+        "path": str(MURAL_PRESENTER_HARNESS_ROOT),
+        "entry": MURAL_PRESENTER_HARNESS_ENTRY,
         "supports": ["anthropic", "openai"],
-        "skill_mode": "long-horizon-presenter",
+        "skill_mode": "mural-presenter",
         "caps": ["attachments", "revision", "static_html", "custom_fonts"],
-        "pairing": "long-horizon-presenter-paired",
+        "pairing": "mural-presenter-paired",
         "ready": bool(skill.get("ready")),
         "unavailable_reason": skill.get("unavailable_reason", ""),
     }
@@ -635,13 +671,14 @@ PIPELINES = {
         "ready": True,
     },
     "visual-craft-harness": _visual_craft_pipeline(),
-    "long-horizon-presenter-harness": _long_horizon_presenter_pipeline(),
+    "mural-presenter-harness": _mural_presenter_pipeline(),
 }
-DEFAULT_PIPELINE = "long-horizon-presenter-harness"
+DEFAULT_PIPELINE = "mural-presenter-harness"
 
 # 历史 deck 仍可重试，但旧 key 不再注册、也不会出现在前端选项中。
 LEGACY_SKILL_ALIASES = {
     "sense-present-v2": "sense-present-standard",
+    "long-horizon-presenter": "mural-presenter",
     "current": "zh",
     "v5": "zh",
     "v4": "zh",
@@ -1146,7 +1183,7 @@ def build_job(sample_id: str, seed: dict, run_dir, dry: bool = False, model_key:
         "long-horizon",
         "long-horizon-grouped",
         "visual-craft",
-        "long-horizon-presenter",
+        "mural-presenter",
     }:
         # A generation job must capture the latest Skill even when the homepage
         # catalog is still inside its latency-oriented cache window.

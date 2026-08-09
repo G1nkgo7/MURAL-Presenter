@@ -1,0 +1,4 @@
+interface:
+  display_name: "Mural Presenter"
+  short_description: "Create or edit polished HTML slide decks"
+  default_prompt: "Use $mural-presenter to create or edit this HTML slide deck with the appropriate evidence, image, page-group, review, and speaker-script workflow."

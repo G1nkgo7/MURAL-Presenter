@@ -34,12 +34,13 @@ deployments should set `STUDIO_DATA_DIR` explicitly.
 
 ## Runtime profiles
 
-Generation profiles are registered in `app/engine.py`. Paths and model endpoints are deployment
-configuration, not repository constants. Missing external Skills and Harnesses are represented as
-unavailable profiles rather than silently substituted with a different workflow.
+Generation profiles are registered in `app/engine.py`. The default MURAL-Presenter Skill and
+Harness are discovered from the repository root; model endpoints remain deployment configuration.
+Missing optional comparison profiles are represented as unavailable rather than silently
+substituted with a different workflow.
 
-The public UI can start with `SENSENOVA_UI_ONLY=1`. Full generation requires the clean Harness and
-the relevant external Skill/Harness roots.
+The public UI can start with `SENSENOVA_UI_ONLY=1`. MURAL generation uses the bundled pair and only
+requires a compatible model service plus optional image/search services.
 
 ## Tests
 

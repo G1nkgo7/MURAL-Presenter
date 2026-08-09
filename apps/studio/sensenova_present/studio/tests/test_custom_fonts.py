@@ -41,7 +41,7 @@ class CustomFontTest(unittest.TestCase):
         self.assertGreater(config["fonts"][0]["glyph_count"], 0)
 
     def test_presenter_pair_and_composer_expose_custom_font_capability(self):
-        self.assertIn("custom_fonts", engine.PIPELINES["long-horizon-presenter-harness"]["caps"])
+        self.assertIn("custom_fonts", engine.PIPELINES["mural-presenter-harness"]["caps"])
         template = (Path(__file__).resolve().parents[1] / "templates/app.html").read_text(encoding="utf-8")
         script = (Path(__file__).resolve().parents[1] / "static/app.js").read_text(encoding="utf-8")
         self.assertIn('id="font-input"', template)

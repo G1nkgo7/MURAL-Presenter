@@ -96,26 +96,24 @@ Then open http://127.0.0.1:8010.
 ## 4. What UI-only mode includes
 
 UI-only mode is the public, zero-credential preview. It starts the SenseNova Present interface and
-local state layer without requiring private model services or a generation Harness.
+local state layer without requiring a model service.
 
-It does **not** make the full presentation-generation backend self-contained. Generation, image
-creation, search, and dynamic rendering require compatible external runtimes and service endpoints.
-The repository deliberately excludes model credentials, private gateways, model weights, internal
-datasets, and generated runs.
+The repository includes the current MURAL-Presenter Skill and paired Harness. Generation requires a
+compatible model endpoint; image generation and search are optional integrations. The repository
+excludes credentials, private gateways, model weights, internal datasets, and generated runs.
 
 ## 5. Enable full generation
 
-Only use this path if you have been given the compatible MURAL/SenseNova runtime and model-service
-configuration.
+Use this path after you have a compatible model-service configuration.
 
 1. Open apps/studio/sensenova_present/.env.
 2. Set SENSENOVA_UI_ONLY=0.
-3. Configure PPTAGENT_CLEAN_PIPELINE_ROOT and any required Skill or Harness roots.
-4. Configure model, image, and search endpoints and credentials.
+3. Configure SENSENOVA_MODEL_BASE_URL, SENSENOVA_MODEL_NAME, and any required credential.
+4. Optionally configure image-generation and search endpoints.
 5. Start without the ui-only flag:
 
 ~~~bash
-./start.sh --edition full --language zh --port 8001
+./start.sh --language zh --port 8001
 ~~~
 
 The first full-mode run may also download a Playwright Chromium renderer. Never commit the .env

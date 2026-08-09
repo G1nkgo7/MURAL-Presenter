@@ -7,12 +7,16 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     SENSE_NOVA_LOCAL_HOST=0.0.0.0 \
     SENSE_NOVA_LOCAL_PORT=8001
 
-WORKDIR /app
-COPY . /app
+WORKDIR /workspace
+COPY apps/studio/sensenova_present /workspace/apps/studio/sensenova_present
+COPY skills/mural-presenter /workspace/skills/mural-presenter
+COPY harnesses/mural-presenter /workspace/harnesses/mural-presenter
 
-RUN uv sync --project /app/studio --frozen \
-    && uv sync --project /app/distillation --frozen \
-    && /app/distillation/.venv/bin/python -m playwright install --with-deps chromium
+RUN uv sync --project /workspace/apps/studio/sensenova_present/studio --frozen \
+    && uv sync --project /workspace/harnesses/mural-presenter --frozen \
+    && /workspace/harnesses/mural-presenter/.venv/bin/python -m playwright install --with-deps chromium
+
+WORKDIR /workspace/apps/studio/sensenova_present
 
 EXPOSE 8001
 VOLUME ["/data"]

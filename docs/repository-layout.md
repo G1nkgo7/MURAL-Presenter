@@ -2,7 +2,8 @@
 
 This document defines the public implementation layout for MURAL-Presenter. Most core directories
 remain interface contracts. `apps/studio` additionally contains a sanitized compatibility import of
-the working SenseNova Present WebUI; its external generation runtimes are not bundled.
+the working SenseNova Present WebUI. The default MURAL-Presenter Skill and paired Harness are bundled;
+model endpoints and optional search/image services remain deployment-owned.
 
 ## Two execution paths
 
@@ -48,6 +49,8 @@ creates and filters reproducible records; the product path serves user projects 
 | `configs/` | Checked-in non-secret configuration | Named, reviewable experiment and pipeline settings |
 | `scripts/` | Human-facing command entrypoints | Thin wrappers around importable modules |
 | `apps/studio/` | Interactive authoring Web UI | Project, run, review, revision and export views |
+| `skills/mural-presenter/` | Executable lifecycle, role contracts, design references and deterministic deck tools | Versioned Skill snapshot copied into each run |
+| `harnesses/mural-presenter/` | Model calls, delegation, tool execution, traces and recovery | Paired multi-agent generation process |
 | `services/api/` | Authenticated server boundary for Studio | Project/run APIs plus streamed lifecycle events |
 | `tests/` | Unit, integration and end-to-end verification | Deterministic checks and small redistributable fixtures |
 

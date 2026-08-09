@@ -1,6 +1,8 @@
 services:
   sensenova-present:
-    build: .
+    build:
+      context: ../../..
+      dockerfile: apps/studio/sensenova_present/Dockerfile
     ports:
       - "${SENSE_NOVA_LOCAL_PORT:-8001}:8001"
     env_file:
@@ -9,11 +11,11 @@ services:
     environment:
       SENSE_NOVA_LOCAL_HOST: 0.0.0.0
       SENSE_NOVA_LOCAL_PORT: 8001
-      SENSENOVA_UI_ONLY: ${SENSENOVA_UI_ONLY:-1}
+      SENSENOVA_UI_ONLY: ${SENSENOVA_UI_ONLY:-0}
     volumes:
       - sensenova-present-data:/data
     healthcheck:
-      test: ["CMD", "/app/studio/.venv/bin/python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/healthz', timeout=3).read()"]
+      test: ["CMD", "/workspace/apps/studio/sensenova_present/studio/.venv/bin/python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/healthz', timeout=3).read()"]
       interval: 30s
       timeout: 5s
       retries: 3

@@ -8,9 +8,9 @@ UI preview mode runs the product surface without a local generation runtime:
 ./start.sh --ui-only --host 127.0.0.1 --port 8001
 ```
 
-Full mode requires mounted Skills and Harnesses, a model endpoint, and a Chromium-capable generation
-environment. Copy `.env.example` to `.env`, configure those paths, set `SENSENOVA_UI_ONLY=0`, then
-run `./start.sh`.
+Generation mode uses the bundled MURAL-Presenter Skill and Harness. Copy `.env.example` to `.env`,
+configure a compatible model endpoint, keep `SENSENOVA_UI_ONLY=0`, then run `./start.sh`. The launcher
+creates the Harness environment and installs Playwright Chromium on first use.
 
 Validate non-secret configuration before starting:
 
@@ -32,8 +32,8 @@ docker compose up --build -d
 docker compose logs -f sensenova-present
 ```
 
-Compose defaults to UI-only mode and persists `/data` in a named volume. Full generation images must
-also mount approved external runtimes and set the corresponding environment variables.
+Compose persists `/data` in a named volume and uses the bundled MURAL runtime. Set model credentials
+through `.env` or a deployment secret store; do not bake them into the image.
 
 ## Production checklist
 
@@ -41,6 +41,6 @@ also mount approved external runtimes and set the corresponding environment vari
 2. `/healthz` returns a successful response.
 3. Chinese and English UI modes render correctly.
 4. `STUDIO_DATA_DIR` is persistent, access-controlled, and backed up.
-5. Required model, image, search, Skill, and Harness dependencies pass explicit smoke tests.
+5. The model endpoint and bundled MURAL Skill/Harness pass explicit smoke tests.
 6. A small deck completes render, review, revision, and export.
 7. `.env`, databases, uploads, logs, and generated artifacts are absent from the release bundle.

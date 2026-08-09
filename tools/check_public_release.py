@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import re
 from pathlib import Path
@@ -143,6 +144,57 @@ def check_brand_and_paper() -> list[str]:
     return errors
 
 
+def tree_digest(root: Path, *, excluded: set[str] | None = None) -> tuple[int, str]:
+    excluded = excluded or set()
+    digest_state = hashlib.sha256()
+    files = []
+    for path in sorted(root.rglob("*")):
+        if (
+            not path.is_file()
+            or any(part in IGNORED_PARTS for part in path.parts)
+            or path.suffix == ".pyc"
+        ):
+            continue
+        relative = path.relative_to(root).as_posix()
+        if relative in excluded:
+            continue
+        data = path.read_bytes()
+        digest_state.update(relative.encode("utf-8"))
+        digest_state.update(b"\0")
+        digest_state.update(hashlib.sha256(data).digest())
+        digest_state.update(b"\0")
+        files.append(relative)
+    return len(files), digest_state.hexdigest()
+
+
+def check_mural_snapshot() -> list[str]:
+    errors: list[str] = []
+    skill_root = ROOT / "skills/mural-presenter"
+    harness_root = ROOT / "harnesses/mural-presenter"
+    provenance_path = harness_root / "source-provenance.json"
+    try:
+        provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        return [f"MURAL snapshot provenance is unreadable: {exc}"]
+    skill_count, skill_sha = tree_digest(skill_root)
+    harness_count, harness_sha = tree_digest(
+        harness_root, excluded={"source-provenance.json"}
+    )
+    expected = (
+        ("skill_file_count", skill_count),
+        ("skill_tree_sha256", skill_sha),
+        ("harness_file_count", harness_count),
+        ("harness_tree_sha256", harness_sha),
+    )
+    for key, actual in expected:
+        if provenance.get(key) != actual:
+            errors.append(
+                f"MURAL snapshot provenance mismatch for {key}: "
+                f"expected {provenance.get(key)!r}, found {actual!r}"
+            )
+    return errors
+
+
 def check_repository_scaffold() -> list[str]:
     errors: list[str] = []
     required = (
@@ -170,6 +222,13 @@ def check_repository_scaffold() -> list[str]:
         "data/README.md",
         "artifacts/README.md",
         "skills/mural_authoring/README.md",
+        "skills/mural-presenter/SKILL.md",
+        "skills/mural-presenter/roles/slide.md",
+        "skills/mural-presenter/scripts/deck.py",
+        "harnesses/mural-presenter/distill_ppt.py",
+        "harnesses/mural-presenter/core/nova_raw.py",
+        "harnesses/mural-presenter/pyproject.toml",
+        "harnesses/mural-presenter/source-provenance.json",
         "benchmarks/thread_bench/README.md",
     )
     for filename in required:
@@ -186,6 +245,7 @@ def main() -> None:
         *link_errors,
         *check_mirrors(),
         *check_brand_and_paper(),
+        *check_mural_snapshot(),
         *check_repository_scaffold(),
     ]
     if errors:

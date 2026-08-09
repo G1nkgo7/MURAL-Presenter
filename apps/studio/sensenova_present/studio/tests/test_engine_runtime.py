@@ -26,6 +26,19 @@ class EngineRuntimeTests(unittest.TestCase):
         if missing:
             self.skipTest("external SenseNova Skills/Harnesses are not mounted: " + ", ".join(missing))
 
+    def test_bundled_mural_presenter_pair_is_ready(self):
+        skill = engine.SKILLS["mural-presenter"]
+        pipeline = engine.PIPELINES["mural-presenter-harness"]
+        self.assertTrue(skill["ready"], skill["unavailable_reason"])
+        self.assertTrue(pipeline["ready"], pipeline["unavailable_reason"])
+        self.assertEqual(Path(skill["path"]), engine.MURAL_PRESENTER_SKILL_ROOT)
+        self.assertEqual(Path(pipeline["path"]), engine.MURAL_PRESENTER_HARNESS_ROOT)
+        self.assertEqual(skill["name"], "mural-presenter")
+        self.assertEqual(skill["pipeline"], "mural-presenter-harness")
+        self.assertTrue((Path(skill["path"]) / "roles" / "slide.md").is_file())
+        self.assertTrue((Path(pipeline["path"]) / "core" / "agent.py").is_file())
+        self.assertRegex(skill["source_revision"], r"^[0-9a-f]{12}$")
+
     def test_deck_submission_has_no_per_user_active_task_ceiling(self):
         source = (Path(__file__).resolve().parents[1] / "app" / "main.py").read_text(encoding="utf-8")
         self.assertNotIn("STUDIO_USER_MAX_ACTIVE", source)
@@ -47,7 +60,7 @@ class EngineRuntimeTests(unittest.TestCase):
                 "long-horizon-grouped",
                 "long-horizon-grouped-inline-image",
                 "visual-craft",
-                "long-horizon-presenter",
+                "mural-presenter",
             ],
         )
         auto = engine.SKILLS["auto"]
@@ -148,18 +161,18 @@ class EngineRuntimeTests(unittest.TestCase):
         self.assertTrue(mount.is_symlink())
         self.assertEqual(mount.resolve(), engine.VISUAL_CRAFT_SKILL_ROOT.resolve())
 
-        presenter = engine.SKILLS["long-horizon-presenter"]
-        self.assertEqual(presenter["label"], "Long-Horizon Presenter")
+        presenter = engine.SKILLS["mural-presenter"]
+        self.assertEqual(presenter["label"], "MURAL-Presenter")
         self.assertEqual(
-            Path(presenter["path"]), engine.LONG_HORIZON_PRESENTER_SKILL_ROOT
+            Path(presenter["path"]), engine.MURAL_PRESENTER_SKILL_ROOT
         )
         self.assertEqual(
             Path(presenter["harness_path"]),
-            engine.LONG_HORIZON_PRESENTER_HARNESS_ROOT,
+            engine.MURAL_PRESENTER_HARNESS_ROOT,
         )
-        self.assertEqual(presenter["pipeline"], "long-horizon-presenter-harness")
-        self.assertEqual(presenter["pairing"], "long-horizon-presenter-paired")
-        self.assertEqual(presenter["name"], "long-horizon-presenter")
+        self.assertEqual(presenter["pipeline"], "mural-presenter-harness")
+        self.assertEqual(presenter["pairing"], "mural-presenter-paired")
+        self.assertEqual(presenter["name"], "mural-presenter")
         self.assertIn("static_html", presenter["caps"])
         self.assertTrue(presenter["ready"], presenter["unavailable_reason"])
         self.assertIn("scripts/deck.py", presenter["required_files"])
@@ -168,20 +181,20 @@ class EngineRuntimeTests(unittest.TestCase):
 
     def test_long_horizon_presenter_is_registered_as_static_pair(self):
         self._require_all_external_runtime()
-        presenter = engine.SKILLS["long-horizon-presenter"]
-        pipeline = engine.PIPELINES["long-horizon-presenter-harness"]
+        presenter = engine.SKILLS["mural-presenter"]
+        pipeline = engine.PIPELINES["mural-presenter-harness"]
         self.assertTrue(presenter["ready"], presenter["unavailable_reason"])
         self.assertEqual(
-            Path(presenter["path"]), engine.LONG_HORIZON_PRESENTER_SKILL_ROOT
+            Path(presenter["path"]), engine.MURAL_PRESENTER_SKILL_ROOT
         )
         self.assertEqual(
-            Path(pipeline["path"]), engine.LONG_HORIZON_PRESENTER_HARNESS_ROOT
+            Path(pipeline["path"]), engine.MURAL_PRESENTER_HARNESS_ROOT
         )
-        self.assertEqual(presenter["pipeline"], "long-horizon-presenter-harness")
-        self.assertEqual(pipeline["skill_mode"], "long-horizon-presenter")
-        self.assertIn("scripts/image_cutout.py", presenter["required_files"])
+        self.assertEqual(presenter["pipeline"], "mural-presenter-harness")
+        self.assertEqual(pipeline["skill_mode"], "mural-presenter")
+        self.assertIn("scripts/cutout_image.py", presenter["required_files"])
         self.assertIn("static_html", presenter["caps"])
-        self.assertIn("long-horizon-presenter", engine.PUBLIC_SKILL_KEYS)
+        self.assertIn("mural-presenter", engine.PUBLIC_SKILL_KEYS)
 
     def test_long_horizon_catalog_refreshes_without_service_restart(self):
         previous = engine.SKILLS["long-horizon"]
@@ -189,7 +202,7 @@ class EngineRuntimeTests(unittest.TestCase):
         previous_grouped_inline = engine.SKILLS[
             "long-horizon-grouped-inline-image"
         ]
-        previous_presenter = engine.SKILLS["long-horizon-presenter"]
+        previous_presenter = engine.SKILLS["mural-presenter"]
         refreshed = engine.refresh_external_skills()
         self.assertIs(engine.SKILLS["long-horizon"], refreshed)
         self.assertEqual(refreshed["source_revision"], previous["source_revision"])
@@ -203,7 +216,7 @@ class EngineRuntimeTests(unittest.TestCase):
             previous_grouped_inline["source_revision"],
         )
         self.assertEqual(
-            engine.SKILLS["long-horizon-presenter"]["source_revision"],
+            engine.SKILLS["mural-presenter"]["source_revision"],
             previous_presenter["source_revision"],
         )
 
@@ -216,7 +229,7 @@ class EngineRuntimeTests(unittest.TestCase):
                 "sense-present-dazzle-harness",
                 "infer",
                 "visual-craft-harness",
-                "long-horizon-presenter-harness",
+                "mural-presenter-harness",
             ],
         )
         pipeline = engine.PIPELINES["infer"]
@@ -254,24 +267,24 @@ class EngineRuntimeTests(unittest.TestCase):
             )
         )
 
-        presenter = engine.PIPELINES["long-horizon-presenter-harness"]
+        presenter = engine.PIPELINES["mural-presenter-harness"]
         self.assertEqual(
-            Path(presenter["path"]), engine.LONG_HORIZON_PRESENTER_HARNESS_ROOT
+            Path(presenter["path"]), engine.MURAL_PRESENTER_HARNESS_ROOT
         )
         self.assertEqual(presenter["entry"], "distill_ppt.py")
-        self.assertEqual(presenter["skill_mode"], "long-horizon-presenter")
-        self.assertEqual(presenter["pairing"], "long-horizon-presenter-paired")
+        self.assertEqual(presenter["skill_mode"], "mural-presenter")
+        self.assertEqual(presenter["pairing"], "mural-presenter-paired")
         self.assertIn("static_html", presenter["caps"])
         self.assertTrue(presenter["ready"], presenter["unavailable_reason"])
         self.assertEqual(
-            engine.pipeline_for_skill("long-horizon-presenter"),
-            "long-horizon-presenter-harness",
+            engine.pipeline_for_skill("mural-presenter"),
+            "mural-presenter-harness",
         )
         self.assertIsNone(
             engine.validate_selection(
                 "sensenova-flash-lite-v39",
-                "long-horizon-presenter-harness",
-                "long-horizon-presenter",
+                "mural-presenter-harness",
+                "mural-presenter",
             )
         )
 
@@ -527,28 +540,28 @@ class EngineRuntimeTests(unittest.TestCase):
 
     def test_default_generation_stack_uses_long_horizon_presenter_pair(self):
         stack = engine.default_generation_stack("opus-4.7-thinking")
-        self.assertEqual(stack["pipeline"], "long-horizon-presenter-harness")
-        self.assertEqual(stack["skill"], "long-horizon-presenter")
+        self.assertEqual(stack["pipeline"], "mural-presenter-harness")
+        self.assertEqual(stack["skill"], "mural-presenter")
         self.assertEqual(
             stack["pipeline_label"],
-            engine.PIPELINES["long-horizon-presenter-harness"]["label"],
+            engine.PIPELINES["mural-presenter-harness"]["label"],
         )
         self.assertEqual(
-            stack["skill_label"], engine.SKILLS["long-horizon-presenter"]["label"]
+            stack["skill_label"], engine.SKILLS["mural-presenter"]["label"]
         )
         self.assertEqual(
             engine.PUBLIC_SKILL_KEYS,
-            ("sense-present-standard", "visual-craft", "long-horizon-presenter"),
+            ("sense-present-standard", "visual-craft", "mural-presenter"),
         )
 
     def test_default_generation_stack_keeps_skill_choice_for_openai_models(self):
         stack = engine.default_generation_stack("ckpt800")
-        self.assertEqual(stack["pipeline"], "long-horizon-presenter-harness")
-        self.assertEqual(stack["skill"], "long-horizon-presenter")
+        self.assertEqual(stack["pipeline"], "mural-presenter-harness")
+        self.assertEqual(stack["skill"], "mural-presenter")
         error = engine.validate_selection(
-            "ckpt800", "long-horizon-presenter-harness", "long-horizon-presenter"
+            "ckpt800", "mural-presenter-harness", "mural-presenter"
         )
-        if engine.resolve_base_url(engine.MODELS["ckpt800"]) and engine.SKILLS["long-horizon-presenter"]["ready"]:
+        if engine.resolve_base_url(engine.MODELS["ckpt800"]) and engine.SKILLS["mural-presenter"]["ready"]:
             self.assertIsNone(error)
         else:
             self.assertTrue(error)
@@ -559,7 +572,7 @@ class EngineRuntimeTests(unittest.TestCase):
             "gpt-5.6-luna", "gpt-5.6-terra", "kimi-k3",
         ):
             self.assertEqual(
-                engine.canon_pipeline("", model), "long-horizon-presenter-harness"
+                engine.canon_pipeline("", model), "mural-presenter-harness"
             )
 
     def test_default_build_job_uses_long_horizon_presenter_pair(self):
@@ -572,16 +585,16 @@ class EngineRuntimeTests(unittest.TestCase):
             pipeline_key="",
             skill_key="",
         )
-        self.assertEqual(job["pipeline_version"], "long-horizon-presenter-harness")
-        self.assertEqual(job["skill_version"], "long-horizon-presenter")
+        self.assertEqual(job["pipeline_version"], "mural-presenter-harness")
+        self.assertEqual(job["skill_version"], "mural-presenter")
         self.assertEqual(
             job["pipeline"]["path"],
-            engine.PIPELINES["long-horizon-presenter-harness"]["path"],
+            engine.PIPELINES["mural-presenter-harness"]["path"],
         )
         self.assertNotIn("lang", job["seed"])
         self.assertEqual(
             job["skill_mount_dir"],
-            str(engine.LONG_HORIZON_PRESENTER_SKILL_ROOT.parent),
+            str(engine.MURAL_PRESENTER_SKILL_ROOT.parent),
         )
 
     def test_build_job_uses_long_horizon_presenter_pair(self):
@@ -591,19 +604,19 @@ class EngineRuntimeTests(unittest.TestCase):
             {"query": "制作一套高设计感静态 PPT"},
             engine.deck_run_dir(1, 1005),
             model_key="sensenova-flash-lite-v39",
-            skill_key="long-horizon-presenter",
+            skill_key="mural-presenter",
         )
         self.assertEqual(
-            job["pipeline_version"], "long-horizon-presenter-harness"
+            job["pipeline_version"], "mural-presenter-harness"
         )
-        self.assertEqual(job["skill_version"], "long-horizon-presenter")
+        self.assertEqual(job["skill_version"], "mural-presenter")
         self.assertEqual(
             job["skill_mount_dir"],
-            str(engine.LONG_HORIZON_PRESENTER_SKILL_ROOT.parent),
+            str(engine.MURAL_PRESENTER_SKILL_ROOT.parent),
         )
         self.assertEqual(
             Path(job["pipeline"]["path"]),
-            engine.LONG_HORIZON_PRESENTER_HARNESS_ROOT,
+            engine.MURAL_PRESENTER_HARNESS_ROOT,
         )
 
     def test_build_job_selects_english_skill_with_same_infer_harness(self):
@@ -653,8 +666,8 @@ class EngineRuntimeTests(unittest.TestCase):
                 self.assertEqual(model["api_key_env"], api_key_env)
                 self.assertFalse(model.get("ui_hidden", False))
                 stack = engine.default_generation_stack(key)
-                self.assertEqual(stack["pipeline"], "long-horizon-presenter-harness")
-                self.assertEqual(stack["skill"], "long-horizon-presenter")
+                self.assertEqual(stack["pipeline"], "mural-presenter-harness")
+                self.assertEqual(stack["skill"], "mural-presenter")
 
     def test_runnable_catalog_and_historical_pairs_accept_all_models(self):
         for model_key in engine.MODELS:
@@ -1131,9 +1144,9 @@ class EngineRuntimeTests(unittest.TestCase):
         script = (Path(__file__).resolve().parents[1] / "static" / "app.js").read_text(
             encoding="utf-8"
         )
-        self.assertIn('"long-horizon-presenter": "Long-Horizon Presenter"', script)
+        self.assertIn('"mural-presenter": "MURAL-Presenter"', script)
         self.assertIn(
-            '"long-horizon-presenter-harness": "Long-Horizon Presenter Harness"',
+            '"mural-presenter-harness": "MURAL-Presenter Harness"',
             script,
         )
 

@@ -161,29 +161,29 @@ apps/studio/sensenova_present/studio/data and are not committed to Git.
 ## 5. UI-only versus full generation
 
 UI-only is the public, zero-credential preview. It starts the SenseNova Present interface and local
-state layer without private model services or a generation Harness.
+state layer without a model service.
 
-It does not make the presentation-generation backend self-contained. Generation, image creation,
-search, and dynamic rendering require compatible external runtimes and service endpoints. The
-public repository excludes model credentials, private gateways, model weights, internal datasets,
-and generated runs.
+The repository now includes the current `skills/mural-presenter` Skill and its paired
+`harnesses/mural-presenter` runtime. Generation still requires a compatible model endpoint;
+image generation and web search are optional service integrations. Model credentials, private
+gateways, model weights, internal datasets, and generated runs are not included.
 
 Before enabling full generation, edit apps/studio/sensenova_present/.env:
 
 1. Set SENSENOVA_UI_ONLY=0.
-2. Configure PPTAGENT_CLEAN_PIPELINE_ROOT and required Skill or Harness roots.
-3. Configure model, image, and search endpoints and credentials.
+2. Configure SENSENOVA_MODEL_BASE_URL, SENSENOVA_MODEL_NAME, and the credential if required.
+3. Optionally configure image-generation and search services.
 
 macOS or Linux:
 
 ~~~bash
-./start.sh --edition full --language en --port 8001
+./start.sh --language en --port 8001
 ~~~
 
 Windows:
 
 ~~~powershell
-.\start.ps1 -Edition full -Language en -Port 8001
+.\start.ps1 -Language en -Port 8001
 ~~~
 
 The first full-mode run may download a Playwright Chromium renderer. Never commit .env or distribute
@@ -276,8 +276,8 @@ working copy.
 - **Address already in use:** choose another port such as 8010.
 - **Dependency downloads fail:** configure the approved proxy and certificate chain; do not disable
   TLS verification globally.
-- **Generation is unavailable:** verify whether UI-only is active and whether all external runtimes
-  and model endpoints are configured.
+- **Generation is unavailable:** verify that UI-only is disabled, the bundled MURAL paths are intact,
+  and the model endpoint is configured.
 - **Do not expose the preview publicly:** default v1 mode binds to 127.0.0.1 without production
   authentication.
 

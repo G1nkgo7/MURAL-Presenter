@@ -18,9 +18,9 @@
 
 > [!NOTE]
 > 本仓库目前处于 **research preview** 阶段，已公开项目叙事、系统图、品牌资产、代码目录骨架，
-> 以及可直接启动的 **SenseNova Present** 创作 WebUI。完整生成仍需另行配置运行时与模型服务。
-> 可复用 MURAL 运行时、MURAL Authoring Skill、
-> THREAD-Bench case、训练数据、模型权重和正式实验结果，仍需等待版本与公开边界冻结。
+> 以及可直接启动的 **SenseNova Present** 创作 WebUI。当前 **MURAL-Presenter Skill 与配套
+> Harness 已随仓库提供**；使用者只需配置兼容的模型端点，以及可选的搜索与生图服务。
+> THREAD-Bench case、训练数据、模型权重和正式实验结果仍需等待版本与公开边界冻结。
 
 ## 名字就是方法
 
@@ -108,12 +108,13 @@ Decks*），同时检查过程证据与最终产物，覆盖知识准确性、�
 | [`src/mural_presenter/`](src/mural_presenter/) | 预留 Python 核心：Query 合成、数据处理、调度、推理、渲染和 QC |
 | [`configs/`](configs/) | 可版本化、无密钥的配置与 Query 池约定 |
 | [`apps/studio/`](apps/studio/) | 已整合的 SenseNova Present WebUI，用于创作、复审、修改与导出，并包含部署适配层 |
+| [`skills/mural-presenter/`](skills/mural-presenter/) | 冻结的生命周期 Skill：编排协议、角色卡、参考资料、资源与确定性 Deck 工具 |
+| [`harnesses/mural-presenter/`](harnesses/mural-presenter/) | SenseNova Present 使用的配套多智能体执行 Harness |
 | [`services/api/`](services/api/) | WebUI 与可复用 MURAL 运行时之间的目标抽取边界 |
 | [`scripts/`](scripts/) | 未来的轻量 CLI 入口；可复用逻辑统一放在 `src/` |
 | [`tests/`](tests/) | 单元、集成、端到端测试与 Fixture 约定 |
 | [`data/`](data/) | 数据目录及发布边界；生成数据不进入 Git |
 | [`artifacts/`](artifacts/) | 单次运行的产物约定；生成的 run 与 export 默认忽略 |
-| [`skills/mural_authoring/`](skills/mural_authoring/) | MURAL Authoring Skill 的预留公开位置 |
 | [`benchmarks/thread_bench/`](benchmarks/thread_bench/) | THREAD-Bench case、Judge 与聚合代码的预留位置 |
 | [`assets/logo/`](assets/logo/) | 主角色、紧凑标记、横版组合与可复现导出文件 |
 | [`assets/figures/`](assets/figures/) | PNG 与 PDF 论文配图 |
@@ -130,10 +131,9 @@ Decks*），同时检查过程证据与最终产物，覆盖知识准确性、�
 | --- | --- |
 | 公开叙事与系统图 | 已提供 |
 | 品牌系统 | 已提供 |
-| SenseNova Present WebUI | 已提供可直接启动的 UI-only 预览；完整生成运行时与模型服务保持外置 |
-| 可复用 MURAL 运行时模块 | 已提供结构骨架；实现等待发布审查 |
+| SenseNova Present WebUI | 支持 UI-only 与 MURAL 生成模式；模型、搜索和生图服务由使用者配置 |
+| MURAL-Presenter Skill + Harness | 已提供带来源凭据与测试的冻结快照 |
 | 中英文论文工作稿 | 已提供；实验结果待补 |
-| MURAL Authoring Skill | 等待版本冻结 |
 | THREAD-Bench | 等待 schema 与 Judge 校准 |
 | 训练数据与模型权重 | 等待复现与发布审查 |
 | 正式实验结果 | 尚未公开 |

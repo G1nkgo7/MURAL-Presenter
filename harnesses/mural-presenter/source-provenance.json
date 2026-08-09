@@ -1,0 +1,17 @@
+{
+  "schema": "mural_presenter.public_snapshot.v1",
+  "created_at_utc": "2026-08-09T08:48:48Z",
+  "source_git_head": "475089e94bb71ea262d3438569a4be9dc4cc387e",
+  "source_has_local_changes": true,
+  "tracked_diff_sha256": "42464cbb5de981c33c9f6c666119ddef1e6df5d94e8c7bc0bc0dac4218dea8cd",
+  "public_sanitization": [
+    "bundled the paired raw recorder in place of a machine-specific fallback",
+    "removed machine-specific font discovery",
+    "generalized network-filesystem documentation"
+  ],
+  "harness_tree_sha256": "452db9cd76ccd2dcd392a158bfbd78b831aee37765c4bf619fe43aee8804e29a",
+  "harness_file_count": 18,
+  "skill_tree_sha256": "77d922df521486e0106e011510640f1625250df25d57ea7f7390e1123c941cb6",
+  "skill_file_count": 42,
+  "nova_recorder_sha256": "a2eda1be72c022dd66a131988cc04d0bc4e3e3c49d3c49ead8512ace9562bed3"
+}

@@ -1,0 +1,26 @@
+[project]
+name = "mural-presenter-harness"
+version = "0.1.0"
+description = "Mural Presenter 独立薄 Harness：角色调度、工具执行与交付验收"
+requires-python = ">=3.10"
+dependencies = [
+    "anthropic>=0.40",
+    "requests>=2.31",
+    "playwright>=1.40",
+    "rich>=13.0",
+    "pillow>=10.0",
+    "numpy>=1.24,<2",
+    "opencv-python-headless>=4.8,<4.11",
+    "python-pptx>=1.0.2",
+    "pymupdf>=1.28.0",
+    "fonttools[woff]>=4.56",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=8.0",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

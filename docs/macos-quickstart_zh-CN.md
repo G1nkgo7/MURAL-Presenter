@@ -93,23 +93,24 @@ apps/studio/sensenova_present/studio/data 下，不会提交到 Git。
 ## 4. UI-only 模式能做什么
 
 UI-only 是不需要账号密钥的公开预览模式。它能够启动 SenseNova Present 产品界面和本地状态层，
-不要求用户提前准备私有模型服务或生成 Harness。
+不要求用户提前准备模型服务。
 
-但它不等于完整的 PPT 生成后端。真正的内容生成、图片生成、网络检索和动态渲染仍需要兼容的
-外部运行时及服务端点。公开仓库不会包含模型密钥、私有网关、模型权重、内部数据集或历史生成结果。
+仓库已经包含当前 MURAL-Presenter Skill 与配套 Harness。内容生成仍需配置兼容的模型端点；
+图片生成和网络检索属于可选服务。公开仓库不会包含模型密钥、私有网关、模型权重、内部数据集或
+历史生成结果。
 
 ## 5. 启用完整生成
 
-只有当你已经拿到兼容的 MURAL/SenseNova 运行时和模型服务配置时，才使用这一模式。
+拿到兼容的模型服务配置后即可使用这一模式。
 
 1. 打开 apps/studio/sensenova_present/.env。
 2. 将 SENSENOVA_UI_ONLY 设置为 0。
-3. 配置 PPTAGENT_CLEAN_PIPELINE_ROOT，以及所需 Skill 或 Harness 路径。
-4. 配置模型、图片和检索服务的地址与密钥。
+3. 配置 SENSENOVA_MODEL_BASE_URL、SENSENOVA_MODEL_NAME，以及模型需要的密钥。
+4. 按需配置图片生成和检索服务。
 5. 不再传入 ui-only 参数：
 
 ~~~bash
-./start.sh --edition full --language zh --port 8001
+./start.sh --language zh --port 8001
 ~~~
 
 完整模式首次启动时还可能下载 Playwright Chromium 渲染器。不要提交 .env，也不要把包含真实密钥的

@@ -6,8 +6,8 @@ method, and paper.
 
 The runnable compatibility bundle lives in [`sensenova_present/`](sensenova_present/). It includes
 the FastAPI/Jinja Studio, its SQLite-backed task service, revision and trajectory views, the
-distillation adapter, and the dynamic-deck adapter. Generation Skills, model endpoints, large
-runtime environments, credentials, and user data are intentionally external.
+distillation adapter, and the dynamic-deck adapter. The repository bundles the default
+MURAL-Presenter Skill and Harness; model endpoints, credentials, and user data remain external.
 
 This product is separate from [`../../site/`](../../site/), the public MURAL-Presenter project
 website, blog, and paper preview.
@@ -20,9 +20,9 @@ cp .env.example .env
 ./start.sh --ui-only --port 8001
 ```
 
-Open `http://127.0.0.1:8001`. UI-only mode exercises the product surface without requiring a
-generation Harness. To enable end-to-end generation, configure the external runtime mounts and
-model endpoints described in the [bundle README](sensenova_present/README.md).
+Open `http://127.0.0.1:8001`. UI-only mode exercises only the product surface. To enable MURAL
+generation, start without `--ui-only` and configure the model endpoint described in the
+[bundle README](sensenova_present/README.md); no separate Skill mount is required.
 
 ## Integration boundary
 

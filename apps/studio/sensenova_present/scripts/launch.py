@@ -20,7 +20,9 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 STUDIO_ROOT = PROJECT_ROOT / "studio"
-ENGINE_ROOT = PROJECT_ROOT / "distillation"
+REPOSITORY_ROOT = PROJECT_ROOT.parents[2]
+BUNDLED_MURAL_SKILL_ROOT = REPOSITORY_ROOT / "skills" / "mural-presenter"
+BUNDLED_MURAL_HARNESS_ROOT = REPOSITORY_ROOT / "harnesses" / "mural-presenter"
 
 
 def _load_env_file(path: Path) -> None:
@@ -152,11 +154,19 @@ def main() -> int:
     if not 1 <= args.port <= 65535:
         raise SystemExit("--port must be between 1 and 65535")
 
-    pipeline_root = Path(
-        os.environ.get("PPTAGENT_CLEAN_PIPELINE_ROOT", PROJECT_ROOT / "vendor/static_ppt-clean-current")
+    mural_skill_root = Path(
+        os.environ.get("PPTAGENT_MURAL_PRESENTER_SKILL_ROOT", BUNDLED_MURAL_SKILL_ROOT)
     ).expanduser().resolve()
-    if not args.ui_only and not (pipeline_root / "infer.py").is_file():
-        raise SystemExit(f"Static Harness not found: {pipeline_root / 'infer.py'}")
+    mural_harness_root = Path(
+        os.environ.get("PPTAGENT_MURAL_PRESENTER_HARNESS_ROOT", BUNDLED_MURAL_HARNESS_ROOT)
+    ).expanduser().resolve()
+    if not args.ui_only:
+        if not (mural_skill_root / "SKILL.md").is_file():
+            raise SystemExit(f"MURAL-Presenter Skill not found: {mural_skill_root / 'SKILL.md'}")
+        if not (mural_harness_root / "distill_ppt.py").is_file():
+            raise SystemExit(
+                f"MURAL-Presenter Harness not found: {mural_harness_root / 'distill_ppt.py'}"
+            )
 
     uv_bin = os.environ.get("SENSE_NOVA_UV_BIN") or shutil.which("uv")
     if not args.no_install:
@@ -167,10 +177,13 @@ def main() -> int:
             )
         _run([uv_bin, "sync", "--project", str(STUDIO_ROOT), "--frozen"], label="Preparing WebUI runtime")
         if not args.ui_only:
-            _run([uv_bin, "sync", "--project", str(ENGINE_ROOT), "--frozen"], label="Preparing generation runtime")
+            _run(
+                [uv_bin, "sync", "--project", str(mural_harness_root), "--frozen"],
+                label="Preparing MURAL-Presenter runtime",
+            )
 
     studio_python = _python_in(STUDIO_ROOT)
-    engine_python = _python_in(ENGINE_ROOT)
+    engine_python = _python_in(mural_harness_root)
     if not studio_python.is_file():
         raise SystemExit(f"Studio runtime is missing: {studio_python}")
     if not args.ui_only and not engine_python.is_file():
@@ -192,7 +205,9 @@ def main() -> int:
 
     is_v1 = args.edition == "v1"
     defaults = {
-        "PPTAGENT_CLEAN_PIPELINE_ROOT": str(pipeline_root),
+        "PPTAGENT_MURAL_PRESENTER_SUITE_ROOT": str(REPOSITORY_ROOT),
+        "PPTAGENT_MURAL_PRESENTER_SKILL_ROOT": str(mural_skill_root),
+        "PPTAGENT_MURAL_PRESENTER_HARNESS_ROOT": str(mural_harness_root),
         "AGENTIC_SKILLS_DIR": str(PROJECT_ROOT / "dynamic/skills"),
         "PLAYWRIGHT_BROWSERS_PATH": str(playwright_root),
         "STUDIO_SESSION_COOKIE": "sense_nova_present_session",
@@ -232,7 +247,8 @@ def main() -> int:
         "ui_only": args.ui_only,
         "auth_enabled": _flag_default("STUDIO_AUTH_ENABLED", not is_v1),
         "dynamic_enabled": _flag_default("STUDIO_DYNAMIC_ENABLED", not is_v1),
-        "pipeline_root": str(pipeline_root) if (pipeline_root / "infer.py").is_file() else "not configured",
+        "mural_skill_root": str(mural_skill_root) if (mural_skill_root / "SKILL.md").is_file() else "not configured",
+        "mural_harness_root": str(mural_harness_root) if (mural_harness_root / "distill_ppt.py").is_file() else "not configured",
         "data_dir": os.environ.get("STUDIO_DATA_DIR", str(STUDIO_ROOT / "data")),
         "environment_file": str(env_file),
         "browser": str(browser or "not installed"),

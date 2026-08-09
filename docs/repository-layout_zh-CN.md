@@ -1,7 +1,8 @@
 # 仓库结构说明
 
 本文档定义 MURAL-Presenter 的公开实现结构。多数核心目录目前仍是接口约定；`apps/studio` 已额外
-纳入经过公开边界清理的 SenseNova Present WebUI 兼容包，但不包含其外部生成运行时。
+纳入经过公开边界清理的 SenseNova Present WebUI 兼容包。默认 MURAL-Presenter Skill 与配套
+Harness 已随仓库提供；模型端点及可选搜索、生图服务仍由部署方配置。
 
 ## 两条执行链路
 
@@ -47,6 +48,8 @@ apps/studio → services/api → orchestration → inference
 | `configs/` | 无密钥、可提交审阅的配置 | 有名称、可追踪的实验与流水线设置 |
 | `scripts/` | 面向使用者的命令入口 | 调用可导入模块的轻量封装 |
 | `apps/studio/` | 交互式创作 Web UI | 项目、运行、复审、修改和导出界面 |
+| `skills/mural-presenter/` | 可执行生命周期、角色协议、设计参考与确定性 Deck 工具 | 每次运行都会冻结的版本化 Skill 快照 |
+| `harnesses/mural-presenter/` | 模型调用、委派、工具执行、Trace 与恢复 | 配套多智能体生成进程 |
 | `services/api/` | Studio 的服务端边界 | Project/run API 与流式生命周期事件 |
 | `tests/` | 单元、集成和端到端验证 | 确定性测试与可再分发的小型 fixture |
 

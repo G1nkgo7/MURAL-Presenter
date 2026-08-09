@@ -269,7 +269,7 @@ def _ensure_static_delivery(row, run_dir: Path) -> str | None:
 
     # Presenter 交付必须通过其自身的 portable dependency audit。先审计已有
     # present；若失败则由 build 原子补齐/规范运行时资产，再审一次。
-    if skill_key == "long-horizon-presenter" and deck_script.is_file():
+    if skill_key == "mural-presenter" and deck_script.is_file():
         expected = str(len(slide_files))
 
         def run_deck(command: str):

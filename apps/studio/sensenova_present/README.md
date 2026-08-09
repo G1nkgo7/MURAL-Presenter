@@ -17,6 +17,8 @@ For a clean-machine walkthrough covering macOS, Linux, and Windows, see the
 | [`dynamic/`](dynamic/) | Optional dynamic-deck adapter and rendering utilities |
 | [`scripts/`](scripts/) | Cross-platform launcher and runtime bootstrap helpers |
 | [`docs/`](docs/) | Deployment guidance |
+| [`../../../skills/mural-presenter/`](../../../skills/mural-presenter/) | Bundled MURAL-Presenter Skill |
+| [`../../../harnesses/mural-presenter/`](../../../harnesses/mural-presenter/) | Paired generation Harness |
 
 ## Start the public UI preview
 
@@ -39,17 +41,19 @@ non-secret configuration without starting a server.
 
 ## Enable generation
 
-The repository does not vendor model weights, internal services, browser libraries, MURAL Skills,
-or their Harnesses. Configure them in `.env` or the process environment, then set
-`SENSENOVA_UI_ONLY=0`.
+The repository bundles the current MURAL-Presenter Skill and its paired Harness. It does not bundle
+model weights or service credentials. Configure a compatible endpoint in `.env`, keep
+`SENSENOVA_UI_ONLY=0`, and start without `--ui-only`.
 
-At minimum, a full static generation deployment needs:
+At minimum, MURAL generation needs:
 
-- `PPTAGENT_CLEAN_PIPELINE_ROOT`, containing `infer.py`;
-- the Skill/Harness roots for the generation profile being exposed;
 - one configured OpenAI- or Anthropic-compatible model endpoint and its credential, if required;
 - writable `STUDIO_DATA_DIR`; and
 - a Playwright Chromium installation available to the generation environment.
+
+The launcher automatically creates the Harness environment and installs Playwright Chromium on the
+first run. `PPTAGENT_MURAL_PRESENTER_SKILL_ROOT` and
+`PPTAGENT_MURAL_PRESENTER_HARNESS_ROOT` are optional overrides for testing another frozen snapshot.
 
 The complete variable list and safe examples are in [`.env.example`](.env.example). Secrets belong
 in `.env` or a deployment secret store and must never be committed.
@@ -67,8 +71,7 @@ uv sync --project studio --frozen
 uv run --project studio --with pytest pytest -q -p no:cacheprovider studio/tests
 ```
 
-Some adapter tests require separately mounted Skills or Harnesses. The public-release check at the
-repository root verifies that the bundle contains no deployment-specific paths, private endpoints,
-credentials, or generated data.
+The public-release check at the repository root verifies the bundled Skill/Harness snapshot and that
+the bundle contains no credentials or generated data.
 
 See [migration provenance](MIGRATION.md) and [deployment guidance](docs/DEPLOYMENT.md).

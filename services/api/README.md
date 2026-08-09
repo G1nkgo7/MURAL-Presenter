@@ -1,11 +1,13 @@
 # Studio API service
 
-Reserved for the authenticated server boundary between MURAL Studio and reusable runtime modules.
+This is the target extraction boundary between SenseNova Present Studio and reusable MURAL runtime
+modules. The imported product currently keeps these routes inside the FastAPI compatibility bundle
+at [`../../apps/studio/sensenova_present/studio/app/`](../../apps/studio/sensenova_present/studio/app/).
 
-The service should own project/run authorization, input validation, artifact access, cancellation,
-resume, streamed lifecycle events, revision requests, and export delivery. It delegates planning,
-inference, rendering, and QC to `src/mural_presenter/` rather than duplicating those implementations.
+Extraction will be incremental: first stabilize project, run, artifact, revision, and event schemas;
+then move server responsibilities here without changing product behavior. This service will own
+authorization, validation, lifecycle events, cancellation/resume, revision routing, and export
+delivery. Planning, inference, rendering, and QC should ultimately delegate to
+[`../../src/mural_presenter/`](../../src/mural_presenter/).
 
-Initial resource families are expected to cover projects, materials, runs, decks, revisions, review
-findings, and exports. The concrete HTTP/event protocol will be versioned before implementation. Model
-credentials and private infrastructure details remain server-side and outside checked-in config.
+The browser must never receive provider credentials or deployment-local runtime paths.

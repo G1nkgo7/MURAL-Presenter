@@ -1,17 +1,34 @@
-# MURAL Studio — product Web UI
+# SenseNova Present Studio
 
-This is the reserved location of the interactive MURAL-Presenter Web UI. It is intentionally separate
-from [`../../site/`](../../site/), which serves the public project page, blog, and paper preview.
+This directory contains the product WebUI shipped with the MURAL-Presenter research repository.
+The product-facing brand remains **SenseNova Present**; **MURAL-Presenter** names the repository,
+method, and paper.
 
-Studio will eventually expose:
+The runnable compatibility bundle lives in [`sensenova_present/`](sensenova_present/). It includes
+the FastAPI/Jinja Studio, its SQLite-backed task service, revision and trajectory views, the
+distillation adapter, and the dynamic-deck adapter. Generation Skills, model endpoints, large
+runtime environments, credentials, and user data are intentionally external.
 
-- project creation, user brief, audience, speaker intent, and material upload;
-- deck blueprint, style system, page map, and slide-group responsibility;
-- live lifecycle events and resumable run status;
-- rendered slide canvas, contact sheet, group and whole-deck review findings;
-- natural-language edits routed to page, group, evidence, or deck scope; and
-- HTML, PPTX, PDF, and image export.
+This product is separate from [`../../site/`](../../site/), the public MURAL-Presenter project
+website, blog, and paper preview.
 
-The browser must not hold model-provider credentials or import the Python runtime. It communicates
-only with [`../../services/api/`](../../services/api/). Framework choice, persistence, authentication,
-and collaborative editing remain open until the runnable implementation is frozen.
+## Quick preview
+
+```bash
+cd apps/studio/sensenova_present
+cp .env.example .env
+./start.sh --ui-only --port 8001
+```
+
+Open `http://127.0.0.1:8001`. UI-only mode exercises the product surface without requiring a
+generation Harness. To enable end-to-end generation, configure the external runtime mounts and
+model endpoints described in the [bundle README](sensenova_present/README.md).
+
+## Integration boundary
+
+The current import deliberately preserves the working application's internal module layout. It is
+therefore a **compatibility bundle**, not yet the final separation between browser UI,
+[`../../services/api/`](../../services/api/), and reusable MURAL runtime modules. This keeps the
+verified SenseNova product behavior intact while the public API boundary is extracted incrementally.
+
+See [migration provenance](sensenova_present/MIGRATION.md) for copied and excluded components.

@@ -1,7 +1,8 @@
 # Repository layout
 
-This document reserves the public implementation layout for MURAL-Presenter. The directories are
-interface contracts, not a claim that the private working implementation has been released.
+This document defines the public implementation layout for MURAL-Presenter. Most core directories
+remain interface contracts. `apps/studio` additionally contains a sanitized compatibility import of
+the working SenseNova Present WebUI; its external generation runtimes are not bundled.
 
 ## Two execution paths
 
@@ -59,8 +60,9 @@ creates and filters reproducible records; the product path serves user projects 
    and accept/reject decisions belong to `quality_control`.
 4. `quality_control` emits findings and decisions. It must not mutate a deck without recording a
    new revision attempt.
-5. `apps/studio` never stores provider credentials or calls model providers directly. It talks to
-   `services/api`, which delegates reusable work to `src/mural_presenter`.
+5. Browser code never stores provider credentials or calls model providers directly. During the
+   compatibility phase, Studio's FastAPI server owns those adapters; the target is to extract them
+   into `services/api`, which delegates reusable work to `src/mural_presenter`.
 6. `scripts` contain argument parsing and wiring only; tested logic stays importable from `src/`.
 7. Every persisted record carries a schema version, stable identifier, configuration reference,
    random seed where applicable, and provenance sufficient to reproduce or reject the record.
@@ -87,8 +89,9 @@ into Git. A future public release may commit small redistributable examples unde
 ## Web surfaces
 
 - `site/` is the static bilingual project website, blog, and manuscript reader.
-- `apps/studio/` is the reserved interactive product Web UI.
-- `services/api/` is the only browser-to-runtime boundary.
+- `apps/studio/` contains the SenseNova Present interactive product WebUI compatibility bundle.
+- `services/api/` is the target versioned browser-to-runtime boundary; equivalent routes currently
+  live inside the compatibility bundle's FastAPI server.
 
 Keeping these surfaces separate lets the paper site remain dependency-light while the authoring UI
 can later adopt project persistence, streamed runs, visual editing, review, and export without

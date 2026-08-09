@@ -1,7 +1,7 @@
 # 仓库结构说明
 
-本文档为 MURAL-Presenter 预留公开实现结构。当前目录主要定义接口与职责，并不表示私有工作系统的
-实现代码已经发布。
+本文档定义 MURAL-Presenter 的公开实现结构。多数核心目录目前仍是接口约定；`apps/studio` 已额外
+纳入经过公开边界清理的 SenseNova Present WebUI 兼容包，但不包含其外部生成运行时。
 
 ## 两条执行链路
 
@@ -57,8 +57,8 @@ apps/studio → services/api → orchestration → inference
 3. `data_pipeline` 负责记录 provenance 和编排数据阶段；模型执行属于 `inference`，接受或拒绝属于
    `quality_control`。
 4. `quality_control` 输出发现与决策；若要修改 deck，必须产生一条新的 revision attempt，而不是静默覆盖。
-5. `apps/studio` 不保存 Provider 密钥，也不直接调用模型；它只访问 `services/api`，后者再调用
-   `src/mural_presenter` 的公共能力。
+5. 浏览器代码不保存 Provider 密钥，也不直接调用模型。兼容阶段由 Studio 的 FastAPI 服务端持有适配器；
+   目标是将其抽取到 `services/api`，再由后者调用 `src/mural_presenter` 的公共能力。
 6. `scripts` 只做参数解析和组件装配，可测试逻辑统一留在 `src/`。
 7. 每个落盘记录都应包含 Schema 版本、稳定 ID、配置引用、必要的随机种子，以及足以复现或拒绝该记录的
    provenance。
@@ -84,8 +84,8 @@ artifacts/runs/<run_id>/
 ## 两类 Web 页面
 
 - `site/`：静态双语项目主页、Blog 与论文阅读页。
-- `apps/studio/`：预留的交互式产品 Web UI。
-- `services/api/`：浏览器访问运行时的唯一边界。
+- `apps/studio/`：SenseNova Present 交互式产品 WebUI 的兼容迁移包。
+- `services/api/`：目标中的版本化浏览器到运行时边界；等价路由当前仍位于兼容包的 FastAPI 服务端。
 
 这样拆分后，论文网站可以继续保持轻量，而产品 UI 后续能够独立加入项目存储、流式运行、可视化编辑、复审和
 导出能力，不会把产品运行时与宣传页面耦合在一起。

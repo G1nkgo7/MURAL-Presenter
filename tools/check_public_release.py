@@ -13,8 +13,11 @@ ROOT = Path(__file__).resolve().parents[1]
 IGNORED_PARTS = {
     ".git",
     ".next",
+    ".pytest_cache",
+    ".venv",
     ".vinext",
     ".wrangler",
+    "__pycache__",
     "dist",
     "node_modules",
     "tmp",
@@ -26,14 +29,19 @@ TEXT_SUFFIXES = {
     ".json",
     ".md",
     ".mjs",
+    ".ps1",
     ".py",
+    ".sh",
+    ".toml",
     ".ts",
     ".tsx",
     ".yml",
     ".yaml",
 }
 FORBIDDEN_PUBLIC_PATTERNS = {
-    "private RFC1918 host": re.compile(r"\b10\.210\."),
+    "private RFC1918 host": re.compile(
+        r"\b(?:10(?:\.\d{1,3}){3}|192\.168(?:\.\d{1,3}){2}|172\.(?:1[6-9]|2\d|3[01])(?:\.\d{1,3}){2})\b"
+    ),
     "private AFS path": re.compile(r"/mnt/afs/"),
     "private workspace identity": re.compile(r"hejiatong", re.I),
     "retired temporary site": re.compile(r"pau1ownia7\.chatgpt\.site", re.I),
@@ -54,6 +62,7 @@ def public_text_files() -> list[Path]:
             base / name
             for name in child_files
             if (base / name).suffix.lower() in TEXT_SUFFIXES
+            or name in {"Dockerfile", "start.bat", ".env.example"}
         )
     return sorted(files)
 
@@ -149,6 +158,10 @@ def check_repository_scaffold() -> list[str]:
         "src/mural_presenter/schemas/README.md",
         "configs/README.md",
         "apps/studio/README.md",
+        "apps/studio/sensenova_present/README.md",
+        "apps/studio/sensenova_present/MIGRATION.md",
+        "apps/studio/sensenova_present/studio/app/main.py",
+        "apps/studio/sensenova_present/scripts/launch.py",
         "services/api/README.md",
         "scripts/README.md",
         "tests/README.md",

@@ -15,10 +15,9 @@
 </p>
 
 > [!NOTE]
-> 本仓库目前处于 **research preview** 阶段，先公开项目叙事、系统图、品牌资产和代码目录骨架。
-> 这些预留目录只定义模块职责和产物边界，并不包含当前私有工作系统的实现代码。
-> 实现代码、MURAL Authoring Skill、THREAD-Bench case、训练数据、模型权重和正式实验结果，
-> 会在版本与公开边界冻结后再发布。
+> 本仓库目前处于 **research preview** 阶段，已公开项目叙事、系统图、品牌资产、代码目录骨架，
+> 以及 SenseNova Present WebUI 的兼容迁移包。MURAL 运行时、MURAL Authoring Skill、
+> THREAD-Bench case、训练数据、模型权重和正式实验结果，仍需等待版本与公开边界冻结。
 
 ## 名字就是方法
 
@@ -101,8 +100,8 @@ Decks*），同时检查过程证据与最终产物，覆盖知识准确性、�
 | --- | --- |
 | [`src/mural_presenter/`](src/mural_presenter/) | 预留 Python 核心：Query 合成、数据处理、调度、推理、渲染和 QC |
 | [`configs/`](configs/) | 可版本化、无密钥的配置与 Query 池约定 |
-| [`apps/studio/`](apps/studio/) | 预留产品 Web UI，用于创作、复审、修改与导出 |
-| [`services/api/`](services/api/) | Web UI 与 MURAL 运行时之间的服务端边界 |
+| [`apps/studio/`](apps/studio/) | SenseNova Present 产品 WebUI 兼容包，用于创作、复审、修改与导出 |
+| [`services/api/`](services/api/) | WebUI 与可复用 MURAL 运行时之间的目标抽取边界 |
 | [`scripts/`](scripts/) | 未来的轻量 CLI 入口；可复用逻辑统一放在 `src/` |
 | [`tests/`](tests/) | 单元、集成、端到端测试与 Fixture 约定 |
 | [`data/`](data/) | 数据目录及发布边界；生成数据不进入 Git |
@@ -124,7 +123,8 @@ Decks*），同时检查过程证据与最终产物，覆盖知识准确性、�
 | --- | --- |
 | 公开叙事与系统图 | 已提供 |
 | 品牌系统 | 已提供 |
-| 公开代码与 Web UI 目录 | 已提供结构骨架；实现等待发布审查 |
+| SenseNova Present WebUI | 已提供兼容迁移包；生成运行时保持外置 |
+| 可复用 MURAL 运行时模块 | 已提供结构骨架；实现等待发布审查 |
 | 中英文论文工作稿 | 已提供；实验结果待补 |
 | MURAL Authoring Skill | 等待版本冻结 |
 | THREAD-Bench | 等待 schema 与 Judge 校准 |

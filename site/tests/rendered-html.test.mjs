@@ -78,6 +78,11 @@ test("server-renders the English launch article", async () => {
   assert.match(html, /A presentation is not a stack of slides/);
   assert.match(html, /The missing unit between a deck and a slide/);
   assert.match(html, /Turning the lifecycle into an executable Skill/);
+  assert.match(html, /Not more Agents\. Better responsibility boundaries\./);
+  assert.match(html, /Dependency-aligned ownership/);
+  assert.match(html, /CREATE AN AGENT BOUNDARY ONLY WHEN/);
+  assert.match(html, /Let experiments decide which boundaries earn their cost\./);
+  assert.doesNotMatch(html, /A centralized image stage resolves reusable assets/);
   assert.match(html, /MURAL-Presenter/);
 });
 
@@ -88,6 +93,10 @@ test("server-renders the Chinese launch article", async () => {
   assert.match(html, /演示文稿不是一摞页面/);
   assert.match(html, /整册和单页之间，缺少一个责任单元/);
   assert.match(html, /把完整生命周期写成可执行 Skill/);
+  assert.match(html, /不是更多 Agent，而是更清楚的责任边界。/);
+  assert.match(html, /依赖对齐 ownership/);
+  assert.match(html, /让实验决定哪些边界真的有价值。/);
+  assert.doesNotMatch(html, /统一 Image 阶段会在页面组开工前/);
   assert.match(html, /href="\/blog">English<\/a>/);
 });
 

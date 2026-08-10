@@ -20,14 +20,14 @@ const article = {
     languageHref: "/zh/blog",
     eyebrow: "MURAL Presenter · Field Note 01",
     title: "A presentation is not a stack of slides.",
-    subtitle: "Introducing MURAL-Presenter: lifecycle authoring for long-horizon presentations",
+    subtitle: "Introducing MURAL-Presenter: dependency-aligned lifecycle authoring for long-horizon presentations",
     dek:
-      "Presentation agents can already draft outlines, retrieve evidence, write slides, and respond to local edits. The harder problem is carrying one set of decisions through the complete deck—and through the edits that follow.",
-    readTime: "Launch article · 9 min read",
-    brandTagline: "One shared deck state, carried from the first brief through every later revision.",
+      "Drafting slides is no longer the only hard part. The systems problem is deciding where long-lived state should live, who owns cross-page relations, and how to revise one region without destabilizing the deck.",
+    readTime: "Launch article · 10 min read",
+    brandTagline: "One blueprint. Dependency-aligned groups. Revision at the smallest reliable scope.",
     contents: "In this article",
     closing:
-      "MURAL starts from a simple premise: a presentation is a designed argument that persists through evidence, planning, production, review, and change. The system should be organized around that lifecycle too.",
+      "MURAL starts from a simple premise: the goal is not to replace one workflow with more Agents. It is to give every long-lived decision an explicit state, an accountable owner, and a reliable path for review and revision.",
     repository: "View the research-preview repository",
     sections: [
       {
@@ -43,7 +43,7 @@ const article = {
         id: "groups",
         title: "The missing unit between a deck and a slide",
         paragraphs: [
-          "One Agent can carry a deck from beginning to end, retaining one owner and a continuous context. Its trajectory, however, accumulates research notes, planning decisions, tool observations, slide code, render feedback, and later edits. Per-slide Agents shorten individual trajectories and expose parallelism, but related pages now live in separate execution contexts.",
+          "One Agent can carry a deck from beginning to end, retaining one owner and a continuous context. Its trajectory, however, accumulates research notes, plans, tool observations, slide code, render feedback, and later edits. Per-slide Agents shorten individual trajectories and expose parallelism, but related pages now live in separate execution contexts. Neither topology decides who should jointly own a cross-page relation.",
           "MURAL introduces a middle unit: the slide group. Pages belong to the same group when they share a narrative responsibility, visual family, asset series, or explicit dependency. A cover and its closing response can form one group even when they are far apart. Different groups still run in parallel, while every relation inside a group has one accountable producer.",
           "A Group Agent writes all pages in its assignment, renders them together, inspects a group contact sheet, consolidates visible defects, and revises the affected pages. Grouping is not a rigid layout template; it is shared responsibility for content and design decisions that should survive together.",
         ],
@@ -58,9 +58,9 @@ const article = {
         id: "skill",
         title: "Turning the lifecycle into an executable Skill",
         paragraphs: [
-          "The MURAL Authoring Skill defines stages, roles, persisted artifacts, quality gates, and continuation paths. Optional attachments become a location-grounded material brief. Research is invoked only when an unresolved fact or term can change the deck’s conclusion.",
+          "The MURAL Authoring Skill defines role triggers, persisted artifacts, quality gates, and continuation paths. It does not assign one Agent to every stage. Parsing, download, registration, validation, rendering, and packaging remain deterministic tools; a fresh context is reserved for bounded work with explicit ownership and an independently checkable output.",
           "The Orchestrator then fixes the audience, communicative goal, narrative arc, terminology, visual direction, page map, asset strategy, and production groups. These decisions are externalized as a shared deck blueprint and compiled into group and page briefs. Downstream Agents receive the state relevant to their responsibility instead of reconstructing the talk from a growing dialogue.",
-          "A centralized image stage resolves reusable assets before grouped authoring begins. Each Group Agent closes a render–inspect–revise loop on its own pages. Deterministic assembly then creates the authoritative deck and whole-deck contact sheet; Review checks numerical conventions, terminology, setup and response, visual semantics, section rhythm, special pages, and speaker-note alignment.",
+          "Material and Research appear only when attachments or consequential evidence gaps require them. One or more Image Agents handle disjoint asset groups only when real or generated imagery is needed; deterministic asset transfer and validation remain tools. Each Group Agent closes a render–inspect–revise loop on its pages. Assembly then creates the authoritative deck and whole-deck contact sheet, and Review checks relations that cross groups.",
         ],
         figure: {
           src: "/authoring-lifecycle.png",
@@ -92,7 +92,7 @@ const article = {
         paragraphs: [
           "Per-slide quality is necessary, but it cannot show whether a deck kept its promises. Attractive pages can still use one metric in incompatible ways, abandon an opening question, or change the meaning of a color halfway through.",
           "THREAD-Bench is designed to make these long-range relations observable. Each probe records where a decision is established, which distant targets must consume or preserve it, and what observable predicate closes the relation. PresentBench and SlidesGen-Bench provide complementary measures of general generation quality, while DECKBench supplies multi-turn editing tasks.",
-          "The current release is a research preview. It publishes the project narrative, system figures, brand system, bilingual documentation, and this article. Formal results, canonical benchmark cases, training artifacts, and frozen implementation releases will follow reproducibility and redistribution review.",
+          "The current release is a research preview. The evaluation is designed to separate state externalization, fresh-context delegation, per-slide ownership, and dependency-aligned grouping under matched tools and budgets. Formal results, canonical benchmark cases, training artifacts, and frozen implementation releases will follow reproducibility and redistribution review.",
         ],
       },
     ] satisfies readonly ArticleSection[],
@@ -103,14 +103,14 @@ const article = {
     languageHref: "/blog",
     eyebrow: "MURAL Presenter · 研究札记 01",
     title: "演示文稿不是一摞页面。",
-    subtitle: "介绍 MURAL-Presenter：面向长程演示文稿完整生命周期的创作框架",
+    subtitle: "介绍 MURAL-Presenter：面向长程演示文稿的依赖对齐生命周期创作框架",
     dek:
-      "演示文稿 Agent 已经能够列提纲、查资料、写单页和响应局部修改。更难的问题，是让同一组事实、叙事和设计决策贯穿整册，并在后续修改中继续有效。",
-    readTime: "发布文章 · 约 9 分钟",
-    brandTagline: "让一份共享的整册状态，从最初需求一直延续到后续每一轮修改。",
+      "写出单页已经不是唯一难点。真正的系统问题，是长期状态应该放在哪里、跨页关系由谁共同负责，以及如何修改一个区域而不破坏整册。",
+    readTime: "发布文章 · 约 10 分钟",
+    brandTagline: "一份共享蓝图，依赖对齐的页面组，以及最小可靠范围内的修改。",
     contents: "本文内容",
     closing:
-      "MURAL 的出发点并不复杂：演示文稿不是一摞分别合格的页面，而是一段贯穿证据、规划、制作、复审与修改的设计论证。系统本身也应该围绕这条生命周期组织。",
+      "MURAL 的出发点并不是把一个 workflow 换成更多 Agent，而是让每项长期决策都有显式状态、共同负责者，以及可靠的复审与修改路径。",
     repository: "查看 Research Preview 仓库",
     sections: [
       {
@@ -126,7 +126,7 @@ const article = {
         id: "groups",
         title: "整册和单页之间，缺少一个责任单元",
         paragraphs: [
-          "单 Agent 可以从头到尾负责整册，保留连续上下文，但它的轨迹会不断累积研究材料、规划决策、工具反馈、页面代码、渲染检查和后续修改。逐页 Agent 缩短了单条轨迹，也便于并行，却让关联页面落入彼此独立的执行上下文。",
+          "单 Agent 可以从头到尾负责整册，保留连续上下文，但它的轨迹会不断累积研究材料、规划决策、工具反馈、页面代码、渲染检查和后续修改。逐页 Agent 缩短了单条轨迹，也便于并行，却让关联页面落入彼此独立的执行上下文。这两种拓扑都没有直接回答：一组跨页关系究竟该由谁共同负责？",
           "MURAL 在两者之间增加了 slide group。只要几张页面共享叙事职责、视觉家族、素材系列或显式依赖，就交给同一个 Group Agent。封面与结尾即使相距很远，也可以共同负责一次首尾呼应；不同页面组仍然能够并行。",
           "Group Agent 会完成组内全部页面，联合渲染，查看组联系表，合并可观察的问题，再修改受影响页面。页面组不是固定版式模板，而是让需要一起存续的内容与设计决策拥有一个共同负责者。",
         ],
@@ -141,9 +141,9 @@ const article = {
         id: "skill",
         title: "把完整生命周期写成可执行 Skill",
         paragraphs: [
-          "MURAL Authoring Skill 定义阶段、角色、落盘产物、质量门和继续执行路径。可选附件先被整理成带位置依据的 material brief；只有未解决事实或术语会改变整册结论时，系统才启动 Research。",
+          "MURAL Authoring Skill 定义角色触发、落盘产物、质量门和继续执行路径，但不会给每个阶段都配置一个 Agent。解析、下载、登记、校验、渲染和封装仍由确定性工具完成；只有输入有界、写入责任明确且产物可以独立验收的任务，才值得获得 fresh context。",
           "Orchestrator 随后确定受众、沟通目标、叙事弧、术语、视觉方向、页面地图、素材策略和 production groups。这些决定被外置为 shared deck blueprint，再编译成 group/page briefs。下游 Agent 只接收与自身职责相关的状态，不必从持续增长的对话中重新猜整场演讲。",
-          "统一 Image 阶段会在页面组开工前解析可复用素材。每个 Group Agent 关闭自己的 render–inspect–revise 循环；确定性 assembly 生成权威整册和 contact sheet；Whole-deck Review 再检查数值口径、术语、setup/response、视觉语义、章节节奏、特殊页面和讲稿配合。",
+          "Material 与 Research 只在附件或关键证据缺口需要时出现；真实图片或生成图任务则由一个或多个 Image Agents 按互不重叠的 asset groups 处理，确定性素材传输与校验仍是工具。每个 Group Agent 关闭自己的 render–inspect–revise 循环；assembly 生成权威整册和 contact sheet，Whole-deck Review 再检查跨组关系。",
         ],
         figure: {
           src: "/authoring-lifecycle.png",
@@ -175,7 +175,7 @@ const article = {
         paragraphs: [
           "单页质量不可缺少，但它无法说明整册有没有兑现承诺。一套页面可以张张好看，却在两处使用不兼容的指标、忘记回答开场问题，或在中途改变颜色含义。",
           "THREAD-Bench 希望把这些长程关系变成可观察对象。每个 probe 都记录决策在哪里建立，哪些远处目标需要消费或保持它，以及用什么可观察条件判定关系闭合。PresentBench 与 SlidesGen-Bench 补充通用生成质量，DECKBench 则提供多轮修改任务。",
-          "当前公开的是 research preview：项目叙事、系统配图、品牌系统、中英文文档和本文已经发布；正式结果、canonical benchmark cases、训练产物和冻结实现将在完成复现与再分发审查后陆续开放。",
+          "当前公开的是 research preview。实验会在工具和预算匹配的前提下，分别隔离状态外置、fresh-context 委派、逐页 ownership 与依赖对齐分组的作用；正式结果、canonical benchmark cases、训练产物和冻结实现将在完成复现与再分发审查后陆续开放。",
         ],
       },
     ] satisfies readonly ArticleSection[],
@@ -202,6 +202,41 @@ export function BlogPage({ language }: { language: Language }) {
         ["R", "Revision-Aware", "resume by impact"],
         ["A", "Authoring", "an executable lifecycle"],
         ["L", "Long-Horizon Presentations", "decisions persist"],
+      ] as const;
+  const researchSummary = isZh
+    ? [
+        ["01", "长期状态", "先把证据、叙事、术语与设计决策外置为 shared deck blueprint。"],
+        ["02", "共同责任", "让具有跨页依赖的页面由同一 Group Agent 联合生成和检查。"],
+        ["03", "两级闭环", "组内先闭合局部关系，装配后再由 whole-deck Review 检查跨组关系。"],
+        ["04", "范围化修改", "按影响范围回到单页、页面组、证据阶段或整册规划。"],
+      ] as const
+    : [
+        ["01", "Persistent state", "Externalize evidence, narrative, terminology, and design into one shared deck blueprint."],
+        ["02", "Joint ownership", "Give cross-slide dependencies one Group Agent that authors and inspects them together."],
+        ["03", "Two-level closure", "Close local relations inside groups, then validate cross-group relations after assembly."],
+        ["04", "Scoped revision", "Resume at page, group, evidence, or deck scope according to the actual impact."],
+      ] as const;
+  const topologies = isZh
+    ? [
+        ["A", "单条轨迹", "共享上下文", "整册历史持续累积；局部责任与重执行边界不明确。"],
+        ["B", "逐页并行", "独立页面 ownership", "单条轨迹更短，但跨页关系落在多个执行上下文之间。"],
+        ["C", "MURAL", "依赖对齐 ownership", "共享蓝图投影到页面组；组内共同负责，整册复审闭合跨组关系。"],
+      ] as const
+    : [
+        ["A", "Single trajectory", "Shared context", "Deck history keeps growing; local ownership and replay boundaries remain implicit."],
+        ["B", "Per-slide parallel", "Independent slide ownership", "Workers are shorter-lived, but cross-slide relations fall between contexts."],
+        ["C", "MURAL", "Dependency-aligned ownership", "A shared blueprint projects into groups; joint ownership and deck review close the relations."],
+      ] as const;
+  const evaluationCards = isZh
+    ? [
+        ["E1b", "受控主比较", "比较 monolithic、同 Skill 单上下文、逐页 workers 与完整 MURAL。"],
+        ["E4", "边界消融", "区分 conditional delegation、always-delegate、Image boundary 与页面责任拓扑。"],
+        ["E5", "修改与保持", "同时检验修改成功、未涉及页面保持、回归错误与 replay scope。"],
+      ] as const
+    : [
+        ["E1b", "Matched main comparison", "Compare monolithic, same-Skill single-context, per-slide workers, and full MURAL."],
+        ["E4", "Boundary ablations", "Separate conditional delegation, always-delegate, Image boundaries, and ownership topology."],
+        ["E5", "Revision and preservation", "Measure edit success, untouched-slide preservation, regressions, and replay scope together."],
       ] as const;
 
   return (
@@ -271,6 +306,62 @@ export function BlogPage({ language }: { language: Language }) {
           </div>
         </header>
 
+        <section className="blog-summary section-shell" aria-labelledby="summary-title">
+          <div className="blog-summary-head">
+            <span className="kicker">{isZh ? "MURAL · 一分钟读懂" : "MURAL · AT A GLANCE"}</span>
+            <h2 id="summary-title">{isZh ? "不是更多 Agent，而是更清楚的责任边界。" : "Not more Agents. Better responsibility boundaries."}</h2>
+            <p>{isZh
+              ? "MURAL 把演示文稿看作一组需要跨阶段、跨页面和跨修改持续有效的决策。多 Agent 只是执行机制；真正的方法是状态如何外置、依赖由谁负责、在哪里验收，以及失败后从哪里继续。"
+              : "MURAL treats a presentation as decisions that must survive stages, pages, and revisions. Multi-Agent execution is only the mechanism; the method is where state lives, who owns dependencies, where outputs close, and where work resumes."}</p>
+          </div>
+          <div className="blog-summary-grid">
+            {researchSummary.map(([index, title, description]) => (
+              <article key={index}>
+                <span>{index}</span>
+                <h3>{title}</h3>
+                <p>{description}</p>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <section className="topology-story" aria-labelledby="topology-title">
+          <div className="section-shell">
+            <div className="topology-story-head">
+              <span className="kicker kicker-light">{isZh ? "三种执行拓扑" : "THREE EXECUTION TOPOLOGIES"}</span>
+              <h2 id="topology-title">{isZh ? "拆得开，不等于管得住。" : "Decomposable does not mean accountable."}</h2>
+              <p>{isZh
+                ? "关键不是 worker 数量，而是跨页关系能否找到共同生产者、共同检查者和可重放的责任单元。"
+                : "The question is not worker count. It is whether a cross-slide relation has a joint producer, a joint inspector, and a replayable unit of responsibility."}</p>
+            </div>
+            <div className="topology-cards">
+              {topologies.map(([index, title, signal, description], cardIndex) => (
+                <article className={cardIndex === 2 ? "is-mural" : ""} key={index}>
+                  <div className="topology-card-index">({index})</div>
+                  <div className="topology-mini" aria-hidden="true">
+                    <i /><i /><i />
+                    <b />
+                  </div>
+                  <h3>{title}</h3>
+                  <strong>{signal}</strong>
+                  <p>{description}</p>
+                </article>
+              ))}
+            </div>
+            <div className="delegation-rule">
+              <div>
+                <span>{isZh ? "保留为工具" : "KEEP AS TOOLS"}</span>
+                <strong>{isZh ? "解析 · 下载 · 登记 · 校验 · 渲染 · 构建" : "parse · transfer · register · validate · render · build"}</strong>
+              </div>
+              <i aria-hidden="true">→</i>
+              <div>
+                <span>{isZh ? "才建立 Agent 边界" : "CREATE AN AGENT BOUNDARY ONLY WHEN"}</span>
+                <strong>{isZh ? "输入有界 · 写入互斥 · 产物可验收 · 隔离/并行/重放值得交接" : "input is bounded · writes are disjoint · output is checkable · isolation/parallelism/replay justify handoff"}</strong>
+              </div>
+            </div>
+          </div>
+        </section>
+
         <div className="article-layout section-shell">
           <aside className="article-toc">
             <strong>{t.contents}</strong>
@@ -302,13 +393,32 @@ export function BlogPage({ language }: { language: Language }) {
               </section>
             ))}
 
+            <section className="evidence-gate" aria-labelledby="evidence-gate-title">
+              <div className="evidence-gate-head">
+                <span>{isZh ? "RESULTS PENDING" : "RESULTS PENDING"}</span>
+                <h2 id="evidence-gate-title">{isZh ? "让实验决定哪些边界真的有价值。" : "Let experiments decide which boundaries earn their cost."}</h2>
+                <p>{isZh
+                  ? "我们不把“用了多 Agent”直接写成收益。每项结论都必须在工具、输入、backbone 与预算匹配的比较中成立。"
+                  : "We do not turn “uses multiple Agents” into an effectiveness claim. Every boundary must survive matched comparisons over tools, inputs, backbone, and budget."}</p>
+              </div>
+              <div className="evidence-gate-grid">
+                {evaluationCards.map(([index, title, description]) => (
+                  <article key={index}>
+                    <span>{index}</span>
+                    <h3>{title}</h3>
+                    <p>{description}</p>
+                  </article>
+                ))}
+              </div>
+            </section>
+
             <blockquote className="article-closing">{t.closing}</blockquote>
-            <a
-              className="button button-primary article-repo"
-              href="https://github.com/G1nkgo7/MURAL-Presenter"
-            >
-              {t.repository}<span>↗</span>
-            </a>
+            <div className="article-end-actions">
+              <a className="button button-primary article-repo" href="https://github.com/G1nkgo7/MURAL-Presenter" target="_blank" rel="noreferrer">
+                {t.repository}<span>↗</span>
+              </a>
+              <a className="button button-secondary" href={paperHref}>{isZh ? "阅读论文工作稿" : "Read the working paper"}<span>→</span></a>
+            </div>
           </div>
         </div>
       </article>

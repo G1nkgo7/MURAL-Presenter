@@ -1,6 +1,6 @@
 ---
 title: "A presentation is not a stack of slides: introducing MURAL"
-description: "A full-lifecycle, revision-aware approach to long-horizon presentation authoring."
+description: "Dependency-aligned lifecycle authoring for long-horizon presentations."
 date: 2026-08-07
 language: en
 status: research-preview
@@ -42,8 +42,11 @@ scope.
 | **A** | **Authoring** | The system executes a reusable lifecycle rather than a one-shot generation prompt. |
 | **L** | **Long-Horizon Presentations** | Decisions remain accountable across distant stages, slides, and revision turns. |
 
-In short, MURAL does not merely divide a long workflow. It aligns agent ownership with deck
-dependencies, then restores whole-deck closure after parallel production.
+In short, MURAL does not merely divide a long workflow. It externalizes long-lived state, aligns
+Agent ownership with deck dependencies, then restores whole-deck closure after parallel production.
+Parsing, transfer, validation, rendering, and packaging remain deterministic tools. A fresh context
+is introduced only for bounded work with explicit ownership and an independently checkable output,
+when isolation, parallelism, or replay can justify the handoff.
 
 ![The MURAL authoring lifecycle](../assets/figures/authoring-lifecycle.png)
 
@@ -78,22 +81,20 @@ produced and where it is verified after merging.
 
 ## Turning the lifecycle into an executable Skill
 
-The MURAL Authoring Skill describes stages, roles, persisted artifacts, quality gates, and continuation
-paths. It begins with the user brief and optional materials. A Material role turns attachments into a
-location-grounded account that later agents can use without reopening the original files. Research is
-invoked only when an external fact or unresolved term can change the deck’s conclusion. This makes
-grounding a deliberate decision, not a ritual applied to every prompt.
+The MURAL Authoring Skill describes role triggers, persisted artifacts, quality gates, and continuation
+paths. It does not map every stage to an Agent. Parsing, download, registration, validation, rendering,
+and packaging remain versioned tools. Material appears only for attachments, and Research only when an
+external fact or unresolved term can change the deck’s conclusion.
 
 The Orchestrator then fixes the audience, communicative goal, narrative arc, terminology, visual
 direction, page map, asset strategy, and production groups. These decisions are written into a shared
 deck blueprint and compiled into group and page briefs. Downstream agents do not need to reconstruct
 the whole talk from a growing dialogue; they receive the decisions relevant to their responsibility.
 
-When the deck needs bitmap assets, one centralized Image stage resolves them before group authoring
-begins. That choice is intentionally simple. If every group searches or generates images independently,
-the deck can acquire competing asset catalogs, unrelated visual series, and duplicated work. A shared
-stage gives the entire deck one resolved set of local assets, while Group Agents remain responsible for
-how those assets participate in composition.
+When the deck needs real or generated images, one or more Image Agents work on disjoint asset groups.
+They handle open-ended retrieval, generation, candidate comparison, and visual selection; deterministic
+transfer, registration, and validation remain tools. When no image work is needed, no Image Agent is
+created. Group Agents remain responsible for how accepted assets participate in composition.
 
 Group authoring closes the first visual loop. Each group produces a complete first draft, renders the
 group, inspects the latest pixels, combines the visible problems, revises, and renders again. Once all
@@ -161,8 +162,8 @@ carry out later edits.
 ## Where the project stands
 
 Today’s release is a research preview. The public repository contains the project narrative, the system
-figures, the MURAL brand system, and bilingual documentation. The grouped workflow, centralized asset
-stage, group-level inspection, whole-deck review, and scope-aware revision routes have been implemented
+figures, the MURAL brand system, and bilingual documentation. The grouped workflow, conditional support
+roles, group-level inspection, whole-deck review, and scope-aware revision routes have been implemented
 in the working system, but the experimental code and Skill still need a clean version freeze.
 
 The training set, canonical THREAD-Bench cases, judge calibration, model checkpoints, and effectiveness
@@ -170,6 +171,6 @@ results are not public yet. We are deliberately leaving those claims open instea
 page with provisional numbers. Their release requires reproducible configurations, traceable run
 ledgers, redistribution review, and licenses appropriate to each artifact.
 
-MURAL starts from a simple premise: a presentation is not a pile of independently acceptable slides.
-It is a designed argument that persists through evidence, planning, production, review, and change. The
-system should be organized around that lifecycle too.
+MURAL starts from a simple premise: the goal is not to replace one workflow with more Agents. It is to
+give every long-lived decision an explicit state, an accountable owner, and a reliable path for review
+and revision.

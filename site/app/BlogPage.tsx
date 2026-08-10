@@ -238,6 +238,43 @@ export function BlogPage({ language }: { language: Language }) {
         ["E4", "Boundary ablations", "Separate conditional delegation, always-delegate, Image boundaries, and ownership topology."],
         ["E5", "Revision and preservation", "Measure edit success, untouched-slide preservation, regressions, and replay scope together."],
       ] as const;
+  const figureShowcase = isZh
+    ? [
+        {
+          index: "01",
+          label: "责任拓扑",
+          title: "从逐页拆分，到依赖对齐的共同责任",
+          description: "比较单条轨迹、逐页并行与 MURAL，重点不是 Agent 数量，而是跨页关系在哪里被共同生成、检查和重放。",
+          src: "/execution-topologies.png",
+          alt: "顺序式、完整上下文并行和 MURAL 页面组执行拓扑",
+        },
+        {
+          index: "02",
+          label: "完整生命周期",
+          title: "从需求接地，到分组制作与后续修改",
+          description: "MURAL 把长期决策外置为共享状态，并让材料、规划、页面组、整册复审与修改路由形成可继续执行的创作链路。",
+          src: "/authoring-lifecycle.png",
+          alt: "MURAL 从材料、规划、分组制作到复审、修改与交付的完整生命周期",
+        },
+      ] as const
+    : [
+        {
+          index: "01",
+          label: "Responsibility topology",
+          title: "From per-slide decomposition to dependency-aligned ownership",
+          description: "The comparison is not about Agent count. It shows where cross-slide relations are jointly authored, inspected, and replayed.",
+          src: "/execution-topologies.png",
+          alt: "Sequential, full-context parallel, and MURAL slide-group execution topologies",
+        },
+        {
+          index: "02",
+          label: "Full lifecycle",
+          title: "From grounded intent to grouped authoring and later revision",
+          description: "MURAL externalizes long-lived decisions, then connects material, planning, slide groups, whole-deck review, and impact-scoped revision.",
+          src: "/authoring-lifecycle.png",
+          alt: "The MURAL material, planning, group-authoring, review, revision, and delivery lifecycle",
+        },
+      ] as const;
 
   return (
     <main className="blog-page" lang={isZh ? "zh-CN" : "en"} id="top">
@@ -269,6 +306,12 @@ export function BlogPage({ language }: { language: Language }) {
                 <a href="https://github.com/G1nkgo7/MURAL-Presenter" target="_blank" rel="noreferrer">GitHub <span>↗</span></a>
                 <a href={paperHref}>Paper <small>{isZh ? "本地预览" : "LOCAL PREVIEW"}</small></a>
                 <a href={homeHref}>{isZh ? "项目主页" : "Project page"} <span>→</span></a>
+              </div>
+              <div className="blog-principles" aria-label={isZh ? "MURAL 方法关键词" : "MURAL method keywords"}>
+                <span>shared state</span>
+                <span>group ownership</span>
+                <span>deck closure</span>
+                <span>scoped revision</span>
               </div>
             </div>
           </div>
@@ -362,6 +405,65 @@ export function BlogPage({ language }: { language: Language }) {
           </div>
         </section>
 
+        <section className="figure-showcase section-shell" id="system-figures" aria-labelledby="figure-showcase-title">
+          <div className="figure-showcase-head">
+            <div>
+              <span className="kicker">{isZh ? "两张图读懂 MURAL" : "MURAL IN TWO FIGURES"}</span>
+              <h2 id="figure-showcase-title">{isZh ? "先看责任如何变化，再看生命周期如何闭合。" : "First see how ownership changes. Then see how the lifecycle closes."}</h2>
+            </div>
+            <p>{isZh
+              ? "这两张图回答不同的问题：第一张解释为什么需要 slide groups，第二张解释共享状态、组内闭环、整册复审和后续修改如何串成一个系统。"
+              : "The first figure explains why slide groups exist. The second connects shared state, group-local loops, whole-deck review, and later revision into one system."}</p>
+          </div>
+
+          <div className="figure-viewer">
+            {figureShowcase.map((figure, index) => (
+              <input
+                className="figure-viewer-toggle"
+                type="radio"
+                name="mural-system-figure"
+                id={`mural-system-figure-${index + 1}`}
+                aria-label={`${isZh ? "显示" : "Show"} ${figure.label}`}
+                defaultChecked={index === 0}
+                key={figure.index}
+              />
+            ))}
+            <div className="figure-viewer-bar">
+              <div className="figure-viewer-status"><i aria-hidden="true" /><span>{isZh ? "SYSTEM WALKTHROUGH" : "SYSTEM WALKTHROUGH"}</span></div>
+              <div className="figure-viewer-tabs" aria-label={isZh ? "选择系统图" : "Choose a system figure"}>
+                {figureShowcase.map((figure, index) => (
+                  <label htmlFor={`mural-system-figure-${index + 1}`} key={figure.index}>
+                    <span>{figure.index}</span>{figure.label}
+                  </label>
+                ))}
+              </div>
+              <div className="figure-viewer-count"><b aria-hidden="true" /> / 02</div>
+            </div>
+            <div className="figure-viewer-stage">
+              {figureShowcase.map((figure, index) => (
+                <figure className={`figure-viewer-panel figure-viewer-panel-${index + 1}`} key={figure.index}>
+                  <div className="figure-viewer-canvas"><img src={figure.src} alt={figure.alt} /></div>
+                  <figcaption>
+                    <span>FIGURE {figure.index}</span>
+                    <div><strong>{figure.title}</strong><p>{figure.description}</p></div>
+                  </figcaption>
+                </figure>
+              ))}
+            </div>
+            <div className="figure-viewer-thumbs">
+              {figureShowcase.map((figure, index) => (
+                <label htmlFor={`mural-system-figure-${index + 1}`} className={`figure-viewer-thumb figure-viewer-thumb-${index + 1}`} key={figure.index}>
+                  <img src={figure.src} alt="" />
+                  <span><b>{figure.index}</b><strong>{figure.label}</strong></span>
+                </label>
+              ))}
+            </div>
+          </div>
+          <p className="figure-showcase-note">{isZh
+            ? "提示：点击上方标签或下方缩略图切换。交互由原生 HTML 控件完成，离线与无脚本环境同样可用。"
+            : "Tip: switch with the tabs or thumbnails. Native HTML controls keep the walkthrough usable offline and without scripts."}</p>
+        </section>
+
         <div className="article-layout section-shell">
           <aside className="article-toc">
             <strong>{t.contents}</strong>
@@ -378,18 +480,6 @@ export function BlogPage({ language }: { language: Language }) {
                 <div className="article-section-number">{String(index + 1).padStart(2, "0")}</div>
                 <h2>{section.title}</h2>
                 {section.paragraphs.map((paragraph) => <p key={paragraph}>{paragraph}</p>)}
-                {section.figure && (
-                  <figure className="article-figure">
-                    <div className="figure-bar">
-                      <span>{section.id === "groups" ? "FIGURE 01" : "FIGURE 02"}</span>
-                      <strong>{section.id === "groups"
-                        ? (isZh ? "责任拓扑" : "Responsibility topology")
-                        : (isZh ? "完整生命周期" : "Full lifecycle")}</strong>
-                    </div>
-                    <img src={section.figure.src} alt={section.figure.alt} />
-                    <figcaption>{section.figure.caption}</figcaption>
-                  </figure>
-                )}
               </section>
             ))}
 

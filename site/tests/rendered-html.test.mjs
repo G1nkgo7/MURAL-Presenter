@@ -81,6 +81,9 @@ test("server-renders the English launch article", async () => {
   assert.match(html, /Not more Agents\. Better responsibility boundaries\./);
   assert.match(html, /Dependency-aligned ownership/);
   assert.match(html, /CREATE AN AGENT BOUNDARY ONLY WHEN/);
+  assert.match(html, /MURAL IN TWO FIGURES/);
+  assert.match(html, /From per-slide decomposition to dependency-aligned ownership/);
+  assert.match(html, /mural-system-figure-2/);
   assert.match(html, /Let experiments decide which boundaries earn their cost\./);
   assert.doesNotMatch(html, /A centralized image stage resolves reusable assets/);
   assert.match(html, /MURAL-Presenter/);
@@ -95,6 +98,9 @@ test("server-renders the Chinese launch article", async () => {
   assert.match(html, /把完整生命周期写成可执行 Skill/);
   assert.match(html, /不是更多 Agent，而是更清楚的责任边界。/);
   assert.match(html, /依赖对齐 ownership/);
+  assert.match(html, /两张图读懂 MURAL/);
+  assert.match(html, /从逐页拆分，到依赖对齐的共同责任/);
+  assert.match(html, /交互由原生 HTML 控件完成/);
   assert.match(html, /让实验决定哪些边界真的有价值。/);
   assert.doesNotMatch(html, /统一 Image 阶段会在页面组开工前/);
   assert.match(html, /href="\/blog">English<\/a>/);

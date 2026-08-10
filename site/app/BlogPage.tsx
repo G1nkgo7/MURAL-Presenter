@@ -292,60 +292,53 @@ export function BlogPage({ language }: { language: Language }) {
       </header>
 
       <article>
-        <header className="blog-hero section-shell">
-          <div className="blog-hero-copy">
-            <div className="blog-hero-title">
-              <span className="kicker">{t.eyebrow}</span>
-              <h1>{t.title}</h1>
-            </div>
-            <div className="blog-hero-intro">
+        <header className="blog-mural-hero">
+          <div className="blog-mural-brush blog-mural-brush-a" aria-hidden="true" />
+          <div className="blog-mural-brush blog-mural-brush-b" aria-hidden="true" />
+          <div className="blog-mural-grid section-shell">
+            <div className="blog-mural-copy">
+              <div className="blog-mural-overline">
+                <span>{t.eyebrow}</span>
+                <b>FIELD NOTE · 01 / 2026</b>
+              </div>
+              <div className="blog-mural-word" aria-label="MURAL Presenter"><strong>MURAL</strong><span>PRESENTER</span></div>
+              <h1 aria-label={t.title}>
+                <span>{isZh ? "演示文稿不是" : "A presentation is not"}</span>
+                <em>{isZh ? "一摞页面。" : "a stack of slides."}</em>
+              </h1>
               <p className="blog-subtitle">{t.subtitle}</p>
               <p className="blog-dek">{t.dek}</p>
-              <div className="blog-meta">{t.readTime}</div>
-              <div className="blog-project-actions" aria-label={isZh ? "项目资源" : "Project resources"}>
-                <a href="https://github.com/G1nkgo7/MURAL-Presenter" target="_blank" rel="noreferrer">GitHub <span>↗</span></a>
-                <a href={paperHref}>Paper <small>{isZh ? "本地预览" : "LOCAL PREVIEW"}</small></a>
-                <a href={homeHref}>{isZh ? "项目主页" : "Project page"} <span>→</span></a>
+              <div className="blog-mural-actions">
+                <div className="blog-project-actions" aria-label={isZh ? "项目资源" : "Project resources"}>
+                  <a href="https://github.com/G1nkgo7/MURAL-Presenter" target="_blank" rel="noreferrer">GitHub <span>↗</span></a>
+                  <a href={paperHref}>Paper <small>{isZh ? "本地预览" : "LOCAL PREVIEW"}</small></a>
+                  <a href={homeHref}>{isZh ? "项目主页" : "Project page"} <span>→</span></a>
+                </div>
+                <div className="blog-meta">{t.readTime}</div>
               </div>
-              <div className="blog-principles" aria-label={isZh ? "MURAL 方法关键词" : "MURAL method keywords"}>
-                <span>shared state</span>
-                <span>group ownership</span>
-                <span>deck closure</span>
-                <span>scoped revision</span>
-              </div>
+            </div>
+            <div className="blog-mural-art">
+              <div className="blog-mural-art-label"><span>THE NAME IS THE METHOD</span><b>01 → N</b></div>
+              <div className="blog-mural-panels" aria-hidden="true"><i /><i /><i /></div>
+              <img
+                src="/mural-mascot.png"
+                alt={isZh ? "三个 MURAL Agent 共同绘制 M 形壁画" : "Three MURAL agents jointly painting an M-shaped mural"}
+              />
+              <p><span>03 AGENTS · 01 DECK</span>{t.brandTagline}</p>
             </div>
           </div>
-          <div className="blog-brand-hero">
-            <div className="blog-brand-art">
-              <picture>
-                <source media="(max-width: 680px)" srcSet="/mural-mascot.png" />
-                <img
-                  src="/mural-blog-hero-source.png"
-                  alt={isZh ? "三个 MURAL Agent 共同绘制 M 形壁画" : "Three MURAL agents jointly painting an M-shaped mural"}
-                />
-              </picture>
+          <div className="blog-mural-legend section-shell" aria-label="Multi-Agent Unified Revision-Aware Authoring for Long-Horizon Presentations">
+            <div className="blog-mural-legend-intro">
+              <span>{isZh ? "五个字母" : "FIVE LETTERS"}</span>
+              <strong>{isZh ? "一套完整方法" : "ONE AUTHORING SYSTEM"}</strong>
             </div>
-            <div className="blog-brand-copy">
-              <div className="blog-brand-label"><span>RESEARCH PREVIEW</span><span>01 → N</span></div>
-              <div className="blog-brand-word"><strong>MURAL</strong><em>PRESENTER</em></div>
-              <div className="blog-brand-expansion">
-                <div className="blog-brand-expansion-label">
-                  <span>{isZh ? "MURAL 的五个字母分别代表" : "What MURAL stands for"}</span>
-                  <i aria-hidden="true" />
-                </div>
-                <div className="blog-brand-legend" aria-label="Multi-Agent Unified Revision-Aware Authoring for Long-Horizon Presentations">
-                  {acronym.map(([initial, term, meaning], index) => (
-                    <span className={initial === "R" ? "is-revision" : ""} key={initial}>
-                      <i>0{index + 1}</i>
-                      <b>{initial}</b>
-                      <strong>{term}</strong>
-                      <small>{meaning}</small>
-                    </span>
-                  ))}
-                </div>
-              </div>
-              <p>{t.brandTagline}</p>
-            </div>
+            {acronym.map(([initial, term, meaning], index) => (
+              <span className={initial === "R" ? "is-revision" : ""} key={initial}>
+                <i>0{index + 1}</i>
+                <b>{initial}</b>
+                <span><strong>{term}</strong><small>{meaning}</small></span>
+              </span>
+            ))}
           </div>
         </header>
 
@@ -429,7 +422,7 @@ export function BlogPage({ language }: { language: Language }) {
               />
             ))}
             <div className="figure-viewer-bar">
-              <div className="figure-viewer-status"><i aria-hidden="true" /><span>{isZh ? "SYSTEM WALKTHROUGH" : "SYSTEM WALKTHROUGH"}</span></div>
+              <div className="figure-viewer-status"><i aria-hidden="true" /><span>{isZh ? "MURAL 作品墙" : "MURAL GALLERY WALL"}</span></div>
               <div className="figure-viewer-tabs" aria-label={isZh ? "选择系统图" : "Choose a system figure"}>
                 {figureShowcase.map((figure, index) => (
                   <label htmlFor={`mural-system-figure-${index + 1}`} key={figure.index}>

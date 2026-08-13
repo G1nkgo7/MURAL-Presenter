@@ -269,10 +269,13 @@ class ConsolidatedScriptTest(unittest.TestCase):
             encoding="utf-8"
         )
 
-        self.assertIn("同一个 Slide 按组内页序串行完成每页闭环", skill)
+        self.assertIn("原子页优先", skill)
+        self.assertIn("普通多页组不得超过 3 页", skill)
         self.assertIn("当前页达到 ready 后才进入下一页", skill)
-        self.assertIn("每页最多 1 轮", skill)
-        self.assertIn("最多执行 **1 轮**", slide)
+        self.assertIn("1 轮 hard/semantic repair", skill)
+        self.assertIn("1 轮 aesthetic completion", skill)
+        self.assertIn("每页总 refine 最多 2 轮", slide)
+        self.assertIn("aesthetic_completion_target", slide)
         review = (SKILL_ROOT / "subagents/review.md").read_text(encoding="utf-8")
         self.assertIn("最多只做 1 轮 refine", review)
         self.assertIn("plan/design-brief.md#Style Lock", slide)
@@ -281,6 +284,56 @@ class ConsolidatedScriptTest(unittest.TestCase):
         self.assertNotIn("调试截图放系统临时目录", slide)
         self.assertIn("Style Lock 不是固定页面模板", plan)
         self.assertNotIn("不边写一页边渲一页", slide)
+
+    def test_visual_prior_restoration_is_routed_and_executable(self):
+        skill = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
+        skill_en = (SKILL_ROOT / "SKILL.en.md").read_text(encoding="utf-8")
+        styles = (SKILL_ROOT / "references/design-styles.md").read_text(encoding="utf-8")
+        recipes = (SKILL_ROOT / "references/aesthetic-recipes.md").read_text(encoding="utf-8")
+        plan = (SKILL_ROOT / "references/planning-contract.md").read_text(encoding="utf-8")
+        checklist = (SKILL_ROOT / "references/quality-checklist.md").read_text(encoding="utf-8")
+
+        for content in (skill, skill_en):
+            self.assertIn("aesthetic-recipes.md", content)
+            self.assertIn("resolved_system", content)
+        self.assertIn("一套完整 `S1–S13 resolved system`", skill)
+        self.assertIn("从系统标题一直读到下一系统标题", styles)
+        self.assertIn("13 套整机配方", styles)
+        self.assertIn("## 1. 编辑级排版配方", recipes)
+        self.assertIn("## 2. 四层调色板配方", recipes)
+        self.assertIn("design_ambition", recipes)
+        self.assertIn("typography_recipe / palette_recipe", plan)
+        self.assertIn("学术题材不长成文档截图", checklist)
+
+    def test_attachment_priorities_cannot_be_satisfied_by_speech(self):
+        skill = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
+        material = (SKILL_ROOT / "subagents/material.md").read_text(encoding="utf-8")
+        material_en = (SKILL_ROOT / "subagents/material.en.md").read_text(encoding="utf-8")
+        plan = (SKILL_ROOT / "references/planning-contract.md").read_text(encoding="utf-8")
+        slide = (SKILL_ROOT / "subagents/slide.md").read_text(encoding="utf-8")
+        review = (SKILL_ROOT / "subagents/review.md").read_text(encoding="utf-8")
+
+        for content in (material, material_en):
+            self.assertIn("priority_ledger: complete", content)
+            self.assertIn("screen_priority: must_present | supporting | speech_only", content)
+        self.assertIn("attachment_priority_ids", plan)
+        self.assertIn("讲稿只能解释和展开，不能作为映射终点", skill)
+        self.assertIn("讲稿已经解释不能成为删减理由", slide)
+        self.assertIn("observed_carrier", review)
+
+    def test_controlled_svg_archetypes_are_allowed_without_disabling_lint(self):
+        skill = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
+        layout = (SKILL_ROOT / "references/layout-patterns.md").read_text(encoding="utf-8")
+        design = (SKILL_ROOT / "references/design-rules.md").read_text(encoding="utf-8")
+        renderer = (SKILL_ROOT / "scripts/render.py").read_text(encoding="utf-8")
+
+        self.assertIn("受控 SVG", skill)
+        for archetype in ("three-layer", "radial", "funnel", "cycle", "pyramid"):
+            self.assertIn(f"`{archetype}`", layout)
+        self.assertIn('class="svg-diagram svg-allowed"', layout)
+        self.assertIn("禁止自由发挥大型 SVG", design)
+        self.assertIn("CONTROLLED_SVG", renderer)
+        self.assertIn("tooLargeForIcon && !CONTROLLED_SVG.test(c)", renderer)
 
     def test_data_fidelity_checks_source_structure_and_final_chart(self):
         material = (SKILL_ROOT / "subagents/material.md").read_text(encoding="utf-8")
@@ -393,8 +446,9 @@ class ConsolidatedScriptTest(unittest.TestCase):
             encoding="utf-8"
         )
 
-        self.assertIn("制作方式与构图亲缘性", skill)
-        self.assertIn("章名相同不构成分组理由", skill)
+        self.assertIn("普通同构页按小组", skill)
+        self.assertIn("相邻、同章、同白底", plan)
+        self.assertIn("不构成合组理由", plan)
         self.assertIn("Repetition & rhythm preflight", skill)
         self.assertIn("motif_role", plan)
         self.assertIn("母题有主次与缺席", plan)

@@ -540,7 +540,8 @@ _LAYOUT_GUARD_JS = r"""
   const W = window.innerWidth, H = window.innerHeight;
   const DECOR = /decor|deco|doodle|blob|ornament|watermark|sticker|shape|star|sparkle|badge|stamp|seal|aura|glow|texture|pattern/i;
   const OK = /overlap-ok|allow-overlap|scrim|text-plate|overlay|bleed|backdrop/i;
-  const SKIP_SVG = /icon|logo|mark|brand|page-no|pageno|qr|spark|decor|deco|watermark|ornament|bleed|svg-allowed|vector-asset/i;
+  const SKIP_SVG = /icon|logo|mark|brand|page-no|pageno|qr|spark|decor|deco|watermark|ornament|bleed|vector-asset/i;
+  const CONTROLLED_SVG = /svg-diagram|svg-allowed/i;
   const out = {decor: [], footer: [], svgLarge: [], svgSmall: [], svgLabel: [], abs: [], customBody: [],
                footerPushed: null, widow: [], imgLonely: [], coverOOB: []};
 
@@ -758,7 +759,7 @@ _LAYOUT_GUARD_JS = r"""
     const area = r.width * r.height;
     const bodyArea = Math.max(1, bodyRect.width * bodyRect.height);
     const tooLargeForIcon = r.width > 160 || r.height > 160 || area > 0.06 * bodyArea;
-    if(tooLargeForIcon){
+    if(tooLargeForIcon && !CONTROLLED_SVG.test(c)){
       out.svgLarge.push({cls: c.slice(0, 32), size: `${Math.round(r.width)}×${Math.round(r.height)}`});
     }
     const tooSmall = r.width < 0.52 * bodyRect.width || r.height < 0.42 * bodyRect.height || area < 0.28 * bodyArea;
@@ -1702,9 +1703,7 @@ def main():
                         print("   · %s %s" % (e.get("sel"), " ".join(_sides)))
                 large_svg = lg.get("svgLarge") or []
                 if large_svg:
-                    print("⚠ SVG-LARGE: %d 个 SVG 超出 icon/标记尺度——新页面的大型流程、架构、机制图"
-                          "默认改用 Canvas 几何 + HTML 标签，或图片 + HTML 标注；仅用户要求矢量或复用准确矢量资产时"
-                          "给 class `svg-allowed`/`vector-asset` 豁免:" % len(large_svg))
+                    print("⚠ SVG-LARGE: %d 个 SVG 超出 icon/标记尺度且未声明受控 archetype——静态 ≤7 节点的三层/径向/漏斗/循环/金字塔图按 layout-patterns §9 使用 `svg-diagram svg-allowed`；其他大型图改用 Canvas + HTML 或图片 + HTML；准确矢量资产用 `vector-asset`:" % len(large_svg))
                     for e in large_svg:
                         print("   · svg class=\"%s\" 大小 %s" % (e.get("cls"), e.get("size")))
                 small = lg.get("svgSmall") or []

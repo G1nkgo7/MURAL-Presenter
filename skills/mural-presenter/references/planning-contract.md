@@ -19,10 +19,12 @@
 - 一句话核心命题与 1–3 条 takeaway；
 - 叙事弧：开场、各幕、转折、结论、行动；
 - 逐页表：页码、标题、页面职责、页型、核心证据、视觉媒介、节奏；
-- Style Lock 摘要与全册设计读数：明确稳定的视觉语言和允许变化的构图变量；Style Lock 不是固定页面模板；
+- Style Lock 摘要与全册设计读数：记录 `design_ambition`、完整读取的 `resolved_system_id`、`resolved_system_read: complete`、保留/转译/删除的系统层，以及稳定视觉语言和允许变化的构图变量；Style Lock 不是固定页面模板；
+- `typography_recipe / palette_recipe`：完整落实 `aesthetic-recipes.md` 的标题/正文/数字角色、type-event map、中性/accent/语义/效果四层与对比计划，禁止只写字体名和主色 hex；
 - 字体合同：显式记录 `title_voice / title_scale / title_treatment / body_voice / numeric_voice / font_roles`。普通演讲默认让短标题与正文形成舞台级反差；正式/严谨场景才收敛到 Noto Sans/Serif SC。严谨型 1–2 族、常规演讲 2–3 族、明确表达型演讲 3–4 族，且所有角色跨页稳定；
 - `image_opportunity_map`：哪些页面需要真实证据、人物/场景识别、产品展示或情绪主画面，哪些页面更适合图表/Canvas/排印，以及判断理由；
 - 有附件时的 `material_visual_mode` 与 reuse map：区分事实来源、可直接复用的图片/图表、可参考的视觉语言和需要重新设计的文档结构；
+- 有附件时的 `attachment_priority_map`：逐项复制 `grounded-knowledge.md` 中的 `priority_id / screen_priority / source_locator / fidelity_form`，并为每个 `must_present` 写实际上屏页与可见载体；讲稿不得作为上屏页或可见载体；
 - 有图片附件时的 `attachment_visual_map`：每张图写 `source_path`、`decision`（must-show / reuse / reference-only / omit）、`material_asset_type`（attachment-image / figure-crop / page-facsimile）、实际 `asset_path`、计划上屏页、处理方式与理由。论文命名 Figure 使用 `figure-crop`，并保留 `figure_id / source_page / crop_box`；整页论文页面仅在页面原貌本身就是证据时使用 `page-facsimile`。该判断独立于外部/生成图片的 `image_opportunity`；后者为 `none` 不能自动排除用户附件；
 - `background_system`：先说明本场景为何偏克制秩序或氛围表达，再定义 `base_canvas_family`（普通内容页共同的明暗/色温/材质家族）、局部色场/环境光、主题肌理、图片背景、允许整页使用的变体及其叙事用途，并写清整页变体的 `enter_from / exit_to`。表达型场景不能无理由把“整册同一纯色底”当作安全默认；需要下载或生成的背景进入 Image 素材计划；
 - `visual_state_range`：在基础画布家族内允许变化的明度、色场、图片占比、信息密度、构图方向与章节状态；给出适用页面与前后承接，避免把统一误解为全册同一底色或同一几何；
@@ -30,7 +32,7 @@
 - scene_register 与选择理由；
 - `visual_thesis / signature_visual` 的兑现地图：落在哪些页面、以什么可见形式出现、Review 如何判断不是只写在 brief 里；
 - `spatial_rhythm`：哪些页铺满、哪些页聚焦、哪些页留白，以及这些变化如何服务叙事；
-- `special_page_system`：bookends 与 dividers 共享的字体角色、标题锚点家族、图像处理和图形语法，以及各页不同的构图动作；
+- `special_page_system`：由 `bookend_system / divider_system` 组成的跨页视觉合同，记录单页生产的封面、结尾和各 divider 所共享的字体角色、标题锚点家族、图像处理与图形语法，以及各页不同的构图动作；
 - Production groups；
 - `Repetition & rhythm preflight`：规划冻结前对页面地图做一次重复率与节奏预检，记录需要调整的页面或 `pass`；
 - 假设、风险和待核项。
@@ -43,33 +45,40 @@
 
 ### Production groups
 
-按**制作方式、构图亲缘性与叙事连续性**分组，不按章节或固定页数切块。优先级是：相容的制作任务与媒介 → 可共享的构图系统 → 叙事连续 → 章节归属。属于同一章但分别使用真实照片、复杂 Canvas、ECharts、重图像合成或普通 cards 的页面，不应因此组成一个粗粒度章节组：
+采用**原子页优先、普通同构页小组化**。封面、每张 divider、closing、hero/视觉峰值、复杂图解、独立高密图表和重图像合成页必须各自成为单页 group。只有制作方式、信息结构和视觉语法真正同构的普通内容页才可合组，默认 2 页、最多 3 页；相邻、同章、同白底、同左右分屏或“共享 CSS”都不构成合组理由：
 
 ```text
 ## Production groups
-### bookends
-- pages: 01,12
-- purpose: 开场与终幕形成回应
+### cover-01
+- pages: 01
+- purpose: 建立开场命题与视觉世界
 - design_dna: 字体角色、标题锚点、图片处理、母题
-- page_variations: 01 建立；12 回响并收束
-- visual_beat: 提出 → 回应
-- boundary_handoff: 01 从无到基础画布；12 从上一页继承主色/母题并进入终幕
+- why_grouped: atomic-special-page
+- anti_repetition_delta: 建立本册第一次尺度事件
+- boundary_handoff: 从无到基础画布
 
-### dividers
-- pages: 04,08
-- purpose: 让章节切换属于同一过渡系统
+### divider-04
+- pages: 04
+- purpose: 单独导演第一次章节换场
 - design_dna: 章节编号、展示字阶、标题锚点、图像/色场处理
-- page_variations: 04 阈值变化；08 扩张或转向
-- visual_beat: 停顿 → 转向
-- boundary_handoff: 分别写明前一页状态、divider 换场动作、新章首两页如何承接
+- why_grouped: atomic-divider
+- anti_repetition_delta: 相对封面改变重心与裁切动作
+- boundary_handoff: 写明前一页状态、换场动作、新章首两页如何承接
+
+### content-05-06
+- pages: 05,06
+- purpose: 两页共享同一证据比较任务
+- design_dna: 同一图像处理与比较语法
+- why_grouped: 同媒介、同信息结构、同一比较动作
+- anti_repetition_delta: 05 左侧结论+右侧证据；06 满宽证据+底部结论，不做左右互换
+- boundary_handoff: 写明进入与退出状态
 ```
 
-- `bookends` 通常包含封面与结束页；
-- `dividers` 包含全部章节过渡页，由同一个 Slide 页组负责；
-- 内容页按连续论证、共享素材或图形语言分组，但一个组还必须共享相容的制作任务。普通 cards/list 可以形成亲缘组；复杂 Canvas、独立数据图、重图像合成等若没有真正共享的构图系统，应各自成组。不要用“都是内容页”替代制作负荷判断；页组规模应允许同一个 Slide 按页序完成每页独立像素闭环，再做一次组内总览；
+- cover、每张 divider、closing、hero、复杂图解和独立重制作页都是单页 group；它们通过 `design_dna / boundary_handoff` 保持亲缘，不通过同一个 Agent 批量制作；
+- 普通同构内容组默认 2 页、最多 3 页，每组必须写 `why_grouped` 和逐页 `anti_repetition_delta`；“只是左右互换”不算差异；
 - 每页只能属于一个组；全部页面必须被覆盖；
 - 每组写 `boundary_handoff`：至少给出进入前一页、组内首尾页和离开后一页的画布家族、明度、色场/图片处理与应延续的母题。Slide 不读取组外页面，因此边界信息不能只隐含在全册逐页表中；
-- `design_dna` 从 Style Lock 提取稳定语言，`page_variations` 和 `visual_beat` 定义受控变化；二者共同保证“同一设计世界、不同最佳构图”，不得把上一页当模板只换文案。
+- `design_dna` 从 Style Lock 提取稳定语言，`anti_repetition_delta` 定义受控变化；二者共同保证“同一设计世界、不同最佳构图”，不得把上一页当模板只换文案。
 
 ### Repetition & rhythm preflight
 
@@ -98,6 +107,7 @@
 - 页型 / arch：<名称>
 - 密度：anchor | dense | breathing
 - production_group：<group id>
+- attachment_priority_ids：<本页承接的 must_present/supporting priority_id；无附件重点则省略>
 
 ## 最终屏显文案
 - 标题：<本页标题；保留该固定字段供讲稿同步>
@@ -109,7 +119,7 @@
 - 观众价值检查：每个可见文本节点分别说明它向听众增加了什么信息，并横向比较标题、kicker / subtitle、图片角标、badge、callout、图例与页脚；若只是复述主题、状态、页型、页码、制作状态或内部规划字段，删除或改写。同一状态词（如“整理前 / 整理后”“现状 / 目标”“问题 / 方案”）通常只保留一个主载体，其余区域补充对象、原因或结果
 
 ## 视觉实现
-- medium：photo | generated image | canvas+HTML labels | ECharts | typography | small SVG icon；同时点明本页的**主要视觉载体**。`small SVG icon`、边框、空面板和装饰线只能辅助，不能冒充主要视觉；选择 typography 时说明文字如何通过尺度、层级和构图独立成立
+- medium：photo | generated image | controlled SVG diagram | canvas+HTML labels | ECharts | typography | small SVG icon；同时点明本页的**主要视觉载体**。受控 SVG 只用于 §9 已定义的静态结构 archetype 并使用 `svg-diagram svg-allowed`；`small SVG icon`、边框、空面板和装饰线只能辅助，不能冒充主要视觉；选择 typography 时说明文字如何通过尺度、层级和构图独立成立
 - image_opportunity：**只写一个机器可读枚举**，不带任何解释：`real_required` / `generated_ok` / `none` / `chart_only` / `canvas_only` / `typography_only`（`none` 及 `*_only` 判定为无位图）。启动 gate 与交付验收只解析这一行的枚举；理由另写在下一行的 `image_opportunity_reason`，绝不写进本行。
 - image_opportunity_reason：人类可读理由（一句话）。判定内容：先写值得被看见的主体/场景，以及图片能增加的证据、识别、临场感或情绪价值，再决定媒介。没有项目实拍不等于没有图片机会；尚未建成的空间、虚构人物、服务场景与风格化主视觉可考虑统一风格的生成图。具名真实人物、主创、嘉宾或团队成员是默认的真实图片机会：应规划批量检索肖像、官方简介照、活动照或团队合影；“不生成假真人”意味着改走真图检索，不意味着 `none`。具名作品、软件/产品、制作流程和真实案例也应先检查官方画面、界面、幕后图、过程拆解、实物或现场照片，而不是直接退成小图标与空卡片。若为 `none`，理由须说明真实检索后仍不可得且位图为何不增加听众价值，或为何会比图表/Canvas/排印更含糊；“CSS 更可控”“没有实拍”“担心 AI 出错”“为了风格统一”不是单独成立的 none 理由
 - presentation：位图的**展示/背景处理合同**，取值**只能是四枚举之一**：`subject-only` | `framed-scene` | `full-bleed` | `evidence-crop`。**有位图页必填、无位图页完全省略这一行**（不要写 `无` / `none` / `not-applicable` 占位）。⛔ `split-media` / `right-half` / `cards` / `分屏` / `左右` 等是**版式/构图（layout/arch）**，绝不能写进 presentation；它们放到 `layout` 行。角色、产品或物件需要悬浮、跨色场叠放或作为独立元素时必须选 `subject-only`，并在素材 brief 写 `subject_only: true`；其他三种必须把原图背景作为有意的画面、满幅或证据边界，不能偶然露出矩形底色。（例：夜间阅读实拍用于左右分屏 → `presentation: framed-scene`，分屏本身写在 `layout`。）
@@ -118,6 +128,7 @@
 - spatial_budget：主焦点、文字、证据视觉分别占用哪些区域；剩余空间是呼吸、动线还是待消除的死白。`dense` 页的主信息不得只挤在半张画布或一条窄带，否则先改空间分配而不是留给 Slide 猜
 - background_treatment：本页如何使用全册背景系统；先声明沿用 `base_canvas_family`、局部色场/环境光、主题肌理、图片背景还是有叙事理由的整页变体，再说明与前后页的颜色/明度/肌理承接。普通内容页优先保留基础画布，把章节差异放进局部大色场、图片调色、条带或母题状态。表达型场景若选择纯色页，应说明它承担呼吸、对比或换场，而不是因为没有继续设计背景
 - bold_action：本页唯一的主要设计动作；普通内容页可写 none，特殊页与峰值页必须明确
+- resolved_system_action：本页具体落实所选系统的哪一层关系（字体 / 色场 / 母题 / 图表 / 图片处理），不得只写系统 ID
 - image：主体、用途、比例、实际路径与 `origin`（downloaded / generated / material / derived）；下载图保留来源 URL，用户附件保留原路径，派生图保留 parent asset（如需要）
 - crop_contract（存在位图时）：`fit`（cover / contain / cutout）、`focal_point`、`protected_parts`、`allowed_crop` 与推荐 `object_position`。`protected_parts` 只列承担识别或语义的部分，如人脸/头顶/双手、完整产品轮廓、Logo、作品主体、图表坐标轴/图例；允许背景边缘有意出血，但不能用“满幅更有冲击力”解释主体残缺
 - material_asset_type：attachment-image | figure-crop | page-facsimile（仅复用附件视觉时）。页面称为 `Figure/Fig./图 N` 时必须是 `figure-crop`；不得把 PDF 整页截图当 Figure。
@@ -137,7 +148,7 @@
 <可直接朗读的完整口语段落，推进解释或过渡；不机械复读屏显，不朗读来源，不套 Markdown 代码围栏，不写内部路径、编排器假设或生产备注>
 ```
 
-逐页计划是 Slide 的内容合同。只有 `## 最终屏显文案` 中通过内容充分性与观众价值检查的内容可以进入 HTML；`页面导演`、`视觉实现`、`Reference route`、`来源` 和 `口语讲稿` 都是非屏显区。屏显文案、数据、节点关系和素材路径必须定稿；Slide 可以调整 `.slide-body` 内的比例和排法，并可省略计划中语义完全重复的低价值屏显节点，但不得改事实、自创文案或增加计划外的大型装饰图。`视觉验收` 写观众能从像素读出的结果，不写“做得高级”“有科技感”这类审美愿望；流程/机制/方法/数据/media-led 页需明确语义对象、关系方向与领域证据，纯排印页可用一句话说明焦点与阅读顺序。冻结前先用 Style Lock 的字阶做一次版面预演：如果一页只有把听众需要阅读的文字压到 `--fs-min` 以下才放得下，应在规划阶段缩短屏显、重组层级或拆分职责，不能把“靠小字塞下”交给 Slide 解决。
+逐页计划是 Slide 的内容合同。只有 `## 最终屏显文案` 中通过内容充分性与观众价值检查的内容可以进入 HTML；`页面导演`、`视觉实现`、`Reference route`、`来源` 和 `口语讲稿` 都是非屏显区。内部 `attachment_priority_ids` 不上屏，但其指向的 `must_present` 实质内容必须出现在最终屏显文案、图表、Figure 或可见图解中；讲稿提及不算履约。屏显文案、数据、节点关系和素材路径必须定稿；Slide 可以调整 `.slide-body` 内的比例和排法，并可省略计划中语义完全重复的低价值屏显节点，但不得删除 `must_present` 内容、改事实、自创文案或增加计划外的大型装饰图。`视觉验收` 写观众能从像素读出的结果，不写“做得高级”“有科技感”这类审美愿望；流程/机制/方法/数据/media-led 页需明确语义对象、关系方向与领域证据，纯排印页可用一句话说明焦点与阅读顺序。冻结前先用 Style Lock 的字阶做一次版面预演：如果一页只有把听众需要阅读的文字压到 `--fs-min` 以下才放得下，应在规划阶段缩短屏显、重组层级或拆分职责，不能把“靠小字塞下”交给 Slide 解决。
 
 ## 3. 页型选择
 
@@ -172,7 +183,7 @@
 
 ## 5. 特殊页合同
 
-封面与结束页由 `bookends` 组建立“开场—终幕”关系；全部过渡页由 `dividers` 组建立同一章节系统。它们共享字体角色、章节标记语法、标题锚点家族、色彩/图像处理和图形语法，但不要求复制同一几何。每张过渡页写明不同 `chapter_state`、构图重心和视觉动作；变化后仍应一眼看出属于同一套系统。只换章节号与标题、其余完全复制，或每页另起字体与语法，都不算完成过渡设计。
+封面与结束页通过 `bookend_system` 建立“开场—终幕”关系；全部过渡页通过 `divider_system` 建立同一章节语言。它们是跨页视觉合同，不是多页 Production group：封面、结束页与每张过渡页仍分别由单页 Agent 制作。各页共享字体角色、章节标记语法、标题锚点家族、色彩/图像处理和图形语法，但不复制同一几何。每张过渡页写明不同 `chapter_state`、构图重心和视觉动作；变化后仍应一眼看出属于同一套系统。只换章节号与标题、其余完全复制，或每页另起字体与语法，都不算完成过渡设计。
 
 过渡页不承担正文解释，但必须有完整构图。计划应说明章节号、标题和一句承诺如何组成主信息团，图片、主题母题、色场、裁切或超大排印中的哪一个形成视觉对重，以及主要留白用于聚焦、转向、制造纵深还是连接下一章。若只能描述成“左上角放标题，其余保持空白”，说明构图尚未完成；应放大并重组主信息、引入与章节有关的视觉对重，或让图片/色场真正参与构图，而不是补卡片、堆正文或添加无意义装饰。
 
@@ -195,6 +206,7 @@
 - 所有事实来自 user query、`grounded-knowledge.md` 或明确标注的示意；
 - 页数、页序、标题和 speech 页码一一对应；
 - 每页一个主焦点，屏显文案不依赖讲稿才能理解；
+- 所有附件 `screen_priority: must_present` 均有 `attachment_priority_ids → 页面 → 可见载体` 映射，且重点内容真实进入屏显文案、图表、Figure 或图解；没有任何重点只存在于讲稿；
 - 内容充分性与 screen-copy firewall 已通过：普通内容页有不可替代的听众所得和相应支撑层；非屏显区没有泄漏进 HTML；每个可见文本节点都有独立的观众价值，同一信息没有在标题、kicker / subtitle、图片角标、badge、callout、图例、技术注、元信息和页脚中重复；
 - `plan/deck.md` 逐页表与 `slide_NN.md` 的页型、媒介和视觉职责一致；不得一处写 Canvas、另一处写纯表格/diagram none；
 - 每页视觉验收可由最终像素直接判断；流程和关系图的对象、方向、图例与标题不自相矛盾，领域页的证据形态足够具体；
@@ -202,12 +214,13 @@
 - 每页都完成配图机会判断；有有效机会的页面已进入 Image 路由，纯代码视觉页写明其媒介优势；
 - 背景处理来自同一 `background_system`：普通内容页共享基础画布家族；整页变体有用途、有进入/退出承接，不会突然形成数页“另一套 Deck”再无过渡切回；没有随机换色、无主题 glow 或通篇默认深藏青。表达型场景若 overview 仍退化为全册同一纯色底，已重新判断是否遗漏了主题环境光、肌理、色场、图片或生成背景；
 - 所有页面都有 page-type 与 Reference route；
-- Production groups 覆盖全部页面且无重复归属，组内页码与逐页表页型一致，bookends/dividers 的变化状态与每组 `boundary_handoff` 写清；
-- 内容组优先按制作方式与构图亲缘性拆分，没有仅按章节把真实照片、Canvas、图表和 cards 粗暴打包；
+- Production groups 覆盖全部页面且无重复归属；封面、每张 divider、closing、hero、复杂图解和独立重制作页均为单页 group；普通内容组不超过 3 页，并写清 `why_grouped / anti_repetition_delta / boundary_handoff`；
+- 普通内容组只合并真正同构的制作任务，没有仅按章节把真实照片、受控 SVG/Canvas、图表和 cards 粗暴打包，也没有把连续左右分屏仅靠左右互换视为变化；
 - `Repetition & rhythm preflight` 已完成：相邻页无机械复刻，各章没有照抄同一套页面脚本，母题有主次与缺席，画布状态和密度形成叙事起伏；
 - 特殊页有亲缘性，普通页有足够构图变化；
 - 封面和结尾没有页码、页脚家具、制作状态或伪场记；特殊页没有用重复英文标签和无意义技术注冒充设计层；
 - references 与 closing 分页承担职责，结尾保持低密度收束；
 - 每张过渡页都能说明主信息团、视觉对重和留白职责；没有文字缩成局部小块、其余画布既无视觉张力也无叙事用途的“空壳章节页”；
 - base.css token 与 Style Lock 一致，没有通用安全模板回退；
+- Style Lock 记录一套完整 `resolved_system_id` 的读取与转译，`typography_recipe / palette_recipe` 字段齐全；学术/严谨场景仍有明确字阶、证据视觉、构图动作和节奏，没有退化成文档式白底卡片墙；
 - 不存在占位符、未解析路径、待定数字或“后续补图”等制作说明。

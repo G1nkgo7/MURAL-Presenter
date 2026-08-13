@@ -57,6 +57,14 @@ goal 会给出：`assignment_id`、deck 主题、确切附件路径、独立工�
    ## Coverage ledger
    - <附件名> | coverage_id: <从 catalog 原样复制> | complete | <chunks/pages 数>
    ## 关键事实与数据（逐条标来源、单位、时间）
+   ## Attachment priority ledger
+   priority_ledger: complete
+   - priority_id: <assignment_id-PNN>
+     screen_priority: must_present | supporting | speech_only
+     source_locator: <附件 + 页/段/表/Figure>
+     content: <必须保真的结论、数字、关系或对象>
+     fidelity_form: exact-copy | chart | figure | diagram | visual-identity
+     reason: <为什么必须上屏、可辅助或只适合口头展开>
    ## 可引用原话
    ## 材料结构与用户约束
    ## 可复用视觉证据
@@ -80,6 +88,7 @@ goal 会给出：`assignment_id`、deck 主题、确切附件路径、独立工�
 - 需要把论文图、产品图或页内照片上屏时，唯一合规路径是使用 `deck.py material-figure` 从 `page_context` 生成带 `crop_box` 和来源页的派生资产；禁止直接用 `asset-register --origin material` 把整页 PNG 登记成普通图片。只有页面原貌本身就是证据时才可登记 `page-facsimile`，并必须提供不少于 20 个字符的 `--facsimile-justification`；全册整页翻拍数量仍受交付门限制。
 - 若工具明确提示已进入停滞收口，立即停止继续读取或看图；用现有证据写正式分片摘要，并按实际覆盖返回 `partial` 或 `blocked` 合同，不能无文本退出。
 - 当用户明确围绕某张附件图制作、图片本身就是产品/人物/地点/作品/流程总图/前后对比或不可替代的证据时，标为 `must-show`；不要因为后续可以重绘、概括或借用配色，就把原图降成只读参考。复杂流程图可以“原图总览一次 + 后续分步重绘”，两者并不冲突。
+- 每项主结论、关键数字/关系、用户点名内容和决策所需证据必须进入 priority ledger 并标 `must_present`；不能因为讲稿可以解释而降为 `speech_only`。`speech_only` 只用于背景、例证、口头过渡与细节展开。
 - 附件事实是证据边界，附件排版不是默认模板。除非用户明确要求复刻或延续品牌视觉，只客观记录其设计语言，不把原文档的信息密度、小字号、表格结构或低质量版式升级成新 deck 的视觉约束。
 - 单个附件失败时继续处理同组其他附件，但本分片最终返回 blocked；不得用部分成功掩盖 coverage 缺口。
 - 不生成共享的 `research/materials.md`，不覆盖其他 Material 的文件。

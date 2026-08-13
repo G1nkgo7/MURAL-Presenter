@@ -25,9 +25,10 @@ Before changing any page, back up its HTML and latest PNG under `_trace/review-b
 
 1. Generate/inspect the latest full contact set in batches small enough for reliable Vision. There is no cumulative image-count quota. If a batch is too large, reduce it; do not replace pixels with DOM guesses.
 2. First inspect pixels openly: first focus, reading path, visual weight, empty shells, narrow or underused canvas, crop damage, seams, accidental furniture, repeated geometry, background drift, weak dividers/closing, and unfulfilled signature imagery. Then compare against page plans and Style Lock.
-3. Verify content fidelity against `grounded-knowledge.md`, Material/Research summaries, exact page copy, charts, and attachment `must-show` requirements. Reconstruct table/chart row × column semantics rather than trusting flattened PDF text.
-4. Only after pixel diagnosis, use DOM/computed geometry and render diagnostics to confirm root causes. Bbox and lint warnings are candidates, not commands.
-5. Freeze `_trace/review-issues.md` before any edit. Each issue records page, evidence, severity, root cause, fix, and whether it affects facts, CSS, fonts, or speech. If clean, still record full coverage and `remaining: none`.
+3. Verify content fidelity against `grounded-knowledge.md`, Material/Research summaries, exact page copy, charts, attachment `must-show`, and the full Attachment priority ledger. Every `must_present` ID must map to page `attachment_priority_ids` and be directly visible as copy, chart, Figure, or diagram; speech or an internal plan mention is not fulfillment. Record `priority_id`, source locator, target page, observed carrier, and verdict in `_trace/content-fidelity.md`.
+4. Verify that the selected complete resolved system, typography recipe, and palette recipe are visible beyond a single accent color. Formal/academic decks still require editorial scale, evidence visuals, method diagrams, focused charts, or chapter rhythm rather than document-like repeated white cards.
+5. Only after pixel diagnosis, use DOM/computed geometry and render diagnostics to confirm root causes. Bbox and lint warnings are candidates, not commands.
+6. Freeze `_trace/review-issues.md` before any edit. Each issue records page, evidence, severity, root cause, fix, and whether it affects facts, CSS, fonts, or speech. If clean, still record full coverage and `remaining: none`.
 
 ## 4. One consolidated repair round
 

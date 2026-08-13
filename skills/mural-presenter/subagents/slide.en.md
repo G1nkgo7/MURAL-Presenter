@@ -22,6 +22,7 @@ Read in full:
 
 - your Production group in `plan/deck.md` and its `boundary_handoff`;
 - `plan/design-brief.md#Style Lock`;
+- all of `references/aesthetic-recipes.md` and the single complete resolved-system section named by Style Lock;
 - all assigned `plan/slide_NN.md` files;
 - `base.css`;
 - only the reference sections routed by those plans.
@@ -34,8 +35,8 @@ Write only assigned `slides/slide_NN.html` and canonical `renders/slide_NN.png`.
 
 ## 3. Page-group workflow
 
-1. Extract an in-context group contract: `design_dna`, per-page `page_variations`, `visual_beat`, and `boundary_handoff`. Style Lock defines a visual language, not a copied geometry.
-2. For each page in order, freeze its purpose, first-look focus, reading path, exact audience copy, primary visual carrier, real asset paths, crop contract, and pixel acceptance criteria. Execute the Style Lock's `title_voice`, `title_scale`, `title_treatment`, `body_voice`, and `numeric_voice`: ordinary presentation titles use the display voice and visibly separate from body copy; formal work may return to Noto Sans/Serif SC but still needs stage hierarchy through scale, weight, anchor, and whitespace. Smiley Sans is for short titles, heroes, and section voices, never body copy. Preflight three questions: what is seen first; what relationship is understood; what conclusion remains.
+1. Extract `design_dna`, `why_grouped`, per-page `anti_repetition_delta`, and `boundary_handoff`. Special/complex pages should be single-page groups; a normal multi-page group must be no larger than three and must be genuinely isomorphic. Style Lock defines a visual language, not copied geometry.
+2. For each page in order, freeze its purpose, first-look focus, reading path, exact audience copy, primary visual carrier, real asset paths, crop contract, pixel acceptance criteria, and `attachment_priority_ids`. Every `must_present` item must be directly visible as copy, chart, Figure, or diagram; speech is not fulfillment. Execute the complete resolved system plus `title_voice`, `title_scale`, `title_treatment`, `body_voice`, and `numeric_voice`. Formal/academic work still needs editorial scale, evidence visuals, method diagrams, focused charts, and chapter rhythm rather than document-like white cards. Preflight three questions: what is seen first; what relationship is understood; what conclusion remains.
 3. Use the whole safe canvas with a stable visual center. A large empty frame, equal card shells, or unused side rail is not content. A `dense` page whose information occupies only half the canvas must be restructured, not defended as whitespace. Remove semantically duplicate kickers, badges, callouts, labels, and legends before layout.
 4. Write one complete HTML draft. Keep the standard root skeleton. `.slide-body` owns the safe content box; do not override an absolute `top + bottom` or flex-owned height with another `height:100%`. Use an inner stage for full-height layout. Audience body copy is at least 20px and captions/secondary notes at least 18px, or larger when tokens require it. Reduce repetition, restructure, reprioritize, or split pages instead of shrinking below the floor.
 5. Render only the current page:
@@ -46,14 +47,14 @@ Write only assigned `slides/slide_NN.html` and canonical `renders/slide_NN.png`.
 
 6. Call `vision_analyze` on the new PNG. The first inspection is open-ended and independent: describe first focus and reading path; weight of the primary visual; placement and purpose of text, evidence, and whitespace; empty shells; narrow-band composition; missing bitmap opportunities; and unexpected seams, furniture, or crop damage. For every bitmap, compare actual visible face/head/hands, product outline/logo, artwork subject, axis/legend/evidence labels with the `crop_contract`.
 7. Only after that pixel judgment, consult DOM/computed geometry and render diagnostics as candidates. The order is **fresh PNG/Vision → DOM/computed geometry → lint candidate**. A bbox intersection alone is not a repair instruction.
-8. List all confirmed page issues once, make one consolidated refinement, re-render, and re-inspect. Initial draft → render → first Vision does not count as refinement. Allow at most one refinement round. A structural reversal needs two consistent fresh-pixel findings or pixel plus objective geometry evidence. If the new version regresses, restore the verified baseline and use a simpler stable structure; if hard issues remain, return `blocked`.
-9. After all pages close individually, batch render the group and inspect all final PNGs together for kinship, rhythm, repeated geometry, and abrupt drift. The group overview does not open an aesthetic tuning loop; one group-level consolidated repair is allowed only for a real hard regression, followed by fresh render and inspection.
+8. Initial draft → render → first Vision does not count as refinement. Allow two separate budgets: at most one consolidated hard/semantic repair, then at most one aesthetic-completion pass with exactly one named `aesthetic_completion_target` chosen from title tension, focal hierarchy, primary-visual weight, crop, background layer, resolved-system execution, or departure from repeated geometry. A page with no hard issue may go straight to the aesthetic pass. Re-render and compare after every change; total refinements never exceed two, and restore the verified baseline if the new version regresses.
+9. After all pages close individually, batch render the group and inspect all final PNGs together for kinship, rhythm, `anti_repetition_delta`, and abrupt drift. The overview cannot open a third aesthetic loop. A group-level repair is allowed only for a real hard regression on a page that has not spent its hard/semantic budget; it consumes that page's remaining hard budget and is followed by fresh render and inspection. If the budget is already spent, return `blocked` rather than creating a third page refinement.
 
 ## 4. Layout and media rules
 
 - Normal pages use `.slide-title`, `.slide-body`, `.slide-footer`; covers use `.slide--cover`; closings use `.slide--cover.slide--closing`; section pages use `.slide.slide--cover.slide--section`; full-bleed content uses `.slide--bleed`. Never invent `.slide--divider` or `.slide--transition`.
 - Cover, divider, and closing pages use full-canvas special composition. A closing normally has one conclusion, at most one short support line, and one visual anchor—not three takeaway cards.
-- Real subject → real image; atmosphere/story → generated bitmap; data → ECharts; large mechanism/architecture → Canvas geometry plus HTML labels; SVG → small support only.
+- Real subject → real image; atmosphere/story → generated bitmap; data → ECharts; static ≤7-node three-layer/radial/funnel/cycle/pyramid → controlled `svg-diagram svg-allowed`; higher-node/dynamic mechanism → Canvas plus HTML; other SVG → small support or accurate vector assets.
 - A planned bitmap is a compositional layer, not a token thumbnail. Use meaningful hero, split, crop, evidence, or image-group treatment.
 - `subject-only`/cutout uses `contain`. `framed-scene`/`full-bleed` uses `cover` only when the crop contract permits, with explicit `object-position`.
 - Preserve semantically meaningful source color. No blanket grayscale/duotone without a specific user or Style Lock reason that preserves identity/evidence.
@@ -76,6 +77,9 @@ status: ready | blocked
 pages: NN,NN,NN
 renders: renders/slide_NN.png, ...
 refine_rounds: NN=n,NN=n
+hard_repair_rounds: NN=0|1,...
+aesthetic_completion_rounds: NN=0|1,...
+aesthetic_completion_targets: NN=<target>|none,...
 hard_issues: none | <issues>
 summary: <one or two sentences>
 ```

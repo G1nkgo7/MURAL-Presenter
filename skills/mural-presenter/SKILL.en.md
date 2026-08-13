@@ -79,8 +79,8 @@ The shared references use stable machine paths and may contain Chinese prose. Re
 
 | Need | Read |
 | --- | --- |
-| Scene and art direction | `references/design-rules.md` T1–T3 and sections 1–3 plus the matching topic section; `references/design-styles.md` index and one style family |
-| Global/page planning | `references/planning-contract.md`; only the relevant page archetype in `references/layout-patterns.md` |
+| Scene and art direction | `references/design-rules.md` T1–T3 and sections 1–3 plus the matching topic; all of `references/aesthetic-recipes.md`; the `design-styles.md` index, one style family, and one complete `S1–S13 resolved system` |
+| Global/page planning | `references/planning-contract.md`; inspect the `layout-patterns.md` index, then each relevant archetype; complex diagrams also read section 9's medium and matched archetype |
 | Existing-deck edits | `references/editing-contract.md` |
 | Slide implementation | Assigned page plans, `base.css`, the single-page section of `references/quality-checklist.md`, and routed page sections |
 | Review | All of `references/quality-checklist.md` |
@@ -94,8 +94,8 @@ Choose media for meaning:
 1. Real people, places, products, events, or evidence: real photographs.
 2. Atmosphere, metaphor, story scenes, or hero art: generated or high-quality bitmap imagery.
 3. Data: ECharts.
-4. Large processes, architectures, mechanisms, and relationships: Canvas geometry plus HTML labels, or a text-free bitmap plus HTML labels.
-5. SVG: only icons, logos, arrows, markers, and small decoration.
+4. Static ≤7-node three-layer, radial, funnel, cycle, or pyramid structures: the controlled SVG recipes in `layout-patterns.md` section 9; higher-node/dynamic structures use Canvas plus HTML, and spatial metaphors use text-free bitmaps plus HTML.
+5. Other SVG: icons, logos, arrows, markers, small decoration, or accurate user-provided vector assets.
 
 Do not replace visible people, products, works, activities, or environments with generic cards, tiny icons, decorative SVG, or abstract wireframes. A normal content slide needs a meaningful primary visual carrier: bitmap, chart, explanatory Canvas, or deliberate typographic composition.
 
@@ -120,6 +120,8 @@ python ${SKILL_DIR:-skills/mural-presenter}/scripts/stage_materials.py materials
 
 Every attachment needs one `coverage_id`, `status: ok`, `coverage: complete`, continuous text chunks or complete scanned-page coverage, and a matching ledger entry. `semantic_coverage: incomplete`, `truncated`, `unsupported`, `failed`, or `missing` blocks downstream work. File metadata, archive member names, or representative frames are not semantic coverage.
 
+Every Material summary also writes `priority_ledger: complete`. Assign stable `priority_id` values and `screen_priority: must_present | supporting | speech_only` to major claims, decisive numbers/relationships, and must-recognize figures, products, people, or processes. `must_present` must survive into visible slide content; speech is never a substitute. `speech_only` may contain context and elaboration, not the attachment's main conclusion or evidence.
+
 Page PNGs are reading context, not automatic display figures. Named paper figures must become traceable `material_figure_crop` derivatives. A full-page facsimile is allowed only when page appearance itself is evidence and requires an explicit justification.
 
 #### Research
@@ -128,14 +130,15 @@ Delegate the singleton Research only when an external fact can change a conclusi
 
 #### Grounding gate
 
-After Material and Research return, the next action is to write and then read back `plan/grounded-knowledge.md`. Separate user facts, attachment evidence, externally verified facts, assumptions, illustrative values, conflicts, and unresolved items. A `partial` Research result must propagate its `unresolved` list and usage boundary verbatim. No Style Lock or page planning begins before this gate.
+After Material and Research return, the next action is to write and then read back `plan/grounded-knowledge.md`. Separate user facts, attachment evidence, externally verified facts, assumptions, illustrative values, conflicts, and unresolved items. Preserve an `Attachment priority ledger` with every `priority_id`, `screen_priority`, source locator, and fidelity form. A `partial` Research result must propagate its `unresolved` list and usage boundary verbatim. No Style Lock or page planning begins before this gate.
 
 ### Stage 2 — Scene direction and Style Lock
 
-Read only the routed design references. Select one scene register and one primary style, optionally one supporting craft. Write `plan/design-brief.md#Style Lock` with:
+Read all of `aesthetic-recipes.md`, the style index and matched family, then exactly one complete `S1–S13 resolved system` from its heading to the next heading. Select one scene register and one primary style, optionally one supporting craft. Write `plan/design-brief.md#Style Lock` with:
 
-- `scene`, `primary_style`, and at most one `supporting_craft`;
-- `visual_thesis`, `signature_visual`, palette, and an explicit typography contract with `title_voice`, `title_scale`, `title_treatment`, `body_voice`, `numeric_voice`, and `font_roles`;
+- `scene`, `primary_style`, default `design_ambition: high`, and at most one `supporting_craft`;
+- `resolved_system_id`, `resolved_system_read: complete`, `kept_layers`, `translated_signature`, and `discarded_cliches`;
+- `visual_thesis`, `signature_visual`, a complete `palette_recipe`, and a `typography_recipe` with `title_voice`, `title_scale`, `title_treatment`, `body_voice`, `numeric_voice`, `font_roles`, and `type_event_map`;
 - image language and an implementation-independent `image_opportunity_map`;
 - `base_canvas_family`, allowed background states, spatial rhythm, and special-page system;
 - motif roles and explicit avoid rules;
@@ -146,13 +149,15 @@ Style Lock fixes a visual language, not a page template. Stability comes from ty
 
 Unless the occasion is formal or rigorous, the title voice must visibly separate itself from body copy in family, scale, or treatment. Do not silently collapse an ordinary presentation into Noto Sans SC at document-like sizes.
 
+Formal and academic do not mean low-design. Use editorial publishing, evidence exhibition, and scientific-visualization language: strong type scale, asymmetric order, figure crops, focused charts, method diagrams, and chapter rhythm without decorative excess. When multiple systems fit, prefer the one with the clearer visual thesis and executable signature over the safest white-card layout.
+
 Before declaring `image_opportunity: none`, scan for visible people, places, products, works, activities, experiences, fictional characters, and emotional scenes. Search named real identities; never generate a fake likeness. Generated imagery is valid for fictional, conceptual, future, atmospheric, or metaphorical scenes. If image tools are available, a deck with no bitmaps or only a cover bitmap is an exception that must be justified, not the safe default.
 
 ### Stage 3 — Global and per-page planning
 
 Write `plan/deck.md` and every `plan/slide_NN.md` before page production. Follow `references/planning-contract.md` exactly. Each page contract freezes page purpose, exact audience-facing copy, evidence, medium, primary visual carrier, assets and `asset_id`, crop contract, layout archetype, spatial budget, background treatment, visual acceptance criteria, speech intent, and production group.
 
-Group pages by design kinship, not only adjacency. Use stable groups such as `bookends`, `dividers`, and coherent content groups. The Orchestrator then writes `base.css` and runs:
+Use atomic-page-first routing. Cover, every divider, closing, hero/visual peak, complex diagram, independent dense chart, and heavy image-composite pages each own a single-page group. Only genuinely isomorphic normal pages may share a group, normally two and never more than three; record `why_grouped` and per-page `anti_repetition_delta`. Map every attachment `must_present` priority to `attachment_priority_ids` and a visible on-screen carrier; speech cannot satisfy it. The Orchestrator then writes `base.css` and runs:
 
 ```bash
 python ${SKILL_DIR:-skills/mural-presenter}/scripts/deck.py prepare . --expected <slide_count>
@@ -164,7 +169,7 @@ Delegate Image groups only after page briefs and asset IDs are stable. Image own
 
 ### Stage 5 — Produce slide groups
 
-Delegate independent design-related Slide groups in parallel. Each group reads only its scope, creates one page at a time, renders that page, performs open-ended Vision inspection, applies at most one consolidated refinement round, re-renders and rechecks, then performs a final group contact-sheet check.
+Delegate independent Slide groups in parallel. Each page gets an initial render and open-ended Vision inspection, then at most one hard/semantic repair and at most one separately named aesthetic-completion refinement. The aesthetic target must be one of title tension, focal hierarchy, primary-visual weight, crop, background layer, resolved-system execution, or departure from repeated geometry. Re-render and compare after every change; total page refinements never exceed two.
 
 Do not place mechanical source footnotes, internal paths, evidence IDs, assumptions, production labels, or fake metadata on slides. Put traceability in planning and speech. Covers, section dividers, and closing pages do not inherit normal page footers or page numbers.
 
@@ -203,7 +208,7 @@ Every user request maps to a visible change; unaffected pages/assets remain unch
 
 - Data charts use ECharts; generated images never fake data graphics.
 - Accurate text lives in HTML, not AI-generated images.
-- SVG is not a hero image or large structural diagram.
+- SVG defaults to small supporting elements. Controlled ≤7-node diagrams are allowed only through the five section-9 recipes and must use `svg-diagram svg-allowed`; do not freely invent any other large SVG coordinate system, and route other large structures to Canvas/bitmap plus HTML.
 - `slides/` contains only canonical `slide_NN.html` files; backups live under `_trace/`.
 - Audience body copy is at least 20px; captions/secondary notes are at least 18px, or larger if tokens require it.
 - Fix overflow by reducing repetition, restructuring, reprioritizing, or splitting pages, never by hiding content or shrinking below the floor.

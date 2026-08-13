@@ -43,6 +43,14 @@ Write the summary once:
 ## Coverage ledger
 - <file> | coverage_id: <verbatim catalog id> | complete | <chunks/pages>
 ## Key facts and data (source, unit, date)
+## Attachment priority ledger
+priority_ledger: complete
+- priority_id: <assignment_id-PNN>
+  screen_priority: must_present | supporting | speech_only
+  source_locator: <attachment + page/section/table/Figure>
+  content: <claim, number, relationship, or object to preserve>
+  fidelity_form: exact-copy | chart | figure | diagram | visual-identity
+  reason: <why this priority applies>
 ## Quotable text
 ## Source structure and user constraints
 ## Reusable visual evidence
@@ -61,6 +69,7 @@ Write the summary once:
 - The only compliant display path for a paper figure or page-internal image is a `deck.py material-figure` derivative with source page and normalized crop box. Do not register a whole page as a normal material image.
 - `page-facsimile` is allowed only when the original page appearance is itself evidence, with a specific `--facsimile-justification` of at least 20 characters; deck-wide limits still apply.
 - When the attachment image itself is the unique product, person, place, work, overview process, comparison, or evidence requested by the user, mark it `must-show`.
+- Mark every main conclusion, decisive number/relationship, user-named item, and decision-critical evidence as `must_present`. Do not downgrade it because speech can explain it. Reserve `speech_only` for context, examples, transitions, and elaboration.
 - One failed attachment makes the shard `blocked`, while successful siblings are still summarized.
 
 ## 5. Final contract

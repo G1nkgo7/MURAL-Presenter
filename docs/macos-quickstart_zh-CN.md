@@ -59,7 +59,7 @@ cd ~/Downloads/MURAL-Presenter-main
 从仓库根目录执行：
 
 ~~~bash
-cd apps/studio/sensenova_present
+cd webui
 cp .env.example .env
 chmod +x start.sh scripts/*.sh
 ./start.sh --ui-only --check
@@ -78,7 +78,7 @@ curl http://127.0.0.1:8001/healthz
 ~~~
 
 在运行服务的终端中按 **Control-C** 即可停止。项目、上传文件和本地状态保存在
-apps/studio/sensenova_present/studio/data 下，不会提交到 Git。
+webui/studio/data 下，不会提交到 Git。
 
 ### 8001 端口被占用
 
@@ -103,7 +103,7 @@ UI-only 是不需要账号密钥的公开预览模式。它能够启动 SenseNov
 
 拿到兼容的模型服务配置后即可使用这一模式。
 
-1. 打开 apps/studio/sensenova_present/.env。
+1. 打开 webui/.env。
 2. 将 SENSENOVA_UI_ONLY 设置为 0。
 3. 配置 SENSENOVA_MODEL_BASE_URL、SENSENOVA_MODEL_NAME，以及模型需要的密钥。
 4. 按需配置图片生成和检索服务。
@@ -151,7 +151,7 @@ npm run start -- --host 127.0.0.1 --port 4173
 如果 Mac 已安装 Docker Desktop，也可以不在本机安装 Python 依赖，直接启动 UI-only WebUI：
 
 ~~~bash
-cd apps/studio/sensenova_present
+cd webui
 cp .env.example .env
 docker compose up --build
 ~~~
@@ -184,7 +184,7 @@ git pull --ff-only
 ~~~bash
 brew install git python@3.12 uv
 git clone https://github.com/G1nkgo7/MURAL-Presenter.git
-cd MURAL-Presenter/apps/studio/sensenova_present
+cd MURAL-Presenter/webui
 cp .env.example .env
 ./start.sh --ui-only --language zh --port 8001
 ~~~

@@ -62,7 +62,7 @@ Replace the path if the archive was extracted elsewhere.
 From the repository root:
 
 ~~~bash
-cd apps/studio/sensenova_present
+cd webui
 cp .env.example .env
 chmod +x start.sh scripts/*.sh
 ./start.sh --ui-only --check
@@ -81,7 +81,7 @@ curl http://127.0.0.1:8001/healthz
 ~~~
 
 Press **Control-C** in the server Terminal to stop it. Local projects, uploads, and application
-state are stored below apps/studio/sensenova_present/studio/data and are not committed to Git.
+state are stored below webui/studio/data and are not committed to Git.
 
 ### If port 8001 is occupied
 
@@ -106,7 +106,7 @@ excludes credentials, private gateways, model weights, internal datasets, and ge
 
 Use this path after you have a compatible model-service configuration.
 
-1. Open apps/studio/sensenova_present/.env.
+1. Open webui/.env.
 2. Set SENSENOVA_UI_ONLY=0.
 3. Configure SENSENOVA_MODEL_BASE_URL, SENSENOVA_MODEL_NAME, and any required credential.
 4. Optionally configure image-generation and search endpoints.
@@ -155,7 +155,7 @@ If Docker Desktop is already installed, the UI-only WebUI can be started without
 Python packages:
 
 ~~~bash
-cd apps/studio/sensenova_present
+cd webui
 cp .env.example .env
 docker compose up --build
 ~~~
@@ -189,7 +189,7 @@ For a Mac that already has Homebrew:
 ~~~bash
 brew install git python@3.12 uv
 git clone https://github.com/G1nkgo7/MURAL-Presenter.git
-cd MURAL-Presenter/apps/studio/sensenova_present
+cd MURAL-Presenter/webui
 cp .env.example .env
 ./start.sh --ui-only --language zh --port 8001
 ~~~

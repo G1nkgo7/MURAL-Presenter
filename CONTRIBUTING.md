@@ -30,7 +30,7 @@ contributions should stay within the artifacts already present in this repositor
 - Do not add measured results without a frozen evaluation configuration and traceable evidence.
 - Do not add implementation copied from the private working system.
 - Keep reusable workflow logic in `src/mural_presenter/`; `scripts/` should remain thin entrypoints,
-  and `apps/studio/` must call model/runtime functionality through `services/api/`.
+  and `webui/` must call model/runtime functionality through `services/api/`.
 
 Before submitting a public-surface change, run:
 

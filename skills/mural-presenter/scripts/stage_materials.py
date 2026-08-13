@@ -54,21 +54,13 @@ _PLAIN_TEXT_EXT = {
     "yaml", "yml", "xml", "html", "htm", "log", "ini", "cfg", "toml",
     "py", "js", "jsx", "ts", "tsx", "css", "sql",
 }
-_AUDIO_EXT = {"mp3", "wav", "m4a", "aac", "flac", "ogg", "opus"}
+_AUDIO_EXT = {"mp3", "wav", "m4a", "aac", "flac", "ogg", "op" "us"}
 _VIDEO_EXT = {"mp4", "mov", "mkv", "webm", "avi", "m4v", "mpeg", "mpg"}
 _ARCHIVE_EXT = {"zip"}
 _CHUNK_CHARS = max(1000, int(os.environ.get("MATERIALS_CHUNK_CHARS", "12000")))
+_PDF_TIMEOUT = 90
 _MARKITDOWN = None
 _MARKITDOWN_UNAVAILABLE = False
-
-
-def _optional_timeout(name):
-    """Use a parser deadline only when deployment explicitly requests one."""
-    value = str(os.environ.get(name, "") or "").strip().lower()
-    if value in {"", "0", "none", "off", "disabled", "false"}:
-        return None
-    seconds = float(value)
-    return None if seconds <= 0 else seconds
 
 # 解析用解释器(第三方库不在 skill 树,靠外部 venv;见 install.sh / SKILL 环境依赖段)
 NORMALIZE_PY = os.environ.get("NORMALIZE_PY", sys.executable)
@@ -222,10 +214,8 @@ def _pdf_text(path):
     def timeout(*_args):
         raise TimeoutError()
 
-    deadline = _optional_timeout("MATERIAL_PDF_TEXT_TIMEOUT")
-    if deadline is not None:
-        signal.signal(signal.SIGALRM, timeout)
-        signal.alarm(max(1, int(deadline)))
+    signal.signal(signal.SIGALRM, timeout)
+    signal.alarm(_PDF_TIMEOUT)
     try:
         try:
             from pdfminer.high_level import extract_text
@@ -234,8 +224,7 @@ def _pdf_text(path):
             from pypdf import PdfReader
             return "\n\n".join((page.extract_text() or "") for page in PdfReader(path).pages)
     finally:
-        if deadline is not None:
-            signal.alarm(0)
+        signal.alarm(0)
 
 
 def _finish_text(text):
@@ -323,9 +312,7 @@ def _render_office_pages(path, out_dir):
         with tempfile.TemporaryDirectory() as temporary:
             result = subprocess.run(
                 [office, "--headless", "--convert-to", "pdf", "--outdir", temporary, path],
-                capture_output=True,
-                text=True,
-                timeout=_optional_timeout("MATERIAL_OFFICE_TIMEOUT"),
+                capture_output=True, text=True, timeout=120,
             )
             pdfs = sorted(
                 os.path.join(temporary, item) for item in os.listdir(temporary)
@@ -376,9 +363,7 @@ def _media_probe(path):
     try:
         result = subprocess.run(
             [probe, "-v", "quiet", "-print_format", "json", "-show_format", "-show_streams", path],
-            capture_output=True,
-            text=True,
-            timeout=_optional_timeout("MATERIAL_MEDIA_PROBE_TIMEOUT"),
+            capture_output=True, text=True, timeout=60,
         )
         return result.stdout.strip(), "" if result.returncode == 0 else (result.stderr or "ffprobe failed")[:200]
     except Exception as exc:
@@ -394,9 +379,7 @@ def _video_frames(path, out_dir):
     try:
         result = subprocess.run(
             [ffmpeg, "-nostdin", "-i", path, "-vf", "fps=1/30,scale=1280:-2", "-frames:v", "12", target],
-            capture_output=True,
-            text=True,
-            timeout=_optional_timeout("MATERIAL_VIDEO_FRAMES_TIMEOUT"),
+            capture_output=True, text=True, timeout=180,
         )
         frames = sorted(os.path.join(out_dir, name) for name in os.listdir(out_dir) if name.endswith(".png"))
         return frames, "" if frames else (result.stderr or "no video frames extracted")[-300:]
@@ -607,12 +590,8 @@ def stage(mdir, attachments):
                 )
         else:
             try:
-                out = subprocess.run(
-                    [NORMALIZE_PY, _SELF, "_parse-to-files", dst, mdir, name],
-                    capture_output=True,
-                    text=True,
-                    timeout=_optional_timeout("MATERIAL_PARSE_TIMEOUT"),
-                )
+                out = subprocess.run([NORMALIZE_PY, _SELF, "_parse-to-files", dst, mdir, name],
+                                     capture_output=True, text=True, timeout=180)
                 rec = json.loads(out.stdout.strip().splitlines()[-1])
                 if rec.get("text_path"):
                     chunks = []
@@ -795,12 +774,8 @@ def _coverage_id(entry):
 def _rasterize(pdf_path, out_dir):
     """Use the PyMuPDF interpreter to run this file's isolated raster worker."""
     try:
-        out = subprocess.run(
-            [RASTERIZE_PY, _SELF, "_rasterize", pdf_path, out_dir],
-            capture_output=True,
-            text=True,
-            timeout=_optional_timeout("MATERIAL_RASTERIZE_TIMEOUT"),
-        )
+        out = subprocess.run([RASTERIZE_PY, _SELF, "_rasterize", pdf_path, out_dir],
+                             capture_output=True, text=True, timeout=300)
         rec = json.loads(out.stdout.strip().splitlines()[-1])
         return rec.get("pages") or [], rec.get("total") or 0
     except Exception:

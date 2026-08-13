@@ -105,7 +105,7 @@ cd MURAL-Presenter
 从仓库根目录执行：
 
 ~~~bash
-cd apps/studio/sensenova_present
+cd webui
 cp .env.example .env
 chmod +x start.sh scripts/*.sh
 ./start.sh --ui-only --check
@@ -117,7 +117,7 @@ chmod +x start.sh scripts/*.sh
 从仓库根目录执行：
 
 ~~~powershell
-Set-Location apps\studio\sensenova_present
+Set-Location webui
 Copy-Item .env.example .env
 .\start.ps1 -UiOnly -Check
 .\start.ps1 -UiOnly -Language zh -Port 8001
@@ -185,7 +185,7 @@ Invoke-RestMethod http://127.0.0.1:8001/healthz
 然后访问 http://127.0.0.1:8010。
 
 本地项目、上传文件和状态默认保存在
-apps/studio/sensenova_present/studio/data，不会提交到 Git。
+webui/studio/data，不会提交到 Git。
 
 ## 5. UI-only 与完整生成的区别
 
@@ -195,7 +195,7 @@ UI-only 是无需模型服务的公开预览模式，可以启动 SenseNova Pres
 `harnesses/mural-presenter` 运行时。内容生成仍需配置兼容的模型端点；图片生成和网络检索是
 可选服务。公开仓库不会包含模型密钥、私有网关、模型权重、内部数据集或历史生成结果。
 
-启用完整生成前，需要在 apps/studio/sensenova_present/.env 中：
+启用完整生成前，需要在 webui/.env 中：
 
 1. 将 SENSENOVA_UI_ONLY 设置为 0。
 2. 配置 SENSENOVA_MODEL_BASE_URL、SENSENOVA_MODEL_NAME，以及模型需要的密钥。
@@ -268,7 +268,7 @@ macOS 和 Windows 安装 Docker Desktop；Linux 安装 Docker Engine 与 Compose
 macOS 或 Linux：
 
 ~~~bash
-cd apps/studio/sensenova_present
+cd webui
 cp .env.example .env
 docker compose up --build
 ~~~
@@ -276,7 +276,7 @@ docker compose up --build
 Windows PowerShell：
 
 ~~~powershell
-Set-Location apps\studio\sensenova_present
+Set-Location webui
 Copy-Item .env.example .env
 docker compose up --build
 ~~~
@@ -313,7 +313,7 @@ ZIP 用户需要重新下载新版本。更新前请备份需要保留的 studio
 brew install git uv
 uv python install 3.12
 git clone https://github.com/G1nkgo7/MURAL-Presenter.git
-cd MURAL-Presenter/apps/studio/sensenova_present
+cd MURAL-Presenter/webui
 cp .env.example .env
 ./start.sh --ui-only --language zh --port 8001
 ~~~
@@ -324,7 +324,7 @@ cp .env.example .env
 curl -LsSf https://astral.sh/uv/install.sh | sh
 uv python install 3.12
 git clone https://github.com/G1nkgo7/MURAL-Presenter.git
-cd MURAL-Presenter/apps/studio/sensenova_present
+cd MURAL-Presenter/webui
 cp .env.example .env
 chmod +x start.sh scripts/*.sh
 ./start.sh --ui-only --language zh --port 8001
@@ -337,7 +337,7 @@ winget install --id Git.Git -e
 winget install --id astral-sh.uv -e
 uv python install 3.12
 git clone https://github.com/G1nkgo7/MURAL-Presenter.git
-Set-Location MURAL-Presenter\apps\studio\sensenova_present
+Set-Location MURAL-Presenter\webui
 Copy-Item .env.example .env
 .\start.ps1 -UiOnly -Language zh -Port 8001
 ~~~

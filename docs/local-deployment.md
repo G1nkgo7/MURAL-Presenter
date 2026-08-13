@@ -96,7 +96,7 @@ Enter the extracted MURAL-Presenter-main directory before continuing.
 ### macOS or Linux
 
 ~~~bash
-cd apps/studio/sensenova_present
+cd webui
 cp .env.example .env
 chmod +x start.sh scripts/*.sh
 ./start.sh --ui-only --check
@@ -106,7 +106,7 @@ chmod +x start.sh scripts/*.sh
 ### Windows PowerShell
 
 ~~~powershell
-Set-Location apps\studio\sensenova_present
+Set-Location webui
 Copy-Item .env.example .env
 .\start.ps1 -UiOnly -Check
 .\start.ps1 -UiOnly -Language en -Port 8001
@@ -156,7 +156,7 @@ If port 8001 is occupied:
 ~~~
 
 Local projects, uploads, and state are stored under
-apps/studio/sensenova_present/studio/data and are not committed to Git.
+webui/studio/data and are not committed to Git.
 
 ## 5. UI-only versus full generation
 
@@ -168,7 +168,7 @@ The repository now includes the current `skills/mural-presenter` Skill and its p
 image generation and web search are optional service integrations. Model credentials, private
 gateways, model weights, internal datasets, and generated runs are not included.
 
-Before enabling full generation, edit apps/studio/sensenova_present/.env:
+Before enabling full generation, edit webui/.env:
 
 1. Set SENSENOVA_UI_ONLY=0.
 2. Configure SENSENOVA_MODEL_BASE_URL, SENSENOVA_MODEL_NAME, and the credential if required.
@@ -242,7 +242,7 @@ Use Docker Desktop on macOS or Windows, or Docker Engine with the Compose plugin
 macOS or Linux:
 
 ~~~bash
-cd apps/studio/sensenova_present
+cd webui
 cp .env.example .env
 docker compose up --build
 ~~~
@@ -250,7 +250,7 @@ docker compose up --build
 Windows PowerShell:
 
 ~~~powershell
-Set-Location apps\studio\sensenova_present
+Set-Location webui
 Copy-Item .env.example .env
 docker compose up --build
 ~~~
@@ -289,7 +289,7 @@ working copy.
 brew install git uv
 uv python install 3.12
 git clone https://github.com/G1nkgo7/MURAL-Presenter.git
-cd MURAL-Presenter/apps/studio/sensenova_present
+cd MURAL-Presenter/webui
 cp .env.example .env
 ./start.sh --ui-only --language en --port 8001
 ~~~
@@ -300,7 +300,7 @@ cp .env.example .env
 curl -LsSf https://astral.sh/uv/install.sh | sh
 uv python install 3.12
 git clone https://github.com/G1nkgo7/MURAL-Presenter.git
-cd MURAL-Presenter/apps/studio/sensenova_present
+cd MURAL-Presenter/webui
 cp .env.example .env
 chmod +x start.sh scripts/*.sh
 ./start.sh --ui-only --language en --port 8001
@@ -313,7 +313,7 @@ winget install --id Git.Git -e
 winget install --id astral-sh.uv -e
 uv python install 3.12
 git clone https://github.com/G1nkgo7/MURAL-Presenter.git
-Set-Location MURAL-Presenter\apps\studio\sensenova_present
+Set-Location MURAL-Presenter\webui
 Copy-Item .env.example .env
 .\start.ps1 -UiOnly -Language en -Port 8001
 ~~~

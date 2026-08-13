@@ -51,14 +51,16 @@ jobs:
           --with pytest
           pytest -q -p no:cacheprovider
           harnesses/mural-presenter/tests
-      - run: >-
+      - run: uv sync --project webui/inference --frozen
+      - working-directory: webui
+        run: >-
           uv run --frozen
-          --project apps/studio/sensenova_present/studio
+          --project studio
           --with pytest
-          pytest -q -p no:cacheprovider
-          apps/studio/sensenova_present/studio/tests
+          python -m pytest -q -p no:cacheprovider
+          tests
       - run: >-
-          apps/studio/sensenova_present/start.sh
+          webui/start.sh
           --check --no-install --no-browser-install
 
   studio-platforms:
@@ -74,17 +76,18 @@ jobs:
         with:
           python-version: "3.12"
       - run: python -m pip install uv
-      - run: uv sync --project apps/studio/sensenova_present/studio --frozen
+      - run: uv sync --project webui/studio --frozen
+      - run: uv sync --project webui/inference --frozen
       - run: uv sync --project harnesses/mural-presenter --frozen
       - name: Check launcher on macOS
         if: runner.os == 'macOS'
         shell: bash
         run: >-
-          apps/studio/sensenova_present/start.sh
+          webui/start.sh
           --check --no-install --no-browser-install
       - name: Check launcher on Windows
         if: runner.os == 'Windows'
         shell: pwsh
         run: >-
-          ./apps/studio/sensenova_present/start.ps1
+          ./webui/start.ps1
           -Check -NoInstall -NoBrowserInstall

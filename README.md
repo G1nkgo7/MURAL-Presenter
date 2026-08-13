@@ -11,7 +11,7 @@
   <a href="README_zh-CN.md">简体中文</a> ·
   <a href="blog/introducing-mural.md">Project story</a> ·
   <a href="site/public/mural-paper.pdf">Paper draft</a> ·
-  <a href="apps/studio/sensenova_present/README.md">SenseNova Present WebUI</a> ·
+  <a href="webui/README_EN.md">SenseNova Present WebUI</a> ·
   <a href="docs/local-deployment.md">Run locally</a> ·
   <a href="docs/thread-bench.md">THREAD-Bench</a>
 </p>
@@ -95,6 +95,31 @@ The revision router selects the smallest reliable scope:
 - **Group replay** when several related slides or their shared visual language must change.
 - **Deck replan** only when the request changes deck-level decisions or structure.
 
+## Inference and synthesis profiles
+
+The frozen Harness has one entrypoint and two explicit execution profiles:
+
+- `--mode inference` is the default serving/WebUI path. It releases consumed image blocks and
+  compacts old active context to reduce repeated tokens and latency while retaining debug traces.
+- `--mode synthesis` is the training-data path. It disables those lossy context-maintenance
+  operations, stores reconstructable per-agent message/image traces, hashes every image snapshot,
+  and rejects the entire sample if the orchestrator or any child trajectory is incomplete.
+
+```bash
+cd harnesses/mural-presenter
+
+# Fast delivery
+uv run python infer.py --query "Create an 8-slide deck" \
+  --batch demo-infer --mode inference
+
+# Lossless training-trajectory synthesis
+uv run python infer.py --input /absolute/path/to/briefs.jsonl \
+  --batch train-synthesis-v1 --workers 4 --mode synthesis
+```
+
+See the [Harness operating guide](harnesses/mural-presenter/README.md) for the exact lossless
+boundary, resume rules, output tree, integrity gates, and environment overrides.
+
 ## Why HTML?
 
 MURAL uses HTML/CSS/SVG as its authoring source so that text, layout, graphics, media, and
@@ -119,15 +144,16 @@ evidence boundary and [THREAD-Bench overview](docs/thread-bench.md) for the plan
 | --- | --- |
 | [`src/mural_presenter/`](src/mural_presenter/) | Reserved Python core: query synthesis, data preparation, orchestration, inference, rendering, and QC |
 | [`configs/`](configs/) | Versioned, non-secret configuration and query-pool contracts |
-| [`apps/studio/`](apps/studio/) | Integrated SenseNova Present WebUI for authoring, review, revision, and export, plus its deployment adapters |
+| [`webui/`](webui/) | Active SenseNova Present WebUI wired to the canonical root Skill/Harness pair |
 | [`skills/mural-presenter/`](skills/mural-presenter/) | Frozen lifecycle Skill: orchestration contract, role cards, references, assets, and deterministic deck tools |
 | [`harnesses/mural-presenter/`](harnesses/mural-presenter/) | Paired multi-agent execution Harness used by SenseNova Present |
+| [`fonts/`](fonts/) | Allow-listed OFL/open-source fonts required by the public runtime and tests |
 | [`services/api/`](services/api/) | Target extraction boundary between the WebUI and reusable MURAL runtimes |
 | [`scripts/`](scripts/) | Thin future CLI entrypoints; reusable logic belongs in `src/` |
 | [`tests/`](tests/) | Unit, integration, end-to-end, and fixture conventions |
 | [`data/`](data/) | Dataset layout and release rules; generated data is not committed |
 | [`artifacts/`](artifacts/) | Run-artifact contract; generated runs and exports are ignored |
-| [`benchmarks/thread_bench/`](benchmarks/thread_bench/) | Reserved public home of THREAD-Bench cases, judges, and aggregation |
+| [`benchmarks/thread_bench/`](benchmarks/thread_bench/) | Public THREAD-Bench interface contract |
 | [`assets/logo/`](assets/logo/) | Primary mascot, compact mark, lockups, and reproducible exports |
 | [`assets/figures/`](assets/figures/) | Publication figures in PNG and PDF |
 | [`docs/`](docs/) | Method, benchmark, branding, and release notes |

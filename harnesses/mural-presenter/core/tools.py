@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Mural Presenter Harness 的叶子工具与工具 schema。
+"""MURAL Presenter 专属 Harness 的叶子工具与工具 schema。
 
-工具名、参数和 `parameters` 结构与 Hermes 工具面兼容；描述使用简明中文，
-便于中文任务中的模型正确选择工具。core/agent.py 在调 Anthropic Messages API 时
-把 `parameters` 适配为 `input_schema`。
+⚠️ 本文件的工具 **schema 严格对齐 hermes-agent**(tools/*.py):工具名称、描述、parameters
+逐字照搬 hermes 的 `{name, description, parameters}`(OpenAI 风格 parameters,**不是** Anthropic
+的 input_schema)。core/agent.py 在调 Anthropic Messages API 时把 `parameters` 适配成
+`input_schema`(见 agent._anthropic_tool)。这样模型所见 / SFT 落库的工具定义与 hermes 完全一致。
 
 工具是**自由函数**,操作一个 `agent` 上下文对象(状态)。循环里调 `dispatch(agent, name, args)`。
-子 Agent 的角色由 `delegate_task.tasks[].goal` 的稳定前缀解析。内部角色白名单决定工具，
-模型不能选择 toolset、role 或运行时参数。`delegate_task` 需要
+子 agent 的"类型"由 `goal` + `toolsets` 在调用时拼出(见 delegate_task)。`delegate_task` 需要
 递归跑子循环,**实现在 core/agent.py 里**,通过 `agent.extra_tools` 注册;dispatch 先查 extra_tools
 再查 BUILTINS。它的 schema(DELEGATE_TASK_SCHEMA)放本文件,和其它 schema 一处。
 
@@ -18,61 +18,53 @@
 所有 key 从环境变量读(.env 注入,绝不写进仓库)。
 """
 import base64
+import copy
 import fcntl
+import fnmatch
 import glob
 import hashlib
-import io
 import json
 import os
-from pathlib import Path
 import re
 import shutil
 import subprocess
-import threading
 import time
 import urllib.request
 
 import requests
 
-
-def parse_optional_timeout(raw_value, default_seconds):
-    """Parse an opt-out timeout env value for slow upstream model services.
-
-    ``none``/``off``/``0`` disables the client-side deadline. Progress-based
-    repetition guards and role contracts remain independent.
-    """
-    value = str(default_seconds if raw_value is None else raw_value).strip().lower()
-    if value in {"", "0", "none", "off", "disabled", "false"}:
-        return None
-    seconds = float(value)
-    return None if seconds <= 0 else max(30.0, seconds)
-
+try:
+    from .contracts import REVIEW_CLOSEOUT_ARTIFACTS
+except ImportError:  # Direct-file loading used by release smoke tests.
+    import sys
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from contracts import REVIEW_CLOSEOUT_ARTIFACTS
 
 IMG_EXT = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
-TERMINAL_DEFAULT_TIMEOUT = parse_optional_timeout(
-    os.environ.get("TERMINAL_DEFAULT_FOREGROUND_TIMEOUT"), None
-)
-FOREGROUND_MAX_TIMEOUT = parse_optional_timeout(
-    os.environ.get("TERMINAL_MAX_FOREGROUND_TIMEOUT"), None
-)
-IMAGE_GENERATION_CONCURRENCY = max(
-    1, int(os.environ.get("IMAGE_GENERATION_CONCURRENCY", "4"))
-)
-IMAGE_GENERATION_TIMEOUT = parse_optional_timeout(
-    os.environ.get("IMAGE_GENERATION_TIMEOUT"), None
-)
-WEB_REQUEST_TIMEOUT = parse_optional_timeout(
-    os.environ.get("WEB_REQUEST_TIMEOUT"), None
-)
-IMAGE_DOWNLOAD_TIMEOUT = parse_optional_timeout(
-    os.environ.get("IMAGE_DOWNLOAD_TIMEOUT"), None
-)
-ROLE_CARD_READ_CAP = max(
-    8000, int(os.environ.get("ROLE_CARD_READ_CAP", "28000"))
-)
-_IMAGE_GENERATION_SEMAPHORE = threading.BoundedSemaphore(
-    IMAGE_GENERATION_CONCURRENCY
-)
+FOREGROUND_MAX_TIMEOUT = int(os.environ.get("TERMINAL_MAX_FOREGROUND_TIMEOUT", "600"))  # 对齐 hermes 默认 600
+
+
+def _subprocess_env():
+    """Make bare ``python`` resolve to the engine runtime for child Agents.
+
+    Studio normally injects the same directory into PATH.  Keeping this small
+    fallback in the Harness also covers direct CLI use and inherited shells on
+    macOS, Windows and Linux.
+    """
+    env = os.environ.copy()
+    executable = env.get("PPTAGENT_ENGINE_PYTHON") or env.get("ENGINE_PYTHON")
+    if not executable:
+        return env
+    engine_dir = os.path.dirname(os.path.abspath(os.path.expanduser(executable)))
+    current = env.get("PATH", "")
+    parts = [part for part in current.split(os.pathsep) if part]
+    normalized = os.path.normcase(os.path.normpath(engine_dir))
+    parts = [
+        part for part in parts
+        if os.path.normcase(os.path.normpath(part)) != normalized
+    ]
+    env["PATH"] = os.pathsep.join([engine_dir, *parts])
+    return env
 
 
 def _record_asset_provenance(agent, rel, *, origin, source_url=None,
@@ -142,115 +134,15 @@ def _record_asset_provenance(agent, rel, *, origin, source_url=None,
             os.replace(temporary, catalog_path)
         finally:
             fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
-    # Keep a worker-local record as well.  The shared catalog may be updated by
-    # several Image workers concurrently, so the convergence controller must
-    # not mistake another worker's download for progress by this worker.
-    lock = getattr(agent, "_asset_activity_lock", None)
-    if lock is None:
-        lock = threading.Lock()
-        agent._asset_activity_lock = lock
-    with lock:
-        created = getattr(agent, "_created_asset_paths", None)
-        if not isinstance(created, set):
-            created = set(created or [])
-            agent._created_asset_paths = created
-        created.add(rel.replace(os.sep, "/"))
 
 
 # =============================================================== 叶子工具实现
-# 模型可见 schema 只声明运行时真实支持的能力；不暴露兼容字段或占位模式。
-
-def _read_key(path):
-    value = str(path or "").strip().replace("\\", "/")
-    if not value:
-        return ""
-    return os.path.normpath(value).replace("\\", "/")
-
-
-_NON_REFERENCE_SKILL_ASSET_RE = re.compile(
-    r"(?:^|/)skills/mural-presenter/assets/(?:base-template\.css|vendor/.*)$",
-    re.I,
-)
-_SELECT_ONE_REFERENCE_RE = re.compile(
-    r"(?:^|/)skills/mural-presenter/references/"
-    r"(?P<family>slide-categories|style-families|style-systems)/(?P<name>[^/]+\.md)$",
-    re.I,
-)
-
-
-def _skill_read_policy(agent, normalized, offset):
-    """Keep immutable Skill reading small and deterministic.
-
-    The model owns *which* task-specific reference it selects.  The runtime only
-    enforces the published contract: implementation assets are not references,
-    each routing family contributes one selected document, and a static file
-    already read to EOF is not streamed into the active context again.
-    """
-    if _NON_REFERENCE_SKILL_ASSET_RE.search(normalized):
-        return (
-            "该文件是确定性运行资产，不是设计 reference，禁止读取。"
-            "base-template.css 与 vendor 资源由 deck.py prepare/build 自动处理；"
-            "请读取角色卡点名的 reference 或直接推进正式产物。"
-        )
-
-    role = str(getattr(agent, "role", "") or "").lower()
-    selected = _SELECT_ONE_REFERENCE_RE.search(normalized)
-    if role == "orchestrator" and selected:
-        choices = getattr(agent, "_selected_reference_families", None)
-        if not isinstance(choices, dict):
-            choices = {}
-            agent._selected_reference_families = choices
-        family = selected.group("family").lower()
-        previous = choices.get(family)
-        if previous and previous != normalized:
-            return (
-                f"{family} 已选择并读过 {previous}；同一任务只选一份，"
-                f"不再混读 {normalized}。请基于已选方向继续规划。"
-            )
-        choices[family] = normalized
-
-    completed = getattr(agent, "_completed_read_paths", None)
-    key = _read_key(normalized)
-    if (
-        normalized.lower().startswith("skills/mural-presenter/")
-        and int(offset or 1) == 1
-        and isinstance(completed, set)
-        and key in completed
-    ):
-        return (
-            f"{normalized} 已完整读取到 EOF；静态 Skill 文件未变化，不重复注入。"
-            "请使用阶段记忆和已写正式文件继续；不要从头重读。"
-        )
-    return None
-
+# 实现保留本仓库的沙箱/行为,仅在**参数名/工具名**上跟随 hermes schema;hermes 独有但本仓库
+# 未支持的能力(terminal 的 background/pty/notify、patch 的 V4A 模式)参数照样接收,运行时忽略或报不支持。
 
 def read_file(agent, path, offset=1, limit=500, **_extra):
     """读文本文件,按 hermes 输出 'LINE_NUM|CONTENT'。图片用 vision_analyze。可读 ws 内或只读 skill 树。"""
     normalized = str(path or "").replace("\\", "/").lstrip("./")
-    policy = _skill_read_policy(agent, normalized, offset)
-    if policy:
-        return policy
-    if (
-        str(getattr(agent, "role", "") or "").lower() != "orchestrator"
-        and normalized.lower() == "skills/mural-presenter/skill.md"
-    ):
-        language = str(getattr(agent, "prompt_language", "zh") or "zh").lower()
-        return (
-            "The root workflow belongs to the Orchestrator. Use your required role card and "
-            "only the task-specific plans/references named there; do not reread SKILL.md."
-            if language == "en" else
-            "根工作流只由编排器读取。请使用已指定的唯一角色卡，以及角色卡点名的计划和参考；"
-            "不要重复读取 SKILL.md。"
-        )
-    if (
-        str(getattr(agent, "role", "") or "").lower() == "orchestrator"
-        and re.match(r"^materials/(?:_raw|_work)(?:/|$)", normalized, re.I)
-    ):
-        return (
-            "read_file 已阻止编排器直接读取附件正文或解析中间物。"
-            "请先委派 Material；其 ready/complete 后，只读取 "
-            "materials/summaries/<assignment_id>.md，再结合原始 query 决定 Research。"
-        )
     if (
         str(getattr(agent, "role", "") or "").lower() == "orchestrator"
         and re.search(
@@ -278,72 +170,25 @@ def read_file(agent, path, offset=1, limit=500, **_extra):
         all_lines = f.read().splitlines()
     total = len(all_lines)
     start = max(1, int(offset or 1))
-    lim = max(1, int(limit or 500))
+    lim = int(limit or 500)
     sel = all_lines[start - 1:start - 1 + lim]
     numbered = "\n".join(f"{start + i}|{ln}" for i, ln in enumerate(sel))
-    # Role cards are mandatory and static. Returning one in full costs no more
-    # tokens than paginating it, but removes 1–3 serial model round trips for
-    # every Image/Slide/Review worker.
-    role_card = bool(re.fullmatch(
-        r"skills/mural-presenter/roles/(?:research|material|image|slide|review)\.md",
-        normalized,
-        re.I,
-    ))
-    CAP = ROLE_CARD_READ_CAP if role_card else 7800
-    last = start + len(sel) - 1
+    CAP = 7800
     if len(numbered) > CAP:
         cut = numbered[:CAP].rsplit("\n", 1)[0]
-        shown = max(1, len(cut.splitlines()))
-        last = start + shown - 1
-        numbered = cut
-    has_more = bool(sel) and last < total
-    pending = getattr(agent, "_pending_read_continuations", None)
-    if not isinstance(pending, dict):
-        pending = {}
-        setattr(agent, "_pending_read_continuations", pending)
-    started = getattr(agent, "_started_read_paths", None)
-    if not isinstance(started, set):
-        started = set()
-        setattr(agent, "_started_read_paths", started)
-    completed = getattr(agent, "_completed_read_paths", None)
-    if not isinstance(completed, set):
-        completed = set()
-        setattr(agent, "_completed_read_paths", completed)
-    key = _read_key(path)
-    if start == 1:
-        started.add(key)
-        completed.discard(key)
-    required_role_card = _read_key(
-        getattr(agent, "_required_role_card_path", "")
-    )
-    if role_card and key == required_role_card and start == 1:
-        agent._required_role_card_started = True
-    if has_more:
-        pending[key] = last + 1
-        completed.discard(key)
-        numbered += (
-            f"\n\n[… 截断:已显示第 {start}–{last} 行(共 {total} 行);"
-            f"续读 offset={last + 1}]"
-        )
-    else:
-        pending.pop(key, None)
-        if key in started:
-            completed.add(key)
-        if (
-            role_card
-            and key == required_role_card
-            and getattr(agent, "_required_role_card_started", False)
-        ):
-            agent._required_role_card_complete = True
-    if not sel and start > total:
-        pending.pop(key, None)
-        return f"{path}: offset={start} 已超过文件末尾(共 {total} 行)"
+        last = start + cut.count("\n")
+        numbered = cut + f"\n\n[… 截断:已显示第 {start}–{last} 行(共 {total} 行);续读 offset={last + 1}]"
     return numbered
 
 
 def _visual_source_path(agent, path):
     try:
-        fp = agent.safe(path) if not os.path.isabs(str(path)) else os.path.realpath(str(path))
+        if os.path.isabs(str(path)):
+            fp = os.path.realpath(str(path))
+        elif callable(getattr(agent, "safe", None)):
+            fp = agent.safe(path)
+        else:
+            fp = os.path.realpath(os.path.join(agent.ws, str(path)))
         rel = os.path.relpath(fp, agent.ws).replace(os.sep, "/")
     except Exception:
         return None
@@ -363,106 +208,78 @@ def _mark_visual_source_dirty(agent, path):
     dirty.add(os.path.realpath(fp))
 
 
-def _is_review_agent(agent):
-    return str(getattr(agent, "label", "") or "").lower().startswith("review")
-
-
-def _review_baseline_root(agent):
-    trace = getattr(agent, "trace", None)
-    root = os.path.join(
-        str(getattr(trace, "sub_dir", "") or agent.safe("_trace/review")),
-        "review-baselines",
-    )
-    os.makedirs(root, exist_ok=True)
-    return root
-
-
-def _fresh_render_for_source(agent, source, page):
-    """Return the current PNG only when it is valid pre-edit pixel evidence."""
-    png = os.path.join(agent.ws, "renders", f"slide_{page:02d}.png")
-    css = os.path.join(agent.ws, "base.css")
-    try:
-        source_mtime = max(
-            os.stat(source).st_mtime_ns,
-            os.stat(css).st_mtime_ns if os.path.isfile(css) else 0,
-        )
-        if os.stat(png).st_mtime_ns < source_mtime:
-            return None
-    except OSError:
-        return None
-    return png
-
-
-def _snapshot_review_baseline(agent, path):
-    """Freeze rollback and comparison evidence before Review changes pixels.
-
-    This is deliberately not an aesthetic checker.  It only guarantees that a
-    Review edit has a trustworthy BEFORE state that can later be compared with
-    the newly rendered AFTER state.
-    """
+def _snapshot_verified_slide(agent, path):
+    """Keep one rollback point before a Slide Agent edits viewed pixels."""
+    label = str(getattr(agent, "label", "") or "")
+    if not label.lower().startswith("slide"):
+        return
     source = _visual_source_path(agent, path)
-    if not source or not _is_review_agent(agent):
-        return None
-    root = _review_baseline_root(agent)
-    rel = os.path.relpath(source, agent.ws).replace(os.sep, "/")
-
-    if rel == "base.css":
-        contact = os.path.join(agent.ws, "renders", "contact-sheet.png")
-        if not os.path.isfile(contact):
-            return (
-                "Review 修改 base.css 前必须先生成 renders/contact-sheet.png，"
-                "以便冻结全册基线并在修改后做 BEFORE | AFTER 回归对比。"
-            )
-        latest_page = max(
-            (
-                os.stat(png).st_mtime_ns
-                for png in glob.glob(os.path.join(agent.ws, "renders", "slide_*.png"))
-                if os.path.isfile(png)
-            ),
-            default=0,
-        )
-        if os.stat(contact).st_mtime_ns < latest_page:
-            return (
-                "Review 修改 base.css 前的 renders/contact-sheet.png 已早于最新逐页 PNG。"
-                "请先重新生成联系表，再修改全局样式；旧联系表不能作为回归基线。"
-            )
-        baseline_css = os.path.join(root, "base.css")
-        baseline_contact = os.path.join(root, "contact-sheet.png")
-        if not os.path.isfile(baseline_css):
-            shutil.copy2(source, baseline_css)
-        if not os.path.isfile(baseline_contact):
-            shutil.copy2(contact, baseline_contact)
-        agent._review_global_visual_change = True
-        agent._review_last_baseline_source = os.path.relpath(
-            baseline_css, agent.ws
-        ).replace(os.sep, "/")
-        return None
-
-    match = re.fullmatch(r"slides/slide_(\d+)\.html", rel, re.I)
-    if not match:
-        return None
+    if not source:
+        return
+    match = re.fullmatch(r"slide_(\d+)\.html", os.path.basename(source), re.I)
+    if not match or not os.path.isfile(source):
+        return
     page = int(match.group(1))
-    png = _fresh_render_for_source(agent, source, page)
-    if not png:
+    render = os.path.join(agent.ws, "renders", f"slide_{page:02d}.png")
+    if not os.path.isfile(render):
+        return
+    viewed = set()
+    for item in (getattr(agent, "vision_paths", None) or []):
+        item_path = str(item)
+        if not item_path.lower().endswith(tuple(IMG_EXT)):
+            continue
+        if not os.path.isabs(item_path):
+            item_path = os.path.join(agent.ws, item_path)
+        viewed.add(os.path.realpath(item_path))
+    if os.path.realpath(render) not in viewed:
+        return
+    backups = getattr(agent, "_verified_slide_backups", None)
+    if not isinstance(backups, dict):
+        backups = {}
+        agent._verified_slide_backups = backups
+    if page in backups:
+        return
+    backup_dir = os.path.join(agent.ws, "_trace", "slide-backups", label)
+    os.makedirs(backup_dir, exist_ok=True)
+    html_backup = os.path.join(backup_dir, f"slide_{page:02d}.html")
+    png_backup = os.path.join(backup_dir, f"slide_{page:02d}.png")
+    shutil.copy2(source, html_backup)
+    shutil.copy2(render, png_backup)
+    backups[page] = {
+        "source": source,
+        "render": render,
+        "html_backup": html_backup,
+        "png_backup": png_backup,
+    }
+
+
+def restore_verified_slides(agent):
+    """Restore viewed baselines after a blocked Slide repair."""
+    restored = []
+    for page, item in sorted(
+        (getattr(agent, "_verified_slide_backups", None) or {}).items()
+    ):
+        try:
+            shutil.copy2(item["html_backup"], item["source"])
+            shutil.copy2(item["png_backup"], item["render"])
+            restored.append(int(page))
+        except OSError:
+            continue
+    return restored
+
+
+def _review_refine_write_error(agent, path):
+    label = str(getattr(agent, "label", "") or "").lower()
+    if not label.startswith("review") or not _visual_source_path(agent, path):
+        return None
+    rounds = int(getattr(agent, "_review_refine_rounds", 0) or 0)
+    dirty = getattr(agent, "_dirty_visual_sources", set())
+    if rounds >= 1 and not dirty:
+        setattr(agent, "_blocked_no_progress", int(getattr(agent, "_blocked_no_progress", 0) or 0) + 1)
         return (
-            f"Review 修改 slide_{page:02d}.html 前缺少新鲜基线 PNG。"
-            f"请先渲染并查看 renders/slide_{page:02d}.png，再执行修改；"
-            "没有 BEFORE 证据的页面不得进入 Review 修复。"
+            "Review 已完成一轮机器记录的视觉 refine；不得开启第二轮页面修改。"
+            "恢复已验证最佳版本或返回 blocked，并如实保留 remaining。"
         )
-    baseline_html = os.path.join(root, f"slide_{page:02d}.html")
-    baseline_png = os.path.join(root, f"slide_{page:02d}.png")
-    if not os.path.isfile(baseline_html):
-        shutil.copy2(source, baseline_html)
-    if not os.path.isfile(baseline_png):
-        shutil.copy2(png, baseline_png)
-    modified = getattr(agent, "_review_modified_pages", None)
-    if not isinstance(modified, set):
-        modified = set()
-        agent._review_modified_pages = modified
-    modified.add(page)
-    agent._review_last_baseline_source = os.path.relpath(
-        baseline_html, agent.ws
-    ).replace(os.sep, "/")
     return None
 
 
@@ -491,35 +308,36 @@ def _clear_rendered_dirty_sources(agent):
     return changed and not remaining
 
 
-def write_file(agent, path, content, **_extra):
+def write_file(agent, path, content, cross_profile=False, **_extra):
+    refine_error = _review_refine_write_error(agent, path)
+    if refine_error:
+        return refine_error
     if not getattr(agent, "writable", lambda p: True)(path):
         return (f"write_file 错误:当前角色不允许写 {path}(只读路径)。改写其它路径,"
                 f"或通过 delegate_task 委派有权限的子 agent。")
-    agent._review_last_baseline_source = None
-    baseline_error = _snapshot_review_baseline(agent, path)
-    if baseline_error:
-        return baseline_error
+    _snapshot_verified_slide(agent, path)
     fp = agent.safe(path)
     os.makedirs(os.path.dirname(fp), exist_ok=True)
     with open(fp, "w", encoding="utf-8") as f:
         f.write(content)
     _mark_visual_source_dirty(agent, fp)
-    baseline_note = (
-        f"；Review 回滚基线: {agent._review_last_baseline_source}"
-        if getattr(agent, "_review_last_baseline_source", None) else ""
-    )
-    return f"已写入 {len(content.encode())} 字节到 {path}{baseline_note}"
+    return f"已写入 {len(content.encode())} 字节到 {path}"
 
 
 def patch(agent, mode="replace", path=None, old_string=None, new_string=None,
-          replace_all=False, **_extra):
-    """Apply the one supported Hermes patch operation: exact replacement."""
-    if mode != "replace":
-        return "patch 错误:mode 只能是 replace。"
+          replace_all=False, patch=None, cross_profile=False, **_extra):
+    """find-and-replace(mode='replace')。mode='patch'(V4A 多文件)本仓库未实现,会报不支持。"""
+    if mode == "patch":
+        return ("patch 错误:本环境未实现 V4A patch 模式(mode='patch')。"
+                "请用 mode='replace' + path/old_string/new_string 做定点替换。")
     if not path or old_string is None or new_string is None:
         return "patch 错误:mode='replace' 需要 path、old_string、new_string。"
+    refine_error = _review_refine_write_error(agent, path)
+    if refine_error:
+        return refine_error
     if not getattr(agent, "writable", lambda p: True)(path):
         return f"patch 错误:当前角色不允许改 {path}(只读路径)。"
+    _snapshot_verified_slide(agent, path)
     fp = agent.safe(path)
     with open(fp, encoding="utf-8") as f:
         s = f.read()
@@ -528,40 +346,69 @@ def patch(agent, mode="replace", path=None, old_string=None, new_string=None,
         return f"patch 错误:在 {path} 里找不到 old_string"
     if n > 1 and not replace_all:
         return f"patch 错误:old_string 出现了 {n} 次(不唯一);确认全改请传 replace_all=true"
-    agent._review_last_baseline_source = None
-    baseline_error = _snapshot_review_baseline(agent, path)
-    if baseline_error:
-        return baseline_error
     with open(fp, "w", encoding="utf-8") as f:
         f.write(s.replace(old_string, new_string))
     _mark_visual_source_dirty(agent, fp)
-    baseline_note = (
-        f"；Review 回滚基线: {agent._review_last_baseline_source}"
-        if getattr(agent, "_review_last_baseline_source", None) else ""
-    )
-    return f"已编辑 {path}{baseline_note}"
+    return f"已编辑 {path}"
 
 
-_BROAD_SEARCH_ROOT = (
-    r"(?:/|/mnt/?|/workspace/?|/home/?|~|\$home|\$\{home\})"
-)
+def search_files(agent, pattern, target="content", path=".", file_glob=None,
+                 limit=50, offset=0, output_mode="content", context=0, **_extra):
+    """内容搜索(target='content',正则)或按名找文件(target='files',glob)。替代 grep/find/ls。"""
+    target = {"grep": "content", "find": "files"}.get(target, target)
+    base = agent.read_path(path) if path else agent.ws
+    limit, offset, context = int(limit or 50), int(offset or 0), int(context or 0)
+
+    def rel(p):
+        try:
+            return os.path.relpath(p, agent.ws)
+        except Exception:
+            return p
+
+    if target == "files":
+        matches = []
+        for root, _dirs, files in os.walk(base):
+            for fn in files:
+                if fnmatch.fnmatch(fn, pattern):
+                    matches.append(os.path.join(root, fn))
+        matches.sort(key=lambda p: -os.path.getmtime(p))
+        sel = matches[offset:offset + limit]
+        return "\n".join(rel(p) for p in sel) or "(无匹配文件)"
+
+    try:
+        rx = re.compile(pattern)
+    except re.error as e:
+        return f"search_files 错误:正则无效 {e}"
+    files = [base] if os.path.isfile(base) else [
+        os.path.join(r, fn) for r, _d, fs in os.walk(base) for fn in fs
+        if not file_glob or fnmatch.fnmatch(fn, file_glob)]
+    results, count_by_file = [], {}
+    for fp in files:
+        try:
+            with open(fp, encoding="utf-8", errors="ignore") as f:
+                lines = f.read().splitlines()
+        except Exception:
+            continue
+        for i, ln in enumerate(lines):
+            if rx.search(ln):
+                count_by_file[fp] = count_by_file.get(fp, 0) + 1
+                if output_mode == "content":
+                    block = [f"{rel(fp)}:{j + 1}:{lines[j]}"
+                             for j in range(max(0, i - context), min(len(lines), i + context + 1))]
+                    results.append("\n".join(block))
+    if output_mode == "files_only":
+        fl = sorted(count_by_file, key=lambda p: -count_by_file[p])
+        return "\n".join(rel(p) for p in fl[offset:offset + limit]) or "(无匹配)"
+    if output_mode == "count":
+        items = [f"{rel(p)}: {c}" for p, c in count_by_file.items()]
+        return "\n".join(items[offset:offset + limit]) or "(无匹配)"
+    return "\n\n".join(results[offset:offset + limit]) or "(无匹配)"
 
 
-def _is_unbounded_host_scan(command: str) -> bool:
-    """Reject recursive host scans while preserving workspace-local searches."""
-    normalized = " ".join(str(command).lower().split())
-    quoted_root = rf"[\"']?{_BROAD_SEARCH_ROOT}[\"']?(?=\s|$)"
-    patterns = (
-        rf"(?:^|[;&|]\s*)find\s+(?:(?:-\w+|-[a-z]+\s+\S+)\s+)*{quoted_root}",
-        rf"(?:^|[;&|]\s*)(?:du|ls)\s+(?:-[^\s]+\s+)*{quoted_root}",
-        rf"(?:^|[;&|]\s*)grep\s+(?=[^;&|]*(?:\s-r\b|\s--recursive\b))[^;&|]*\s{quoted_root}",
-        rf"(?:^|[;&|]\s*)(?:rg|fd)\s+[^;&|]*\s{quoted_root}",
-    )
-    return any(re.search(pattern, normalized, re.I) for pattern in patterns)
-
-
-def terminal(agent, command, timeout=None, **_extra):
-    """在工作区下执行前台命令，主要用于 Skill 自带的确定性脚本。"""
+def terminal(agent, command, background=False, timeout=None, workdir=None,
+             pty=False, notify_on_complete=False, watch_patterns=None, **_extra):
+    """在工作区下执行 shell 命令(前台)。本环境不支持 background/pty/notify/watch,这些参数被忽略。
+    主要用途:跑 skill 自带脚本——渲染某页 HTML 成 PNG(成功时 stdout 末行是 PNG 路径)。"""
     if not isinstance(command, str) or not command.strip():
         return "terminal 错误:command 不能为空"
     # 护栏:渲染环境(playwright/chromium/字体/greenlet)已预装且可用,禁止子 agent 安装/重装/调试。
@@ -572,48 +419,23 @@ def terminal(agent, command, timeout=None, **_extra):
                   "conda install", "poetry add", "apt install", "apt-get install", "apt install",
                   "npm install", "yarn add", "pnpm add", "playwright install", "-m playwright",
                   "force-reinstall")
-    python_pip = re.search(
-        r"(?:^|\s)(?:python(?:3(?:\.\d+)*)?|py)\s+-m\s*"
-        r"pip\s+(?:install|uninstall)\b",
-        _norm,
-    )
-    if any(f in _norm for f in _forbidden) or python_pip:
+    if any(f in _norm for f in _forbidden):
         return ("terminal 拒绝:渲染环境(playwright/chromium/字体)已预装且可用,禁止安装/重装/调试它。"
                 "render.py 报错的真实原因几乎都是你的 HTML/CSS 不合法或资源没加载——请重试一次,"
                 "仍失败就简化/修正 HTML,绝不要 pip install / playwright install。")
-    if os.environ.get("MURAL_PREFLIGHT_DONE") == "1" and "deck.py preflight" in _norm:
+    # 根目录递归扫描既不是可复现的依赖发现方式，也会在 macOS/容器挂载盘上
+    # 长时间占满 CPU。字体与浏览器位置必须来自安装脚本、环境变量或系统字体索引，
+    # 不能让模型通过 `find /` 猜运行环境。
+    _root_scan = re.compile(
+        r"(?i)(?:^|[;&|]\s*|\bsudo\s+)"
+        r"(?:find\s+(?:/|['\"]/[\"'])|du\s+(?:/|['\"]/[\"'])|ls\s+-R\s+(?:/|['\"]/[\"']))"
+        r"(?:\s|$)"
+    )
+    if _root_scan.search(command):
         return (
-            "terminal 拒绝:环境和工作区预检已经由 Harness 在模型调用前完成。"
-            "不要重复 preflight，也不要自主检查或修复 Python、字体、Chromium/Playwright；"
-            "请直接开始任务解析和正式产出。"
-        )
-    if (
-        str(getattr(agent, "role", "") or "").lower() == "orchestrator"
-        and re.search(r"(?:^|[\s'\"=])materials/(?:_raw|_work)(?:/|[\s'\";|&]|$)", command, re.I)
-    ):
-        return (
-            "terminal 拒绝:编排器不得通过 shell 读取 materials/_raw 或 materials/_work。"
-            "请先委派 Material，并在其完成后读取 materials/summaries/ 的正式摘要。"
-        )
-    if _is_unbounded_host_scan(command):
-        return (
-            "terminal 拒绝:禁止从 /、/mnt、/workspace、/home 或整个 HOME "
-            "开始递归搜索；这会扫描共享文件系统并让任务长时间假死。托管任务中的环境问题"
-            "应由 Harness 在模型调用前报告，Agent 不得自行修复。确需只读业务文件检索时，"
-            "把范围限定到当前工作区并设置 -maxdepth。"
-        )
-    # Review visual edits must pass through write_file/patch so the runtime can
-    # freeze rollback pixels before changing the source.  Block only obvious
-    # shell mutation of visual sources; render/build/inspection remain allowed.
-    if (
-        _is_review_agent(agent)
-        and re.search(r"(?:base\.css|slides?/slide_\d+\.html)", _norm, re.I)
-        and re.search(r"(?:\bsed\s+-i\b|\bperl\s+-p?i\b|\bpython\w*\s+(?:-c|-)\b|>>?|\btee\b)", _norm)
-    ):
-        return (
-            "terminal 拒绝:Review 不得用 shell 直接改 base.css 或 slide HTML。"
-            "请使用 patch/write_file；Harness 会在写入前自动冻结 HTML 与 PNG 基线，"
-            "并在重渲后提供 BEFORE | AFTER 回归证据。"
+            "terminal 拒绝:禁止递归扫描文件系统根目录。"
+            "字体请使用 PPT_FONT_SOURCE_DIRS、fc-match/fc-list 或 Skill 已安装的 fonts 目录；"
+            "浏览器与 Python 请使用 Harness 已注入的环境变量。不得改写为另一种全盘搜索。"
         )
     quality_command = "deck.py build" in _norm or "render.py" in _norm
     if quality_command and re.search(r"(?:\||;|&&|\|&)\s*(?:tail|head)\b", _norm):
@@ -622,14 +444,25 @@ def terminal(agent, command, timeout=None, **_extra):
             "直接运行原命令；结构化结论同时保存在 renders/render.json 和 "
             "_trace/render-issues.json。"
         )
-    to = parse_optional_timeout(timeout, TERMINAL_DEFAULT_TIMEOUT)
-    if to is not None and FOREGROUND_MAX_TIMEOUT is not None:
-        to = min(to, FOREGROUND_MAX_TIMEOUT)
-    cwd = agent.ws
+    to = int(timeout) if timeout else 180
+    to = min(to, FOREGROUND_MAX_TIMEOUT)
+    cwd = agent.safe(workdir) if workdir else agent.ws
+    notes = []
+    if background:
+        notes.append("[注] 本环境不支持 background,已前台执行")
     try:
-        r = subprocess.run(command, shell=True, cwd=cwd, capture_output=True, text=True, timeout=to)
+        r = subprocess.run(
+            command,
+            shell=True,
+            cwd=cwd,
+            env=_subprocess_env(),
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            timeout=to,
+        )
     except subprocess.TimeoutExpired:
-        return f"terminal 错误:命令触发显式等待上限 {to}s"
+        return f"terminal 错误:命令超过 {to}s 超时"
     except Exception as e:
         return f"terminal 错误:{e}"
     out = (r.stdout or "")
@@ -638,19 +471,7 @@ def terminal(agent, command, timeout=None, **_extra):
     out = out.strip()
     if r.returncode:
         out = f"[exit_code={r.returncode}]\n" + out
-    # 不在工具实现里静默截断；agent 适配层会把超长结果完整落到
-    # _trace/.../tool-results/，并返回可继续 read_file 的预览。
-    body = out if out else f"(命令完成,退出码 {r.returncode},无输出)"
-    if r.returncode == 0 and re.search(r"\basset-download\b", _norm):
-        created = getattr(agent, "_created_asset_paths", None)
-        if not isinstance(created, set):
-            created = set(created or [])
-            agent._created_asset_paths = created
-        created.update(re.findall(
-            r"assets/web_[A-Za-z0-9._-]+\.(?:png|jpe?g|webp|gif)",
-            out,
-            re.I,
-        ))
+    body = out[:8000] if out else f"(命令完成,退出码 {r.returncode},无输出)"
     if r.returncode == 0 and "render.py" in _norm:
         completed_round = _clear_rendered_dirty_sources(agent)
         if completed_round and str(getattr(agent, "label", "") or "").lower().startswith("review"):
@@ -661,7 +482,7 @@ def terminal(agent, command, timeout=None, **_extra):
                 "先看本次新 PNG；只有像素或 DOM 证明真实遮挡、裁切、不可读或无职责空洞时"
                 "才修改。若像素正常，记录 checker mismatch 并保留当前构图。"
             )
-    return body
+    return ("\n".join(notes) + "\n" + body) if notes else body
 
 
 MAX_VISION_EDGE = int(os.environ.get("MAX_VISION_EDGE", "1536"))   # 送模型的图最长边上限
@@ -721,23 +542,20 @@ def _slide_vision_freshness_error(agent, fp):
     state = (digest, png_mtime, source_mtime)
     previous = observations.get(key)
     if previous and previous.get("state") != state and previous.get("state", (None,))[0] == digest:
-        rollback_to_baseline = False
-        if _is_review_agent(agent):
-            try:
-                baseline = os.path.join(
-                    _review_baseline_root(agent), f"slide_{int(page):02d}.png"
-                )
-                with open(baseline, "rb") as source:
-                    rollback_to_baseline = hashlib.sha256(source.read()).hexdigest() == digest
-            except OSError:
-                rollback_to_baseline = False
+        previous_state = previous.get("state") or ()
+        previous_source_mtime = previous_state[2] if len(previous_state) > 2 else None
         observations[key] = {"state": state, "count": 1}
-        if not rollback_to_baseline:
+        if previous_source_mtime != source_mtime:
             return (
                 f"vision_analyze 检测到无效修复：renders/slide_{page}.png 虽已重新生成，"
-                "但像素字节与该 Agent 上次查看的版本完全相同。当前修改没有改变页面；"
+                "但像素字节与该 Agent 上次查看的版本完全相同。当前源文件修改没有改变页面；"
                 "请回到重叠对象的坐标、尺寸或结构根因，不要继续复看相同像素。"
             )
+        # ``render.py --batch`` may intentionally rebuild an unchanged page as
+        # part of final verification.  When neither slide HTML nor base.css has
+        # changed, identical bytes are an idempotent render rather than a failed
+        # repair.  Let Vision certify the new file mtime so final-pixel evidence
+        # can close cleanly instead of forcing the Agent into a fake CSS edit.
     count = int(previous.get("count", 0)) + 1 if previous and previous.get("state") == state else 1
     observations[key] = {"state": state, "count": count}
     if count > 2:
@@ -745,109 +563,6 @@ def _slide_vision_freshness_error(agent, fp):
             f"vision_analyze 已阻止无进展复看：renders/slide_{page}.png 的像素和相关源文件"
             "均未变化，且同一 Agent 已查看两次。请修改根因并重新渲染，或停止该轮并返回 "
             "blocked；继续询问 Vision 不会产生新证据。"
-        )
-    return None
-
-
-def _contact_sheet_freshness_error(agent, fp):
-    """Reject a contact sheet that no longer represents current page pixels.
-
-    A group or Review contact sheet is evidence, not a decorative convenience.
-    Its sidecar freezes the SHA-256 of every included page.  If a page was
-    edited or re-rendered afterwards, the old sheet must never be sent to
-    Vision; otherwise a worker can repeatedly diagnose and "repair" pixels that
-    no longer exist.
-    """
-    render_dir = os.path.join(agent.ws, "renders")
-    try:
-        if os.path.dirname(os.path.realpath(fp)) != os.path.realpath(render_dir):
-            return None
-    except OSError:
-        return None
-    name = os.path.basename(fp)
-    if not re.fullmatch(r"contact-sheet(?:-focus-[A-Za-z0-9._-]+|-review-\d+)?\.png", name, re.I):
-        return None
-
-    evidence = []
-    pages = []
-    metadata_path = ""
-    if name.lower().startswith("contact-sheet-focus-"):
-        metadata_path = os.path.splitext(fp)[0] + ".json"
-        try:
-            payload = json.loads(Path(metadata_path).read_text(encoding="utf-8"))
-        except (OSError, ValueError, TypeError):
-            payload = {}
-        evidence = payload.get("evidence") or []
-        pages = payload.get("pages") or []
-    else:
-        metadata_path = os.path.join(render_dir, "review-contact.json")
-        try:
-            full = json.loads(
-                Path(metadata_path).read_text(encoding="utf-8")
-            ).get("full") or {}
-        except (OSError, ValueError, TypeError, AttributeError):
-            full = {}
-        if name.lower() == "contact-sheet.png":
-            evidence = full.get("evidence") or []
-            pages = full.get("pages") or []
-        else:
-            relative = os.path.relpath(fp, agent.ws).replace(os.sep, "/")
-            group = next(
-                (
-                    item for item in full.get("groups") or []
-                    if isinstance(item, dict) and item.get("path") == relative
-                ),
-                {},
-            )
-            evidence = group.get("evidence") or []
-            pages = group.get("pages") or []
-
-    if not pages:
-        return (
-            f"vision_analyze 已阻止缺少页面快照清单的联系表：{name}。请先运行 "
-            "deck.py contact 重新生成联系表及其 JSON 证据，再进行像素判断。"
-        )
-    evidence_by_page = {
-        int(item.get("page")): item
-        for item in evidence
-        if isinstance(item, dict) and str(item.get("page") or "").isdigit()
-    }
-    stale = []
-    for raw_page in pages:
-        try:
-            page = int(raw_page)
-        except (TypeError, ValueError):
-            continue
-        item = evidence_by_page.get(page)
-        png = os.path.join(render_dir, f"slide_{page:02d}.png")
-        if not item or not os.path.isfile(png):
-            stale.append(page)
-            continue
-        expected = str(item.get("sha256") or "")
-        try:
-            with open(png, "rb") as source:
-                current = hashlib.sha256(source.read()).hexdigest()
-            png_mtime = os.stat(png).st_mtime_ns
-        except OSError:
-            stale.append(page)
-            continue
-        sources = [
-            os.path.join(agent.ws, "slides", f"slide_{page:02d}.html"),
-            os.path.join(agent.ws, "base.css"),
-            os.path.join(agent.ws, "plan", "theme.css"),
-        ]
-        source_mtime = max(
-            (os.stat(path).st_mtime_ns for path in sources if os.path.isfile(path)),
-            default=0,
-        )
-        if not expected or expected != current or source_mtime > png_mtime:
-            stale.append(page)
-    if stale:
-        return (
-            f"vision_analyze 已阻止旧联系表：{name} 不再代表当前页面 "
-            + ",".join(f"{page:02d}" for page in sorted(set(stale)))
-            + "。先重渲受影响页，再运行 deck.py contact 生成新的组联系表；"
-              "不得依据旧联系表继续修改。"
         )
     return None
 
@@ -868,14 +583,6 @@ def _review_vision_repeat_error(agent, fp):
         setattr(agent, "_review_vision_seen", seen)
     key = os.path.realpath(fp)
     if digest and seen.get(key) == digest:
-        match = re.fullmatch(r"slide_(\d+)\.png", os.path.basename(fp), re.I)
-        page = int(match.group(1)) if match and os.path.basename(os.path.dirname(fp)) == "renders" else None
-        pending_rollback_comparison = (
-            page in getattr(agent, "_review_modified_pages", set())
-            and page not in getattr(agent, "_review_comparison_pages", set())
-        )
-        if pending_rollback_comparison:
-            return None
         return (
             f"vision_analyze 已阻止 Review 重复查看未变化像素：{os.path.relpath(fp, agent.ws)}。"
             "先把本轮发现写入唯一问题账本并继续尚未覆盖的页面；只有页面修改并重新渲染、"
@@ -886,91 +593,29 @@ def _review_vision_repeat_error(agent, fp):
     return None
 
 
-def _review_before_after_image(agent, fp):
-    """Create auditable BEFORE/AFTER pixels for Review's first final check.
+_VISION_GUARD_STATE_ATTRS = (
+    "_material_vision_seen",
+    "_image_vision_seen",
+    "_review_vision_seen",
+    "_slide_vision_observations",
+)
 
-    The runtime only presents evidence.  It does not decide whether the new
-    design is prettier or semantically correct; that judgment remains with the
-    same-model Vision pass and the Review contract.
-    """
-    if not _is_review_agent(agent):
-        return fp, None, None
-    rel = os.path.relpath(fp, agent.ws).replace(os.sep, "/")
-    baseline_root = _review_baseline_root(agent)
-    baseline = None
-    comparison_key = None
-    page = None
-    match = re.fullmatch(r"renders/slide_(\d+)\.png", rel, re.I)
-    modified = getattr(agent, "_review_modified_pages", set())
-    if match and int(match.group(1)) in modified:
-        page = int(match.group(1))
-        baseline = os.path.join(baseline_root, f"slide_{page:02d}.png")
-        comparison_key = f"slide_{page:02d}"
-    elif (
-        rel == "renders/contact-sheet.png"
-        and bool(getattr(agent, "_review_global_visual_change", False))
-    ):
-        baseline = os.path.join(baseline_root, "contact-sheet.png")
-        comparison_key = "contact-sheet"
-    if not baseline or not os.path.isfile(baseline):
-        return fp, None, None
 
-    try:
-        from PIL import Image, ImageDraw
+def _vision_guard_snapshot(agent):
+    """Capture repeat-guard state so failed/incomplete transport can retry."""
+    return {
+        name: copy.deepcopy(getattr(agent, name))
+        for name in _VISION_GUARD_STATE_ATTRS
+        if hasattr(agent, name)
+    }
 
-        with Image.open(baseline) as old_source, Image.open(fp) as new_source:
-            old = old_source.convert("RGB")
-            new = new_source.convert("RGB")
-            width = max(old.width, new.width)
-            header = 46
-            gap = 18
-            canvas = Image.new(
-                "RGB", (width, header * 2 + old.height + new.height + gap), "#20242a"
-            )
-            canvas.paste(old, ((width - old.width) // 2, header))
-            after_y = header + old.height + gap + header
-            canvas.paste(new, ((width - new.width) // 2, after_y))
-            draw = ImageDraw.Draw(canvas)
-            draw.text((18, 14), "BEFORE — preserve strengths and semantics", fill="#f2f4f7")
-            draw.text(
-                (18, header + old.height + gap + 14),
-                "AFTER — verify improvement and detect regression",
-                fill="#f2f4f7",
-            )
-        output_dir = os.path.join(
-            str(getattr(getattr(agent, "trace", None), "sub_dir", "") or baseline_root),
-            "review-comparisons",
-        )
-        os.makedirs(output_dir, exist_ok=True)
-        output = os.path.join(output_dir, f"{comparison_key}-before-after.png")
-        canvas.save(output, format="PNG")
-    except Exception:
-        # Failure to create the comparison must not silently count as evidence.
-        return fp, None, None
 
-    if page is not None:
-        compared = getattr(agent, "_review_comparison_pages", None)
-        if not isinstance(compared, set):
-            compared = set()
-            agent._review_comparison_pages = compared
-        compared.add(page)
-    else:
-        agent._review_global_comparison = True
-    if _vision_response_language(agent) == "en":
-        instruction = (
-            "This is the same page before and after Review (BEFORE above, AFTER below). "
-            "Compare openly first: name the preserved strengths, real improvements, new "
-            "regressions, and the objects, relationships, directions, and conclusion a viewer "
-            "can now read. Only then check the original defect. A vanished warning or deleted "
-            "element is not sufficient evidence of improvement."
-        )
-    else:
-        instruction = (
-            "这是 Review 修改前后的同页像素证据（上方 BEFORE、下方 AFTER）。"
-            "先开放比较：列出保留下来的旧版优点、新版真实改善、新增退化，以及观众现在读出的"
-            "对象、关系、方向和结论；之后再核对原缺陷。不得只以告警消失或元素被删作为改善。"
-        )
-    return output, instruction, os.path.relpath(output, agent.ws).replace(os.sep, "/")
+def _restore_vision_guard_snapshot(agent, snapshot):
+    for name in _VISION_GUARD_STATE_ATTRS:
+        if name in snapshot:
+            setattr(agent, name, snapshot[name])
+        elif hasattr(agent, name):
+            delattr(agent, name)
 
 
 def vision_analyze(agent, image_url, question=None, **_extra):
@@ -980,6 +625,7 @@ def vision_analyze(agent, image_url, question=None, **_extra):
     fp = agent.read_path(path)              # 一律走沙箱
     if not os.path.exists(fp) or os.path.isdir(fp):
         return f"vision_analyze 错误:没有这张图 {path}"
+    guard_snapshot = _vision_guard_snapshot(agent)
     label = str(getattr(agent, "label", "") or "").lower()
     # Material 可以查看整页、裁图和局部放大，但反复把同一未变化页送进 Vision
     # 不会提高 OCR/理解质量。需要复核局部时应生成新的裁图文件。
@@ -1025,35 +671,29 @@ def vision_analyze(agent, image_url, question=None, **_extra):
             )
         if digest:
             seen[key] = digest
-    contact_freshness_error = _contact_sheet_freshness_error(agent, fp)
-    if contact_freshness_error:
-        return contact_freshness_error
     review_repeat_error = _review_vision_repeat_error(agent, fp)
     if review_repeat_error:
         return review_repeat_error
     freshness_error = _slide_vision_freshness_error(agent, fp)
     if freshness_error:
         return freshness_error
-    model_fp, comparison_instruction, comparison_path = _review_before_after_image(agent, fp)
-    if comparison_instruction:
-        question = f"{comparison_instruction}\n\n{str(question or '').strip()}".strip()
     try:
         import io
         from PIL import Image
-        with Image.open(model_fp) as im:
+        with Image.open(fp) as im:
             im = im.convert("RGB")
             w, h = im.size
-            edge_limit = max(MAX_VISION_EDGE, 2048) if comparison_path else MAX_VISION_EDGE
-            scale = edge_limit / max(w, h)
+            scale = MAX_VISION_EDGE / max(w, h)
             if scale < 1:
                 im = im.resize((max(1, int(w * scale)), max(1, int(h * scale))), Image.LANCZOS)
             buf = io.BytesIO()
             im.save(buf, format="PNG")
             data = buf.getvalue()
     except ImportError:
-        with open(model_fp, "rb") as f:
+        with open(fp, "rb") as f:
             data = f.read()
     except Exception as e:
+        _restore_vision_guard_snapshot(agent, guard_snapshot)
         return (f"vision_analyze 错误:{path} 不是可解析的图片({type(e).__name__})。"
                 f"只能查看 PNG/JPG 等图片;HTML 页请先渲染成 PNG 再看。")
     if os.environ.get("NOVA_RAW_V2", "0") == "1":
@@ -1065,36 +705,41 @@ def vision_analyze(agent, image_url, question=None, **_extra):
                 agent,
                 image_bytes=data,
                 media_type="image/png",
-                source_path=os.path.relpath(model_fp, agent.ws),
+                source_path=os.path.relpath(fp, agent.ws),
                 question=str(question or ""),
                 parent_tool_use_id=parent_tool_use_id,
             )
         except Exception as exc:  # noqa: BLE001
+            _restore_vision_guard_snapshot(agent, guard_snapshot)
             return (
                 "vision_analyze 错误:Nova auxiliary model 不可用；"
                 f"{type(exc).__name__}: {str(exc)[:180]}"
             )
-        result = {
+        return {
             "vision_analysis": f"[Nova 像素审校 · {path}]\n{analysis}",
             "path": os.path.relpath(fp, agent.ws),
             "vision_backend": "nova_auxiliary_model",
         }
-        if comparison_path:
-            result.update({"comparison_mode": "before_after", "comparison_path": comparison_path})
-        return result
     from . import one_shot_vision
 
     if one_shot_vision.enabled():
         parent_tool_use_id = str(_extra.get("_parent_tool_use_id") or "")
-        analysis = one_shot_vision.call(
-            agent,
-            image_bytes=data,
-            media_type="image/png",
-            source_path=os.path.relpath(model_fp, agent.ws),
-            question=str(question or ""),
-            parent_tool_use_id=parent_tool_use_id,
-        )
-        result = {
+        try:
+            analysis = one_shot_vision.call(
+                agent,
+                image_bytes=data,
+                media_type="image/png",
+                source_path=os.path.relpath(fp, agent.ws),
+                question=str(question or ""),
+                parent_tool_use_id=parent_tool_use_id,
+            )
+        except Exception as exc:  # noqa: BLE001
+            _restore_vision_guard_snapshot(agent, guard_snapshot)
+            return (
+                "vision_analyze 错误:独立 Vision 模型不可用；"
+                f"{type(exc).__name__}: {str(exc)[:180]}"
+            )
+        return {
             "vision_analysis": f"[独立 Vision 单次审校 · {path}]\n{analysis}",
             "path": os.path.relpath(fp, agent.ws),
             "vision_backend": "internal_one_shot",
@@ -1103,20 +748,12 @@ def vision_analyze(agent, image_url, question=None, **_extra):
                 os.environ.get("TOKENHUB_VISION_MODEL", "gemini-3.5-flash"),
             ),
         }
-        if comparison_path:
-            result.update({"comparison_mode": "before_after", "comparison_path": comparison_path})
-        return result
     if response_language == "en":
         summary = f"Inspecting {path}. Give the visual judgment in English."
     else:
         summary = f"正在查看 {path}。请用中文给出视觉判断。"
-    if comparison_instruction:
-        summary = f"{summary} {comparison_instruction}"
-    result = {"image_b64": base64.b64encode(data).decode(), "media_type": "image/png",
-              "path": os.path.relpath(fp, agent.ws), "summary": summary}
-    if comparison_path:
-        result.update({"comparison_mode": "before_after", "comparison_path": comparison_path})
-    return result
+    return {"image_b64": base64.b64encode(data).decode(), "media_type": "image/png",
+            "path": os.path.relpath(fp, agent.ws), "summary": summary}
 
 
 def web_search(agent, query, limit=5, search_type="search", **_extra):
@@ -1125,16 +762,13 @@ def web_search(agent, query, limit=5, search_type="search", **_extra):
     注:serper 的网页搜索端点几乎不返图,真要搜图必须显式传 search_type="images"。"""
     if not agent.serper:
         return "web_search 不可用(未配置 serper key)"
-    # Serper returns at most ten results from this endpoint call.  Make that
-    # per-call transport boundary explicit instead of accepting a larger value
-    # and silently pretending it was honored.  It is not a lifetime search cap.
-    n = min(int(limit or 5), 10)
+    n = min(int(limit or 5), 100)
     images = str(search_type).lower() == "images"
     endpoint = "https://google.serper.dev/images" if images else "https://google.serper.dev/search"
     try:
         r = requests.post(endpoint,
                           headers={"X-API-KEY": agent.serper, "Content-Type": "application/json"},
-                          json={"q": query, "num": n}, timeout=WEB_REQUEST_TIMEOUT).json()
+                          json={"q": query, "num": min(n, 10)}, timeout=30).json()
     except Exception as e:
         return f"web_search 错误:{e}"
     out = []
@@ -1148,96 +782,171 @@ def web_search(agent, query, limit=5, search_type="search", **_extra):
     return "\n".join(out) or "(无结果)"
 
 
-def _pdf_text(data):
-    """Extract every page when web_extract receives an online PDF."""
-    errors = []
-    try:
-        import fitz
-        document = fitz.open(stream=data, filetype="pdf")
-        try:
-            return "\n\n".join(
-                f"### PDF page {index + 1}\n\n{page.get_text('text').strip()}"
-                for index, page in enumerate(document)
-            ).strip()
-        finally:
-            document.close()
-    except Exception as exc:
-        errors.append(f"PyMuPDF:{type(exc).__name__}")
-    try:
-        from pypdf import PdfReader
-        reader = PdfReader(io.BytesIO(data))
-        return "\n\n".join(
-            f"### PDF page {index + 1}\n\n{(page.extract_text() or '').strip()}"
-            for index, page in enumerate(reader.pages)
-        ).strip()
-    except Exception as exc:
-        errors.append(f"pypdf:{type(exc).__name__}")
-    return "PDF 文本提取失败:" + ",".join(errors)
-
-
 def _fetch_one(url):
     try:
         req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req, timeout=WEB_REQUEST_TIMEOUT) as resp:
-            data = resp.read()
-            content_type = str(resp.headers.get("Content-Type") or "").lower()
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            html = resp.read().decode("utf-8", "replace")
     except Exception as e:
         return f"fetch 错误:{e}"
-    if "application/pdf" in content_type or data[:5] == b"%PDF-":
-        return _pdf_text(data)
-    html = data.decode("utf-8", "replace")
     html = re.sub(r"(?is)<(script|style).*?</\1>", " ", html)
-    return re.sub(r"\s+", " ", re.sub(r"(?s)<[^>]+>", " ", html)).strip()
+    return re.sub(r"\s+", " ", re.sub(r"(?s)<[^>]+>", " ", html)).strip()[:5000]
 
 
 def web_extract(agent, urls, **_extra):
-    """抓取全部给定 URL，抽取 HTML 正文或在线 PDF 的逐页文本。"""
+    """抓取若干 URL,抽正文为(近似)markdown 文本。最多 5 个 URL。"""
     if isinstance(urls, str):
         urls = [urls]
     if not isinstance(urls, list) or not urls:
         return "web_extract 错误:需要非空 urls 数组"
     parts = []
-    for u in urls:
+    for u in urls[:5]:
         parts.append(f"## {u}\n\n{_fetch_one(u)}")
     return "\n\n".join(parts)
 
 
 _ASPECT_SIZE = {"landscape": "1536x1024", "portrait": "1024x1536", "square": "1024x1024"}
+_SENSENOVA_U1_SIZE = {
+    "landscape": "2752x1536",
+    "portrait": "1536x2752",
+    "square": "2048x2048",
+}
 
 
-def _image_gen_one_serial(agent, prompt, size, aspect_ratio=None):
+class ImagePolicyRejected(RuntimeError):
+    """The provider rejected the prompt; retrying it unchanged is wasteful."""
+
+
+def _image_policy_rejection(response):
+    if getattr(response, "status_code", 0) == 451:
+        return True
+    try:
+        payload = response.json()
+    except Exception:
+        return False
+    text = json.dumps(payload, ensure_ascii=False).lower()
+    return any(marker in text for marker in (
+        "image_unsafe", "content_policy", "safety", "unsafe", "policy violation",
+    ))
+
+
+def _image_api_request(agent, prompt, size, aspect_ratio=None):
+    """Call the configured Images API provider and return decoded JSON."""
+    provider = str(getattr(agent, "image_provider", "openai_images") or "openai_images").lower()
+    base = str(agent.img_base or "").rstrip("/")
+    endpoint = base if base.endswith("/images/generations") else f"{base}/images/generations"
+    body = {"model": agent.image_model, "prompt": prompt}
+    if provider == "sensenova_u1":
+        body.update({
+            "size": _SENSENOVA_U1_SIZE.get(aspect_ratio, "2752x1536"),
+            "response_format": "url",
+            "output_format": "png",
+        })
+    elif provider == "openai_images":
+        body.update({"size": size, "n": 1})
+    else:
+        raise ValueError(f"不支持的生图服务类型: {provider}")
+    response = requests.post(
+        endpoint,
+        headers={
+            "Authorization": f"Bearer {agent.img_key}",
+            "Content-Type": "application/json",
+        },
+        json=body,
+        # One request generates one image. U1 and OpenAI-compatible image
+        # services may need several minutes when the backend is under load.
+        timeout=600,
+    )
+    if _image_policy_rejection(response):
+        raise ImagePolicyRejected("IMAGE_POLICY_REJECTED")
+    response.raise_for_status()
+    payload = response.json()
+    if not isinstance(payload, dict):
+        raise ValueError("生图服务返回的不是 JSON 对象")
+    return payload
+
+
+def _image_candidates(value, *, field=""):
+    """Yield image URLs/base64 from standard and compatible response shapes."""
+    if isinstance(value, dict):
+        preferred = (
+            "b64_json", "image_base64", "base64", "image_url", "url",
+            "images", "content", "data", "output", "choices", "message",
+        )
+        seen = set()
+        for key in preferred:
+            if key in value:
+                seen.add(key)
+                yield from _image_candidates(value[key], field=key)
+        for key, child in value.items():
+            if key not in seen:
+                yield from _image_candidates(child, field=key)
+        return
+    if isinstance(value, list):
+        for item in value:
+            yield from _image_candidates(item, field=field)
+        return
+    if not isinstance(value, str):
+        return
+    text = value.strip()
+    if not text:
+        return
+    if text.startswith("data:image/"):
+        yield ("data_url", text)
+    elif field in {"b64_json", "image_base64", "base64"}:
+        yield ("base64", text)
+    elif field in {"url", "image_url"} and text.startswith(("http://", "https://")):
+        yield ("url", text)
+
+
+def _image_bytes_from_payload(payload):
+    errors = []
+    for kind, value in _image_candidates(payload):
+        try:
+            if kind == "data_url":
+                return base64.b64decode(value.split(",", 1)[1])
+            if kind == "base64":
+                return base64.b64decode(value)
+            if kind == "url":
+                response = requests.get(value, timeout=120)
+                response.raise_for_status()
+                if response.content:
+                    return response.content
+        except Exception as exc:
+            errors.append(str(exc)[:120])
+    if errors:
+        raise ValueError(f"图片结果解析失败: {errors[-1]}")
+    raise ValueError("响应中没有可识别的图片 URL 或 base64 数据")
+
+
+def _image_gen_one(agent, prompt, size, aspect_ratio=None):
     """单张出图(退避重试 + 落盘 assets/,内容寻址命名)。返回相对路径或错误串。"""
+    if not str(getattr(agent, "img_key", "") or "").strip():
+        return (
+            "image_generate 不可用：未配置生图 API Key（未发起网络请求）。"
+            "请改用已有素材、真实图片检索或 Canvas/排版降级，不要重试。"
+        )
     # 配图后端偶发瞬时不可用(503/超时/空 data),工具层退避重试,别让子 agent 几次手动重试就放弃丢图。
     # 配图是 deck 质量关键(用图率),这里多扛几次比丢一张 hero 图划算。
-    d, last_err = None, ""
-    for attempt in range(4):
+    data, last_err = None, ""
+    for attempt in range(3):
         try:
-            d = requests.post(f"{agent.img_base}/images/generations",
-                              headers={"Authorization": f"Bearer {agent.img_key}",
-                                       "Content-Type": "application/json"},
-                              json={"model": agent.image_model, "prompt": prompt, "size": size, "n": 1},
-                              timeout=IMAGE_GENERATION_TIMEOUT).json()
+            payload = _image_api_request(agent, prompt, size, aspect_ratio)
+            data = _image_bytes_from_payload(payload)
+        except ImagePolicyRejected:
+            return (
+                "IMAGE_POLICY_REJECTED：该提示词被安全策略拒绝；"
+                "不要尝试绕过安全过滤器，请改用合规素材或调整视觉方案。"
+            )
         except Exception as e:
             last_err = str(e)[:160]
-            d = None
-        if d is not None and "data" in d and d["data"]:
+            data = None
+        if data:
             break
-        if d is not None and "data" not in d:
-            last_err = json.dumps(d, ensure_ascii=False)[:160]
-        if attempt < 3:
-            time.sleep(3 * (attempt + 1))   # 3/6/9s 退避
-    if d is None or "data" not in d or not d["data"]:
-        return f"image_generate 错误(重试 4 次仍失败):{last_err}"
-    it = d["data"][0]
-    if it.get("b64_json"):
-        data = base64.b64decode(it["b64_json"])
-    elif it.get("url"):
-        try:
-            data = requests.get(it["url"], timeout=IMAGE_DOWNLOAD_TIMEOUT).content
-        except Exception as e:
-            return f"image_generate 错误:下载图片失败 {e}"
-    else:
-        return "image_generate 错误:没有返回图片"
+        if attempt < 2:
+            time.sleep(3 * (attempt + 1))   # 3/6s 退避
+    if not data:
+        return f"image_generate 错误(重试 3 次仍失败):{last_err}"
     # hermes schema 无 out_path:用 prompt 的内容寻址名,保证并行子 agent 不撞名(同 prompt→同文件,无碍)。
     name = f"img_{hashlib.sha1(prompt.encode('utf-8')).hexdigest()[:10]}.png"
     rel = f"assets/{name}"
@@ -1251,16 +960,6 @@ def _image_gen_one_serial(agent, prompt, size, aspect_ratio=None):
     return rel
 
 
-def _image_gen_one(agent, prompt, size, aspect_ratio=None):
-    """Generate one image under a backend-specific concurrency gate.
-
-    Image workers may run in parallel with Slide/Research workers, while the
-    image endpoint itself can be capped independently when its queue is narrow.
-    """
-    with _IMAGE_GENERATION_SEMAPHORE:
-        return _image_gen_one_serial(agent, prompt, size, aspect_ratio)
-
-
 def image_generate(agent, prompt, aspect_ratio="landscape", **_extra):
     """根据文本提示生成图片(照片/插画/主视觉,不用于数据图表)。存到 assets/,返回相对路径。
     aspect_ratio:landscape(16:9 宽)/portrait(16:9 高)/square(1:1)。"""
@@ -1269,67 +968,149 @@ def image_generate(agent, prompt, aspect_ratio="landscape", **_extra):
     )
 
 
-# =============================================================== 工具 schema（Hermes 兼容的 parameters 风格）
+def fetch_image(agent, url, **_extra):
+    """下载一张网图到 assets/ 本地（带浏览器 UA + 按 host 自动 Referer，绕常见防盗链/热链保护）。
+    返回 assets/ 下相对路径；失败返回错误字符串（可改用 image_generate 兜底）。
+    web_search(search_type="images") 搜到的真图直链必须先用本工具落地，才能被 vision_analyze 核对、
+    被 HTML/pptx 稳定引用（远程直链常因防盗链在回填后裂图）。"""
+    if not isinstance(url, str) or not url.lower().startswith(("http://", "https://")):
+        return f"fetch_image 错误：需要 http(s) 图片直链，收到 {url!r}"
+    try:
+        from urllib.parse import urlparse
+        u = urlparse(url)
+        headers = {
+            "User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                           "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"),
+            "Referer": f"{u.scheme}://{u.netloc}/",
+            "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+        }
+        resp = requests.get(url, headers=headers, timeout=30)
+        if resp.status_code != 200 or not resp.content:
+            return f"fetch_image 错误：HTTP {resp.status_code}/空内容，跳过该图（可改用 image_generate 兜底）"
+        data = resp.content
+    except Exception as e:
+        return f"fetch_image 错误：下载失败 {type(e).__name__}: {e}（可改用 image_generate 兜底）"
+    try:
+        import io
+        from PIL import Image
+        with Image.open(io.BytesIO(data)) as im:
+            fmt = (im.format or "JPEG").lower()
+        ext = {"jpeg": ".jpg", "png": ".png", "webp": ".webp", "gif": ".gif"}.get(fmt, ".jpg")
+    except Exception:
+        return "fetch_image 错误：下载内容不是可解析图片（可能防盗链返回了占位页），改用 image_generate 兜底"
+    name = f"web_{hashlib.sha1(url.encode('utf-8')).hexdigest()[:10]}{ext}"
+    rel = f"assets/{name}"
+    os.makedirs(agent.safe("assets"), exist_ok=True)
+    with open(agent.safe(rel), "wb") as f:
+        f.write(data)
+    _record_asset_provenance(agent, rel, origin="downloaded", source_url=url)
+    return rel
+
+
+# =============================================================== 工具 schema(逐字对齐 hermes,parameters 风格)
 
 READ_FILE_SCHEMA = {
     "name": "read_file",
-    "description": "按行读取文本文件。大文件用 offset 和 limit 分段读取；返回中若出现续读 offset，说明文件尚未到底。图片和二进制文件请用 vision_analyze。",
+    "description": "Read a text file with line numbers and pagination. Use this instead of cat/head/tail in terminal. Output format: 'LINE_NUM|CONTENT'. Suggests similar filenames if not found. Use offset and limit for large files. Reads exceeding ~100K characters are rejected; use offset and limit to read specific sections of large files. NOTE: Cannot read images or binary files — use vision_analyze for images.",
     "parameters": {
         "type": "object",
         "properties": {
-            "path": {"type": "string", "description": "要读取的文件路径"},
-            "offset": {"type": "integer", "description": "起始行号，从 1 开始", "default": 1, "minimum": 1},
-            "limit": {"type": "integer", "description": "最多读取的行数", "default": 500, "maximum": 2000},
+            "path": {"type": "string", "description": "Path to the file to read (absolute, relative, or ~/path)"},
+            "offset": {"type": "integer", "description": "Line number to start reading from (1-indexed, default: 1)", "default": 1, "minimum": 1},
+            "limit": {"type": "integer", "description": "Maximum number of lines to read (default: 500, max: 2000)", "default": 500, "maximum": 2000},
         },
         "required": ["path"],
-        "additionalProperties": False,
     },
 }
 
 WRITE_FILE_SCHEMA = {
     "name": "write_file",
-    "description": "写入完整文件并覆盖原内容，同时自动创建父目录。只改局部时使用 patch。常见结构化文件写入后会自动做语法检查。",
+    "description": "Write content to a file, completely replacing existing content. Use this instead of echo/cat heredoc in terminal. Creates parent directories automatically. OVERWRITES the entire file — use 'patch' for targeted edits. Auto-runs syntax checks on .py/.json/.yaml/.toml and other linted languages; only NEW errors introduced by this write are surfaced (pre-existing errors are filtered out).",
     "parameters": {
         "type": "object",
         "properties": {
-            "path": {"type": "string", "description": "要创建或覆盖的文件路径"},
-            "content": {"type": "string", "description": "文件的完整内容"},
+            "path": {"type": "string", "description": "Path to the file to write (will be created if it doesn't exist, overwritten if it does)"},
+            "content": {"type": "string", "description": "Complete content to write to the file"},
+            "cross_profile": {
+                "type": "boolean",
+                "description": "Opt out of the cross-profile soft guard. Defaults to false. Set true ONLY after explicit user direction to edit another Hermes profile's skills/plugins/cron/memories — by default these writes are blocked with a warning because they affect a different profile than the one this session is running under.",
+                "default": False,
+            },
         },
         "required": ["path", "content"],
-        "additionalProperties": False,
     },
 }
 
 PATCH_SCHEMA = {
     "name": "patch",
     "description": (
-        "对正式文本文件做精确替换。只开放实际实现的 replace 模式；"
-        "old_string 必须精确匹配且唯一，除非 replace_all=true。"
+        "Targeted find-and-replace edits in files. Use this instead of sed/awk in terminal. "
+        "Uses fuzzy matching (9 strategies) so minor whitespace/indentation differences won't break it. "
+        "Returns a unified diff. Auto-runs syntax checks after editing.\n\n"
+        "REPLACE MODE (mode='replace', default): find a unique string and replace it. "
+        "REQUIRED PARAMETERS: mode, path, old_string, new_string.\n"
+        "PATCH MODE (mode='patch'): apply V4A multi-file patches for bulk changes. "
+        "REQUIRED PARAMETERS: mode, patch."
     ),
     "parameters": {
         "type": "object",
         "properties": {
             "mode": {
                 "type": "string",
-                "enum": ["replace"],
-                "description": "编辑模式，固定为 replace",
+                "enum": ["replace", "patch"],
+                "description": "Edit mode. 'replace' (default): requires path + old_string + new_string. 'patch': requires patch content only.",
                 "default": "replace",
             },
-            "path": {"type": "string", "description": "replace 模式要修改的文件"},
-            "old_string": {"type": "string", "description": "replace 模式中要查找的唯一原文；必要时带上上下文"},
-            "new_string": {"type": "string", "description": "replace 模式的替换文本；空字符串表示删除"},
-            "replace_all": {"type": "boolean", "description": "是否替换所有命中项", "default": False},
+            "path": {"type": "string", "description": "REQUIRED when mode='replace'. File path to edit."},
+            "old_string": {"type": "string", "description": "REQUIRED when mode='replace'. Exact text to find and replace. Must be unique in the file unless replace_all=true. Include surrounding context lines to ensure uniqueness."},
+            "new_string": {"type": "string", "description": "REQUIRED when mode='replace'. Replacement text. Pass empty string '' to delete the matched text."},
+            "replace_all": {"type": "boolean", "description": "Replace all occurrences instead of requiring a unique match (default: false)", "default": False},
+            "patch": {"type": "string", "description": "REQUIRED when mode='patch'. V4A format patch content. Format:\n*** Begin Patch\n*** Update File: path/to/file\n@@ context hint @@\n context line\n-removed line\n+added line\n*** End Patch"},
+            "cross_profile": {"type": "boolean", "description": "Opt out of the cross-profile soft guard. Defaults to false. Set true ONLY after explicit user direction to edit another Hermes profile's skills/plugins/cron/memories.", "default": False},
         },
-        "required": ["mode", "path", "old_string", "new_string"],
-        "additionalProperties": False,
+        "required": ["mode"],
     },
 }
 
-TERMINAL_TOOL_DESCRIPTION = """在 Linux 环境中执行命令。
+SEARCH_FILES_SCHEMA = {
+    "name": "search_files",
+    "description": "Search file contents or find files by name. Use this instead of grep/rg/find/ls in terminal. Ripgrep-backed, faster than shell equivalents.\n\nContent search (target='content'): Regex search inside files. Output modes: full matches with line numbers, file paths only, or match counts.\n\nFile search (target='files'): Find files by glob pattern (e.g., '*.py', '*config*'). Also use this instead of ls — results sorted by modification time.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "pattern": {"type": "string", "description": "Regex pattern for content search, or glob pattern (e.g., '*.py') for file search"},
+            "target": {"type": "string", "enum": ["content", "files"], "description": "'content' searches inside file contents, 'files' searches for files by name", "default": "content"},
+            "path": {"type": "string", "description": "Directory or file to search in (default: current working directory)", "default": "."},
+            "file_glob": {"type": "string", "description": "Filter files by pattern in grep mode (e.g., '*.py' to only search Python files)"},
+            "limit": {"type": "integer", "description": "Maximum number of results to return (default: 50)", "default": 50},
+            "offset": {"type": "integer", "description": "Skip first N results for pagination (default: 0)", "default": 0},
+            "output_mode": {"type": "string", "enum": ["content", "files_only", "count"], "description": "Output format for grep mode: 'content' shows matching lines with line numbers, 'files_only' lists file paths, 'count' shows match counts per file", "default": "content"},
+            "context": {"type": "integer", "description": "Number of context lines before and after each match (grep mode only)", "default": 0},
+        },
+        "required": ["pattern"],
+    },
+}
 
-- 读文件用 read_file，写文件用 write_file，局部修改用 patch；只读检索可在 terminal 中使用 rg。
-- terminal 主要用于运行构建、测试和 Skill 自带脚本。
-- 当前运行时以前台方式执行命令并等待其完成；默认没有额外的等待截止。
+TERMINAL_TOOL_DESCRIPTION = """Execute shell commands on a Linux environment. Filesystem usually persists between calls.
+
+Do NOT use cat/head/tail to read files — use read_file instead.
+Do NOT use grep/rg/find to search — use search_files instead.
+Do NOT use ls to list directories — use search_files(target='files') instead.
+Do NOT use sed/awk to edit files — use patch instead.
+Do NOT use echo/cat heredoc to create files — use write_file instead.
+Reserve terminal for: builds, installs, git, processes, scripts, network, package managers, and anything that needs a shell.
+
+Foreground (default): Commands return INSTANTLY when done, even if the timeout is high. Set timeout=300 for long builds/scripts — you'll still get the result in seconds if it's fast. Prefer foreground for short commands.
+Background: Set background=true to get a session_id. Almost always pair with notify_on_complete=true — bg without notify runs SILENTLY and you have no way to learn it finished short of calling process(action='poll') yourself. Two legitimate uses:
+  (1) Long-lived processes that never exit (servers, watchers, daemons) — silent is correct, there's no exit to notify on.
+  (2) Long-running bounded tasks (tests, builds, deploys, CI pollers, batch jobs) — MUST set notify_on_complete=true. Without it you'll either forget to poll or sit blocked waiting for the user to surface the result.
+For servers/watchers, do NOT use shell-level background wrappers (nohup/disown/setsid/trailing '&') in foreground mode. Use background=true so Hermes can track lifecycle and output.
+After starting a server, verify readiness with a health check or log signal, then run tests in a separate terminal() call. Avoid blind sleep loops.
+Use process(action="poll") for progress checks, process(action="wait") to block until done.
+Working directory: Use 'workdir' for per-command cwd.
+PTY mode: Set pty=true for interactive CLI tools (Codex, Claude Code, Python REPL).
+
+Do NOT use vim/nano/interactive tools without pty=true — they hang without a pseudo-terminal. Pipe git output to cat if it might page.
 """
 
 TERMINAL_SCHEMA = {
@@ -1338,102 +1119,141 @@ TERMINAL_SCHEMA = {
     "parameters": {
         "type": "object",
         "properties": {
-            "command": {"type": "string", "description": "要执行的命令"},
-            "timeout": {"type": "integer", "description": "可选等待秒数；不填写则等待命令自然结束，部署方可另设保护上限", "minimum": 1},
+            "command": {"type": "string", "description": "The command to execute on the VM"},
+            "background": {"type": "boolean", "description": "Run the command in the background. Almost always pair with notify_on_complete=true — without it, the process runs silently and you'll have no way to learn it finished short of calling process(action='poll') yourself (easy to forget, leading to silent blindness on long jobs). Two legitimate patterns: (1) Long-lived processes that never exit (servers, watchers, daemons) — these stay silent because there's no exit to notify on. (2) Long-running bounded tasks (tests, builds, deploys, CI pollers, batch jobs) — these MUST set notify_on_complete=true. For short commands, prefer foreground with a generous timeout instead.", "default": False},
+            "timeout": {"type": "integer", "description": f"Max seconds to wait (default: 180, foreground max: {FOREGROUND_MAX_TIMEOUT}). Returns INSTANTLY when command finishes — set high for long tasks, you won't wait unnecessarily. Foreground timeout above {FOREGROUND_MAX_TIMEOUT}s is rejected; use background=true for longer commands.", "minimum": 1},
+            "workdir": {"type": "string", "description": "Working directory for this command (absolute path). Defaults to the session working directory."},
+            "pty": {"type": "boolean", "description": "Run in pseudo-terminal (PTY) mode for interactive CLI tools like Codex, Claude Code, or Python REPL. Only works with local and SSH backends. Default: false.", "default": False},
+            "notify_on_complete": {"type": "boolean", "description": "When true (and background=true), you'll be automatically notified exactly once when the process finishes. **This is the right choice for almost every long-running task** — tests, builds, deployments, multi-item batch jobs, anything that takes over a minute and has a defined end. Use this and keep working on other things; the system notifies you on exit. MUTUALLY EXCLUSIVE with watch_patterns — when both are set, watch_patterns is dropped.", "default": False},
+            "watch_patterns": {"type": "array", "items": {"type": "string"}, "description": "Strings to watch for in background process output. HARD RATE LIMIT: at most 1 notification per 15 seconds per process — matches arriving inside the cooldown are dropped. After 3 consecutive 15-second windows with dropped matches, watch_patterns is automatically disabled for that process and promoted to notify_on_complete behavior (one notification on exit, no more mid-process spam). USE ONLY for truly rare, one-shot mid-process signals on LONG-LIVED processes that will never exit on their own — e.g. ['Application startup complete'] on a server so you know when to hit its endpoint, or ['migration done'] on a daemon. DO NOT use for: (1) end-of-run markers like 'DONE'/'PASS' — use notify_on_complete instead; (2) error patterns like 'ERROR'/'Traceback' in loops or multi-item batch jobs — they fire on every iteration and you'll hit the strike limit fast; (3) anything you'd ever combine with notify_on_complete. When in doubt, choose notify_on_complete. MUTUALLY EXCLUSIVE with notify_on_complete — set one, not both."},
         },
         "required": ["command"],
-        "additionalProperties": False,
     },
 }
 
 VISION_ANALYZE_SCHEMA = {
     "name": "vision_analyze",
     "description": (
-        "加载工作区中的本地图片并检查真实像素。"
-        "请在 question 中写明要判断的具体问题，不要只写“看一下”。"
+        "Load an image into the conversation so you can see it. Accepts a "
+        "URL, local file path, or data URL. When your active model has "
+        "native vision, the image is attached to your context directly "
+        "and you read the pixels yourself on the next turn — call this "
+        "any time the user references an image (filepath in their message, "
+        "URL in tool output, screenshot from the browser, etc.). For "
+        "non-vision models, falls back to an auxiliary vision model that "
+        "returns a text description."
     ),
     "parameters": {
         "type": "object",
         "properties": {
-            "image_url": {"type": "string", "description": "工作区图片路径"},
-            "question": {"type": "string", "description": "需要根据像素回答的具体问题"},
+            "image_url": {"type": "string", "description": "Image URL (http/https), local file path, or data: URL to load."},
+            "question": {"type": "string", "description": "Your specific question or request about the image. Optional context the model uses on the next turn after seeing the image."},
         },
         "required": ["image_url", "question"],
-        "additionalProperties": False,
     },
 }
 
 WEB_SEARCH_SCHEMA = {
     "name": "web_search",
-    "description": "搜索网页或真实图片。search_type='search' 返回网页结果；search_type='images' 返回图片直链和来源站点。具名人物、地点、产品、作品和事件优先搜索真图。",
+    "description": "Search the web. With search_type='search' (default) returns web results (titles, URLs, descriptions). With search_type='images' returns REAL images from the web — direct image URLs, titles, and source sites — use this to find real photos for slides (prefer real images; image_generate is only a fallback). Query operators such as site:domain, filetype:pdf, intitle:word, -term, and \"exact phrase\" may work when the backend supports them.",
     "parameters": {
         "type": "object",
         "properties": {
-            "query": {"type": "string", "description": "搜索词，可包含后端支持的 site:、filetype:pdf 和精确短语等操作符"},
-            "limit": {"type": "integer", "description": "本次返回 1–10 条；这是单次批量，不是整个任务的搜索上限", "minimum": 1, "maximum": 10, "default": 5},
-            "search_type": {"type": "string", "enum": ["search", "images"], "description": "search 搜网页，images 搜真实图片", "default": "search"},
+            "query": {"type": "string", "description": "The search query to look up on the web. You may include backend-supported operators such as site:example.com, filetype:pdf, intitle:word, -term, or \"exact phrase\"."},
+            "limit": {"type": "integer", "description": "Maximum number of results to return. Defaults to 5.", "minimum": 1, "maximum": 100, "default": 5},
+            "search_type": {"type": "string", "enum": ["search", "images"], "description": "'search' (default) for web pages; 'images' to find real images (returns direct image URLs + source). Use 'images' when you need real photos.", "default": "search"},
         },
         "required": ["query"],
-        "additionalProperties": False,
     },
 }
 
 WEB_EXTRACT_SCHEMA = {
     "name": "web_extract",
-    "description": "提取给定网页或在线 PDF 的完整文本，并返回 Markdown。若结果较长，运行时会保存全文并给出可续读路径；直接图片 URL 不用此工具。",
+    "description": "Extract content from web page URLs. Returns page content in markdown format. Also works with PDF URLs (arxiv papers, documents, etc.) — pass the PDF link directly and it converts to markdown text. Pages under 5000 chars return full markdown; larger pages are LLM-summarized and capped at ~5000 chars per page. Pages over 2M chars are refused. If a URL fails or times out, use the browser tool to access it instead.",
     "parameters": {
         "type": "object",
         "properties": {
-            "urls": {"type": "array", "items": {"type": "string"}, "description": "本次要提取的 URL 列表；列表中的项目都会处理", "minItems": 1},
+            "urls": {"type": "array", "items": {"type": "string"}, "description": "List of URLs to extract content from (max 5 URLs per call)", "maxItems": 5},
         },
         "required": ["urls"],
-        "additionalProperties": False,
     },
 }
 
 IMAGE_GENERATE_SCHEMA = {
     "name": "image_generate",
     "description": (
-        "根据文本提示生成图片。后端和模型由用户配置，Agent 不自行选择。"
-        "成功后返回 assets/ 下的工作区相对路径。"
+        "Generate high-quality images from text prompts. The underlying "
+        "backend (FAL, OpenAI, etc.) and model are user-configured and not "
+        "selectable by the agent. Returns either a URL or an absolute file "
+        "path in the `image` field; display it with markdown "
+        "![description](url-or-path) and the gateway will deliver it."
     ),
     "parameters": {
         "type": "object",
         "properties": {
-            "prompt": {"type": "string", "description": "图片的主体、场景、构图、风格、光线和安全区说明"},
-            "aspect_ratio": {"type": "string", "enum": ["landscape", "square", "portrait"], "description": "横图、方图或竖图", "default": "landscape"},
+            "prompt": {"type": "string", "description": "The text prompt describing the desired image. Be detailed and descriptive."},
+            "aspect_ratio": {"type": "string", "enum": ["landscape", "square", "portrait"], "description": "The aspect ratio of the generated image. 'landscape' is 16:9 wide, 'portrait' is 16:9 tall, 'square' is 1:1.", "default": "landscape"},
         },
         "required": ["prompt"],
-        "additionalProperties": False,
     },
 }
+
+# 委派子 agent 的能力包列表(本系统可委派的 toolsets,对应 hermes 描述里的 _TOOLSET_LIST_STR)。
+# visual 副本(配对基线):恢复 'vision'(视觉模态,看渲染像素)+ web 含 fetch_image(可抓真实图)。
+_TOOLSET_LIST_STR = ", ".join(f"'{n}'" for n in ["file", "image_gen", "terminal", "vision", "web"])
+
+FETCH_IMAGE_SCHEMA = {
+    "name": "fetch_image",
+    "description": "Download a REAL image from a direct URL into the local assets/ folder and return its local path. Sends a browser User-Agent and an auto Referer to get past common hotlink / anti-leech protection. ALWAYS localize a real photo you found via web_search(search_type='images') with this BEFORE using it: remote direct links frequently break when embedded into a slide (hotlink protection), and vision_analyze can only read LOCAL files. Workflow: web_search images -> fetch_image(url) -> vision_analyze the returned LOCAL path to check it -> reference that local path in the slide. Returns an error string (then fall back to image_generate) when the link is protected / dead / not an image.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "url": {"type": "string", "description": "Direct image URL (http/https), e.g. one returned by web_search(search_type='images')."},
+        },
+        "required": ["url"],
+    },
+}
+
 
 DELEGATE_TASK_SCHEMA = {
     "name": "delegate_task",
     "description": (
-        "在相互隔离的上下文中委派一批子 Agent。每项只写 goal，并以 "
-        "Material <assignment_id>:、Research:、Image <group_id>:、Slide Group <group_id> [页码]: "
-        "或 Review: 开头。运行时由前缀推导角色、轨迹名和工具白名单。"
+        "Spawn one or more subagents in isolated contexts. "
+        "Description is rebuilt at every get_definitions() call to reflect "
+        "the user's current delegation limits."
     ),
     "parameters": {
         "type": "object",
-        "required": ["tasks"],
-        "additionalProperties": False,
         "properties": {
+            "goal": {"type": "string", "description": "What the subagent should accomplish. Be specific and self-contained -- the subagent knows nothing about your conversation history."},
+            "label": {"type": "string", "description": "Identity name for this subagent (e.g. slide/image/research/presenter/audience/player — see the skill's subagents/*.md). Used to name its trajectory directory and to identify it on return. ALWAYS set this; do not leave it to the default child_NN."},
+            "context": {"type": "string", "description": "Background information the subagent needs: file paths, error messages, project structure, constraints. The more specific you are, the better the subagent performs."},
+            "assigned_pages": {"type": "array", "items": {"type": "integer", "minimum": 1}, "description": "Structured page ownership for a slide subagent. Prefer this over embedding page numbers only in prose."},
+            "toolsets": {"type": "array", "items": {"type": "string"}, "description": ("Toolsets to enable for this subagent. Default: inherits your enabled toolsets. "
+                          f"Available toolsets: {_TOOLSET_LIST_STR}. Common patterns: ['terminal', 'file'] for code work, ['web'] for research, ['browser'] for web interaction, ['terminal', 'file', 'web'] for full-stack tasks.")},
             "tasks": {
                 "type": "array",
-                "minItems": 1,
                 "items": {
                     "type": "object",
-                    "required": ["goal"],
-                    "additionalProperties": False,
                     "properties": {
-                        "goal": {"type": "string", "description": "包含角色前缀、目标、输入路径和交付要求的自包含任务"},
+                        "goal": {"type": "string", "description": "Task goal"},
+                        "label": {"type": "string", "description": "Identity name for this subagent (e.g. slide/image/research/presenter/audience/player — see the skill's subagents/*.md). Used to name its trajectory directory and to identify it on return. ALWAYS set this; do not leave it to the default child_NN."},
+                        "context": {"type": "string", "description": "Task-specific context"},
+                        "assigned_pages": {"type": "array", "items": {"type": "integer", "minimum": 1}, "description": "Structured page ownership for this slide task."},
+                        "toolsets": {"type": "array", "items": {"type": "string"}, "description": f"Toolsets for this specific task. Available: {_TOOLSET_LIST_STR}. Use 'web' for network access, 'terminal' for shell, 'browser' for web interaction."},
+                        "acp_command": {"type": "string", "description": "Per-task ACP command override (e.g. 'copilot'). Overrides the top-level acp_command for this task only. Do NOT set unless the user explicitly told you an ACP CLI is installed."},
+                        "acp_args": {"type": "array", "items": {"type": "string"}, "description": "Per-task ACP args override. Leave empty unless acp_command is set."},
+                        "role": {"type": "string", "enum": ["leaf", "orchestrator"], "description": "Per-task role override. See top-level 'role' for semantics."},
                     },
+                    "required": ["goal"],
                 },
-                "description": "要并行委派的子任务列表",
+                "description": "(rebuilt at get_definitions() time)",
             },
+            "role": {"type": "string", "enum": ["leaf", "orchestrator"], "description": "(rebuilt at get_definitions() time)"},
+            "acp_command": {"type": "string", "description": ("Override ACP command for child agents (e.g. 'copilot'). When set, children use ACP subprocess transport instead of inheriting the parent's transport. Requires an ACP-compatible CLI (currently GitHub Copilot CLI via 'copilot --acp --stdio'). See agent/copilot_acp_client.py for the implementation. IMPORTANT: Do NOT set this unless the user has explicitly told you a specific ACP-compatible CLI is installed and configured. Leave empty to use the parent's default transport (Hermes subagents).")},
+            "acp_args": {"type": "array", "items": {"type": "string"}, "description": ("Arguments for the ACP command (default: ['--acp', '--stdio']). Only used when acp_command is set. Leave empty unless acp_command is explicitly provided.")},
         },
+        "required": [],
     },
 }
 
@@ -1441,25 +1261,28 @@ DELEGATE_TASK_SCHEMA = {
 # name -> 实现
 BUILTINS = {
     "read_file": read_file, "write_file": write_file, "patch": patch,
-    "terminal": terminal, "vision_analyze": vision_analyze,
+    "search_files": search_files, "terminal": terminal, "vision_analyze": vision_analyze,
     "web_search": web_search, "web_extract": web_extract, "image_generate": image_generate,
+    "fetch_image": fetch_image,
 }
 
 # name -> schema
 SCHEMAS = {s["name"]: s for s in (
-    READ_FILE_SCHEMA, WRITE_FILE_SCHEMA, PATCH_SCHEMA, TERMINAL_SCHEMA,
+    READ_FILE_SCHEMA, WRITE_FILE_SCHEMA, PATCH_SCHEMA, SEARCH_FILES_SCHEMA, TERMINAL_SCHEMA,
     VISION_ANALYZE_SCHEMA, WEB_SEARCH_SCHEMA, WEB_EXTRACT_SCHEMA, IMAGE_GENERATE_SCHEMA,
-    DELEGATE_TASK_SCHEMA)}
+    FETCH_IMAGE_SCHEMA, DELEGATE_TASK_SCHEMA)}
 
 
-# =============================================================== 内部角色工具白名单
-# 这些别名只供内部路由，绝不进入模型 schema 或训练正文。
+# =============================================================== toolset 注册表(对齐 hermes 命名)
+# toolset = 能力包/分组别名,故意与其展开的具体工具名解耦(如 image_gen 展开为 image_generate);
+# 二者不必同名。
 TOOLSETS = {
-    "file":       ["read_file", "write_file", "patch"],
+    "file":       ["read_file", "write_file", "patch", "search_files"],
     "terminal":   ["terminal"],
+    # visual 副本(配对基线):恢复视觉模态与图片联网获取。
     "vision":     ["vision_analyze"],
     "image_gen":  ["image_generate"],
-    "web":        ["web_search", "web_extract"],
+    "web":        ["web_search", "web_extract", "fetch_image"],
     "delegation": ["delegate_task"],
 }
 BASE_TOOL_NAMES = ["read_file"]        # 基础能力:对所有子 agent 默认并入
@@ -1503,63 +1326,43 @@ def resolve_toolsets(names):
     return out
 
 
+def _workspace_relative_path(agent, raw_path):
+    """Return a canonical workspace-relative path, or ``""`` when unsafe.
+
+    Closeout allowlists must compare canonical paths rather than manipulating
+    user input with ``lstrip``: the latter can turn ``../`` into an apparently
+    safe path and rejects valid absolute paths inside the workspace.  Reuse the
+    Agent sandbox resolver, then additionally resolve symlinks before comparing
+    the final target with the workspace root.  ``commonpath`` can raise on
+    different Windows drives, so keep that case closed by default.
+    """
+    value = str(raw_path or "").strip()
+    if not value:
+        return ""
+    try:
+        candidate = agent.safe(value)
+        workspace = os.path.realpath(agent.ws)
+        resolved = os.path.realpath(candidate)
+        if os.path.commonpath([workspace, resolved]) != workspace:
+            return ""
+        relative = os.path.relpath(resolved, workspace)
+    except (AttributeError, OSError, TypeError, ValueError):
+        return ""
+    if relative in {"", "."}:
+        return "."
+    return relative.replace(os.sep, "/")
+
+
 def dispatch(agent, name, args):
     """按名字找工具——先查 agent 专属的 extra_tools(如 delegate_task),再查 BUILTINS。"""
-    required_role_card = _read_key(
-        getattr(agent, "_required_role_card_path", "")
-    )
-    if required_role_card and not getattr(
-        agent, "_required_role_card_complete", False
-    ):
-        requested = _read_key((args or {}).get("path")) if name == "read_file" else ""
-        if name != "read_file" or requested != required_role_card:
-            language = str(getattr(agent, "prompt_language", "zh") or "zh").lower()
-            if language == "en":
-                return (
-                    "Read your required role card to EOF before any other action: "
-                    + required_role_card
-                )
-            return "开始任何其他动作前，必须先将唯一角色卡读到末尾：" + required_role_card
-    pending_reads = getattr(agent, "_pending_read_continuations", None)
-    if isinstance(pending_reads, dict) and pending_reads and not getattr(
-            agent, "_finalization_only", False):
-        requested = _read_key((args or {}).get("path")) if name == "read_file" else ""
-        expected = pending_reads.get(requested)
-        try:
-            requested_offset = int((args or {}).get("offset") or 1)
-        except (TypeError, ValueError):
-            requested_offset = 1
-        if name != "read_file" or expected is None or requested_offset != int(expected):
-            paths = ", ".join(
-                f"{path} (offset={offset})"
-                for path, offset in sorted(pending_reads.items())
-            )
-            language = str(getattr(agent, "prompt_language", "zh") or "zh").lower()
-            if language == "en":
-                return (
-                    "A selected file has not been read to EOF. Continue it exactly as "
-                    f"reported before taking another action: {paths}"
-                )
-            return (
-                "已选择的文件尚未读到末尾。开始其他动作前，请严格按返回的 offset 续读："
-                + paths
-            )
     if getattr(agent, "_finalization_only", False):
         role = str(getattr(agent, "_finalization_role", "") or "").lower()
-        path = str((args or {}).get("path") or "").replace("\\", "/").lstrip("./")
-        command = str((args or {}).get("command") or (args or {}).get("cmd") or "")
+        path = _workspace_relative_path(agent, (args or {}).get("path"))
         allowed = False
         if role in {"research", "material"}:
             allowed = name in {"write_file", "patch"}
-        elif role == "image":
-            allowed = (
-                (name in {"write_file", "patch"} and path == "assets/catalog.json")
-                or (name == "terminal" and bool(re.search(
-                    r"\basset-(?:assign|review|finalize)\b", command
-                )))
-            )
         elif role == "review":
-            allowed = name in {"write_file", "patch"} and path == "_trace/review-issues.md"
+            allowed = name in {"write_file", "patch"} and path in REVIEW_CLOSEOUT_ARTIFACTS
         # Slide has no canonical closeout artifact.  It must return blocked in text
         # instead of making one last unverified page edit.
         if allowed:
@@ -1569,14 +1372,26 @@ def dispatch(agent, name, args):
             return fn(agent, **args) if fn else f"未知工具 {name}"
         language = str(getattr(agent, "prompt_language", "zh") or "zh").lower()
         if language == "en":
+            review_hint = (
+                " Review closeout may only write _trace/review-issues.md and "
+                "_trace/content-fidelity.md."
+                if role == "review" else ""
+            )
             return (
                 f"{name} is unavailable during {role or 'role'} stall finalization. "
-                "Use only the permitted closeout artifact, then return the exact structured "
-                "contract required by that role."
+                f"Use only the permitted closeout artifact.{review_hint} Then return the exact structured "
+                "role contract from existing evidence. Report ready when its gates are already "
+                "satisfied; otherwise report the truthful partial/blocked state."
             )
+        review_hint = (
+            "Review 收口只允许写 _trace/review-issues.md 与 "
+            "_trace/content-fidelity.md。"
+            if role == "review" else ""
+        )
         return (
             f"{role or '当前角色'} 停滞收口阶段不再允许 {name}。"
-            "请只写允许的收口产物，随后返回该角色要求的准确结构化合同。"
+            f"请只写允许的收口产物。{review_hint}随后基于已有证据返回角色卡要求的完整结构化合同；"
+            "门槛已经满足则如实 ready，否则如实 partial/blocked。"
         )
     if name in agent.extra_tools:
         return agent.extra_tools[name](**args)

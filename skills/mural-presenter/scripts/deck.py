@@ -1,31 +1,23 @@
 #!/usr/bin/env python3
-"""Deterministic workspace CLI for Mural Presenter.
-
-It owns environment preflight, workspace preparation, asset registration,
-contact sheets, speaker-script synchronization, delivery validation, and the
-final ``present.html`` player. It does not make page-design decisions.
+"""Small deterministic CLI for speech, review sheets, and present.html.
 
 在工作区根运行(slides/ 旁边):
-    python deck.py preflight ROOT
     python deck.py sync ROOT --expected N
     python deck.py prepare ROOT --expected N
     python deck.py asset-register ROOT --path assets/file.png --origin material
-    python deck.py asset-download ROOT --url "https://example.org/photo.jpg"
     python deck.py material-figure ROOT --source materials/_work/material_01/_raw/paper.pdf_pages/p002.png \
       --path assets/paper-figure-01.png --figure-id "Figure 1" --source-page 2 \
       --box 0.12,0.34,0.88,0.72
     python deck.py asset-assign ROOT --path assets/file.png --asset-id cover-hero --group-id hero
     python deck.py asset-contact ROOT --group-id hero
     python deck.py asset-review ROOT --group-id hero --ready cover-hero
-    python deck.py contact ROOT [--expected N | --focus 3,7 --label group-id]
+    python deck.py contact ROOT [--expected N | --focus 3,7]
     python deck.py build ROOT --expected N
 
 每页是独立的自包含 HTML(各自的 base.css / ECharts / inline style),所以**不能内联拼接**
 (CSS/JS 会打架)——用 `<iframe>` 逐页加载即可完美隔离。生成的 present.html:
 - **每页一个 iframe、交叉淡入(crossfade),无白闪**:目标页加载好前保持旧页可见,
   已加载过的页切换是瞬时淡入;只创建当前页 + 相邻页(懒加载,省内存);
-- **轻量内容入场**:播放器识别标题、正文一级内容和页脚,按阅读顺序依次淡入;
-  动效只注入最终播放器,不改逐页 HTML、不影响静态渲染,并尊重 reduced-motion;
 - **画布尺寸自适应**:build 时从 base.css 探测 `--canvas-w/--canvas-h`(横版 1600×900 /
   竖版 900×1600 都对),运行时再从实际加载的 `.slide` 复测兜底;按窗口等比缩放居中(letterbox);
 - 键盘 ←/→ / 空格 / PageUp/Down 翻页、Home/End 首尾、F 全屏;点击右/左半屏翻页;触摸滑动;
@@ -33,10 +25,8 @@ final ``present.html`` player. It does not make page-design decisions.
 生成的播放器自包含、零运行时依赖；`contact` 子命令使用安装阶段提供的 Pillow。
 """
 import argparse
-from contextlib import contextmanager
 import glob
 import hashlib
-import importlib.util
 import json
 import math
 import os
@@ -46,57 +36,20 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import time
-from urllib.parse import urlparse
-from urllib.request import Request, urlopen
+from urllib.parse import unquote
 
-from bundle_fonts import (
-    FAMILY_FACES,
-    _family_available,
-    _font_source_dirs,
-    _load_custom_config,
-    _validate_font_allowlist,
+from font_bundle import (
     bundle_workspace,
+    render_all,
     validate_font_bundle,
     validate_render_freshness,
 )
 
 
-def _optional_timeout(name: str):
-    """Use a wall clock only when deployment explicitly requests one."""
-    value = str(os.environ.get(name, "") or "").strip().lower()
-    if value in {"", "0", "none", "off", "disabled", "false"}:
-        return None
-    seconds = float(value)
-    return None if seconds <= 0 else seconds
-
-
-def _reexec_configured_runtime() -> None:
-    """Pin deterministic Skill commands to the configured runtime Python.
-
-    Model-written shell prefixes must not silently switch preflight to a base
-    interpreter with a missing/broken fontTools installation.  The worker sets
-    ``MURAL_RUNTIME_PYTHON``; direct developer invocations keep using the
-    current interpreter.
-    """
-    configured = str(os.environ.get("MURAL_RUNTIME_PYTHON") or "").strip()
-    if not configured:
-        return
-    target = Path(configured).expanduser()
-    if not target.is_file() or not os.access(target, os.X_OK):
-        raise RuntimeError(f"MURAL_RUNTIME_PYTHON 不可执行: {target}")
-    if target.resolve() == Path(sys.executable).resolve():
-        return
-    os.execve(
-        str(target),
-        [str(target), str(Path(__file__).resolve()), *sys.argv[1:]],
-        os.environ.copy(),
-    )
-
-
 def _detect_canvas(base_dir):
     """从工作区的 base.css 探测画布尺寸(--canvas-w/--canvas-h)。
-    找不到就回退默认横版 1600×900;运行时 JS 还会从 .slide 复测兜底。"""
+    兼容旧版 --w/--h 和直接写在 .slide 上的像素尺寸；找不到时回退
+    默认横版 1600×900。播放器与 PNG 渲染必须使用同一组确定尺寸。"""
     w, h = 1600, 900
     for cand in ("base.css", os.path.join("slides", "base.css")):
         path = os.path.join(base_dir, cand)
@@ -106,11 +59,17 @@ def _detect_canvas(base_dir):
             css = open(path, encoding="utf-8").read()
         except Exception:
             continue
-        mw = re.search(r"--w:\s*([0-9.]+)px", css)
-        mh = re.search(r"--h:\s*([0-9.]+)px", css)
-        if mw and mh:
-            w, h = int(float(mw.group(1))), int(float(mh.group(1)))
-            break
+        for width_name, height_name in (("--canvas-w", "--canvas-h"), ("--w", "--h")):
+            mw = re.search(rf"{re.escape(width_name)}:\s*([0-9.]+)px", css)
+            mh = re.search(rf"{re.escape(height_name)}:\s*([0-9.]+)px", css)
+            if mw and mh:
+                return int(float(mw.group(1))), int(float(mh.group(1)))
+        slide = re.search(r"\.slide\b[^{}]*\{([^{}]*)\}", css, re.S)
+        if slide:
+            mw = re.search(r"\bwidth:\s*([0-9.]+)px", slide.group(1))
+            mh = re.search(r"\bheight:\s*([0-9.]+)px", slide.group(1))
+            if mw and mh:
+                return int(float(mw.group(1))), int(float(mh.group(1)))
     return w, h
 
 
@@ -128,18 +87,26 @@ def _build_player(root: Path, expected: int | None = None):
         return 1
     base = str(root)
     try:
-        manifest = _validate_prepared_runtime(Path(base))
-    except (OSError, ValueError, RuntimeError) as exc:
-        print(f"构建前置状态无效: {exc}", file=sys.stderr)
+        manifest = bundle_workspace(Path(base))
+    except Exception as exc:
+        print(f"字体打包失败: {exc}", file=sys.stderr)
+        return 1
+    font_errors = validate_font_bundle(Path(base))
+    if font_errors:
+        print("字体交付校验失败: " + "; ".join(font_errors), file=sys.stderr)
         return 1
     freshness_errors = validate_render_freshness(Path(base))
     if freshness_errors:
-        print(
-            "渲染新鲜度校验失败: " + "; ".join(freshness_errors)
-            + "。build 不会自动修改或重渲页面；请重新渲染变化页并完成像素验收。",
-            file=sys.stderr,
-        )
-        return 1
+        print("检测到陈旧 PNG，正使用 Deck 自带字体重新渲染", file=sys.stderr)
+        try:
+            render_all(Path(base))
+        except Exception as exc:
+            print(f"便携字体重渲失败: {exc}", file=sys.stderr)
+            return 1
+        freshness_errors = validate_render_freshness(Path(base))
+        if freshness_errors:
+            print("渲染新鲜度校验失败: " + "; ".join(freshness_errors), file=sys.stderr)
+            return 1
     rel = [os.path.relpath(f, base).replace(os.sep, "/") for f in files]
     cw, ch = _detect_canvas(base)
     html = (TPL.replace("__SLIDES__", json.dumps(rel, ensure_ascii=False))
@@ -160,6 +127,52 @@ VISUAL_HEADINGS = {"视觉实现", "visual implementation", "visual handoff", "v
 PAGE_RE = re.compile(r"^slide_(\d+)\.png$")
 _PICTOGRAPH_RE = re.compile(r"[\u2600-\u27bf\U0001f000-\U0001faff]")
 _IMAGE_PRESENTATIONS = {"subject-only", "framed-scene", "full-bleed", "evidence-crop"}
+
+# The no-bitmap machine-enum decision, kept identical to the startup dispatch
+# gate so a page's bitmap need reads the same at plan time and at build time
+# (a page that declares no-bitmap must never be judged a raster page).
+_NO_BITMAP_VALUES = {
+    "none", "no", "code", "code_only", "code-only", "canvas",
+    "canvas_only", "canvas-only", "chart", "chart_only", "chart-only",
+    "typography", "typography_only", "typography-only",
+}
+_NO_BITMAP_CJK_RE = re.compile(
+    r"^(?:无|none|无需|不需|不用)?"
+    r"(?:位图|配图|图片|图像|插图|图)?"
+    r"(?:需求|机会)?$"
+)
+_NO_BITMAP_CJK_VALUES = {
+    "无", "无位图", "无需配图", "不需配图", "无需图片", "无需图像",
+    "无需插图", "无图", "无需位图", "不需要配图", "不需要图片", "无配图",
+    "无位图需求", "无配图需求",
+}
+_IMAGE_OPPORTUNITY_RE = re.compile(
+    r"(?im)^\s*[-*+]?\s*(?:\*\*)?image_opportunity(?:\*\*)?\s*[:：]\s*(.+?)\s*$"
+)
+
+
+def _normalize_image_opportunity(raw_value: str) -> str:
+    value = str(raw_value or "").strip().lower()
+    match = re.match(r"([a-z][a-z0-9_-]*)", value)
+    if match:
+        return match.group(1)
+    return re.split(r"[\s,，;；(/（]", value, maxsplit=1)[0]
+
+
+def _image_opportunity_needs_bitmap(raw_value: str) -> bool:
+    """Machine-enum truth: a page needs a bitmap unless its declared opportunity
+    is a no-bitmap enum (``none``, ``chart_only`` …) or a CJK equivalent."""
+    raw = str(raw_value or "").strip()
+    if not raw:
+        return False
+    if _normalize_image_opportunity(raw) in _NO_BITMAP_VALUES:
+        return False
+    cjk_head = re.split(r"[\s,，;；:：(/（]", raw, maxsplit=1)[0].strip()
+    if cjk_head in _NO_BITMAP_CJK_VALUES:
+        return False
+    if _NO_BITMAP_CJK_RE.fullmatch(cjk_head) and re.search(r"[无不]", cjk_head):
+        return False
+    return True
 
 
 def _normalize_heading(value: str) -> str:
@@ -247,14 +260,34 @@ def _validate_image_presentations(root: Path, expected: int | None) -> None:
     """Require one explicit rendering contract for every planned raster page."""
     errors = []
     for _, path in _plan_files(root, expected):
-        visual = _first_section(_sections(path.read_text(encoding="utf-8")), VISUAL_HEADINGS)
-        raster_medium = re.search(
-            r"(?im)^\s*[-*+]\s*medium\s*[:：].*(?:photo|photograph|generated[ -]?image|bitmap|raster|生成图|位图|照片)",
-            visual,
+        text = path.read_text(encoding="utf-8")
+        visual = _first_section(_sections(text), VISUAL_HEADINGS)
+        # Machine-enum first: a page that declares no-bitmap (none / chart_only /
+        # canvas_only / typography_only / CJK 无位图) is NOT a raster page.  This
+        # must win over a medium-string regex, which would false-positive on the
+        # substring 位图 inside 无位图.
+        opportunity = _IMAGE_OPPORTUNITY_RE.search(text)
+        declares_bitmap = _image_opportunity_needs_bitmap(
+            opportunity.group(1) if opportunity else ""
         )
-        raster_path = re.search(r"(?i)assets/[A-Za-z0-9_./-]+\.(?:png|jpe?g|webp|gif)", visual)
-        if not raster_medium and not raster_path:
-            continue
+        # A real raster asset path is authoritative evidence of a bitmap page.
+        raster_path = re.search(
+            r"(?i)assets/[A-Za-z0-9_./-]+\.(?:png|jpe?g|webp|gif)", visual)
+        if opportunity is not None:
+            # image_opportunity declared: trust the enum.  No-bitmap + no real
+            # asset path → not a raster page, skip (no medium false-positive).
+            if not declares_bitmap and not raster_path:
+                continue
+        else:
+            # Legacy plan without image_opportunity: fall back to medium/path.
+            raster_medium = re.search(
+                r"(?im)^\s*[-*+]\s*medium\s*[:：]"
+                r".*(?:photo|photograph|generated[ -]?image|bitmap|raster|生成图|照片"
+                r"|(?<![无不])位图)",
+                visual,
+            )
+            if not raster_medium and not raster_path:
+                continue
         match = re.search(
             r"(?im)^\s*[-*+]\s*presentation\s*[:：]\s*`?([A-Za-z-]+)", visual
         )
@@ -287,332 +320,9 @@ def _atomic_text(path: Path, content: str) -> None:
             os.unlink(temporary)
 
 
-def _preflight_attachment_inventory(root: Path) -> tuple[int, list[str], list[str]]:
-    """Inspect only attachment metadata; Material still owns content reading."""
-    manifest = root / "materials/attachments.json"
-    if not manifest.is_file():
-        return 0, [], []
-    try:
-        payload = json.loads(manifest.read_text(encoding="utf-8"))
-    except (OSError, ValueError, TypeError) as exc:
-        return 0, [f"附件清单无法解析: {exc}"], []
-    entries = payload.get("attachments") if isinstance(payload, dict) else None
-    if not isinstance(entries, list):
-        return 0, ["附件清单缺少 attachments 数组"], []
-    errors: list[str] = []
-    warnings: list[str] = []
-    suffixes: set[str] = set()
-    for entry in entries:
-        if not isinstance(entry, dict):
-            errors.append("附件清单包含非对象条目")
-            continue
-        name = str(entry.get("name") or entry.get("raw") or "unnamed")
-        status = str(entry.get("status") or "").lower()
-        if status in {"missing", "failed"}:
-            errors.append(f"附件不可用: {name} ({status})")
-        raw = str(entry.get("raw") or "")
-        if raw and not (root / raw).is_file():
-            errors.append(f"附件原件不存在: {raw}")
-        suffixes.add(Path(name).suffix.lower())
-    legacy_office = {".doc", ".ppt", ".xls", ".rtf", ".odt", ".odp", ".ods"}
-    media = {".mp3", ".wav", ".m4a", ".aac", ".flac", ".mp4", ".mov", ".mkv", ".webm"}
-    if suffixes.intersection(legacy_office) and not (
-        shutil.which("libreoffice") or shutil.which("soffice")
-    ):
-        warnings.append("旧 Office/ODF 附件缺少 LibreOffice；Material 可能只能返回 blocked")
-    if suffixes.intersection(media) and not (
-        shutil.which("ffmpeg") and shutil.which("ffprobe")
-    ):
-        warnings.append("音视频附件缺少 FFmpeg/ffprobe；需要现成字幕、ASR 或其他媒体转换能力")
-    return len(entries), errors, warnings
-
-
-def _font_probe_cache_path(source_dirs: list[Path]) -> Path:
-    digest = hashlib.sha256()
-    digest.update(Path(__file__).resolve().with_name("bundle_fonts.py").read_bytes())
-    digest.update(sys.executable.encode("utf-8", errors="ignore"))
-    digest.update(sys.version.encode("utf-8", errors="ignore"))
-    for directory in source_dirs:
-        digest.update(str(directory).encode("utf-8", errors="ignore"))
-        try:
-            stat = directory.stat()
-            digest.update(f"{stat.st_mtime_ns}:{stat.st_size}".encode("ascii"))
-        except OSError:
-            digest.update(b"missing")
-        digest.update(b"\0")
-    configured = os.environ.get("MURAL_PREFLIGHT_CACHE_DIR", "").strip()
-    cache_dir = (
-        Path(configured).expanduser()
-        if configured
-        else Path.home() / ".cache/mural-presenter/preflight"
-    )
-    try:
-        cache_dir.mkdir(parents=True, exist_ok=True)
-    except OSError:
-        cache_dir = Path(tempfile.gettempdir()) / "mural-presenter-preflight"
-        cache_dir.mkdir(parents=True, exist_ok=True)
-    return cache_dir / f"fonts-{digest.hexdigest()[:24]}.json"
-
-
-def _cached_font_probe(path: Path) -> dict | None:
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-        ttl = max(
-            0.0,
-            float(os.environ.get("MURAL_PREFLIGHT_FONT_CACHE_TTL", "3600")),
-        )
-        if ttl > 0 and time.time() - float(payload.get("checked_at", 0)) <= ttl:
-            return payload
-    except (OSError, ValueError, TypeError):
-        pass
-    return None
-
-
-def _preflight_fonts(root: Path) -> dict:
-    try:
-        from fontTools.ttLib import TTFont  # noqa: F401
-    except (ImportError, AttributeError) as exc:
-        raise RuntimeError(
-            "当前 Python 缺少可用的 fontTools；请使用运行环境配置的 "
-            "MURAL_RUNTIME_PYTHON 原样运行 preflight，不要改 PATH，也不要搜索全盘字体"
-        ) from exc
-    _validate_font_allowlist()
-    source_dirs = _font_source_dirs()
-    custom, _roles = _load_custom_config(root)
-    cache = _font_probe_cache_path(source_dirs)
-    with open(str(cache) + ".lock", "a+", encoding="utf-8") as lock:
-        try:
-            import fcntl
-
-            fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
-        except (ImportError, OSError):
-            pass
-        cached = _cached_font_probe(cache)
-        if cached is None:
-            available = [
-                family for family in FAMILY_FACES
-                if _family_available(family, source_dirs)
-            ]
-            if "Noto Sans SC" not in available:
-                raise RuntimeError(
-                    "缺少可读取的 Noto Sans SC，无法保证中文渲染和便携字体回退；"
-                    "字体发现只检查 PPT_FONT_SOURCE_DIRS、Skill fonts、~/.fonts、"
-                    "~/.local/share/fonts 和 /usr/share/fonts，不要执行全盘 find"
-                )
-            cached = {
-                "checked_at": time.time(),
-                "available": len(available),
-                "declared": len(FAMILY_FACES),
-            }
-            _atomic_text(cache, json.dumps(cached, ensure_ascii=False) + "\n")
-    return {
-        "available": int(cached["available"]),
-        "declared": int(cached["declared"]),
-        "custom": len(custom),
-    }
-
-
-def _browser_probe_cache_path(renderer: Path) -> Path:
-    digest = hashlib.sha256()
-    digest.update(renderer.read_bytes())
-    for value in (
-        sys.executable,
-        sys.version,
-        os.environ.get("PLAYWRIGHT_BROWSERS_PATH", ""),
-        os.environ.get("PPT_SKILL_BROWSER_EXE", ""),
-        os.environ.get("PPT_SKILL_PLAYWRIGHT_PATHS", ""),
-    ):
-        digest.update(str(value).encode("utf-8", errors="ignore"))
-        digest.update(b"\0")
-    configured = os.environ.get("MURAL_PREFLIGHT_CACHE_DIR", "").strip()
-    cache_dir = (
-        Path(configured).expanduser()
-        if configured
-        else Path.home() / ".cache/mural-presenter/preflight"
-    )
-    try:
-        cache_dir.mkdir(parents=True, exist_ok=True)
-    except OSError:
-        cache_dir = Path(tempfile.gettempdir()) / "mural-presenter-preflight"
-        cache_dir.mkdir(parents=True, exist_ok=True)
-    return cache_dir / f"{digest.hexdigest()[:24]}.json"
-
-
-def _cached_browser_probe(path: Path) -> dict | None:
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-        status = str(payload.get("status") or "")
-        ttl_name = (
-            "MURAL_PREFLIGHT_CACHE_TTL"
-            if status == "ready"
-            else "MURAL_PREFLIGHT_FAILURE_TTL"
-        )
-        ttl_default = "3600" if status == "ready" else "300"
-        ttl = max(0.0, float(os.environ.get(ttl_name, ttl_default)))
-        if ttl > 0 and time.time() - float(payload.get("checked_at", 0)) <= ttl:
-            return payload
-    except (OSError, ValueError, TypeError):
-        pass
-    return None
-
-
-def _probe_browser_runtime() -> str:
-    """Launch one tiny render, cached per runtime so parallel decks do not stampede."""
-    renderer = Path(__file__).resolve().with_name("render.py")
-    cache = _browser_probe_cache_path(renderer)
-    lock = open(str(cache) + ".lock", "a+", encoding="utf-8")
-    locked = False
-    try:
-        try:
-            import fcntl
-
-            fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
-            locked = True
-        except (ImportError, OSError):
-            pass
-        cached = _cached_browser_probe(cache)
-        if cached:
-            if cached.get("status") == "ready":
-                return "cached"
-            raise RuntimeError(
-                "Chromium/Playwright 环境预检近期已失败: "
-                + str(cached.get("error") or "unknown error")
-            )
-        try:
-            with tempfile.TemporaryDirectory(prefix="mural-presenter-preflight-") as temporary:
-                temporary_path = Path(temporary)
-                html = temporary_path / "probe.html"
-                png = temporary_path / "probe.png"
-                html.write_text(
-                    "<!doctype html><meta charset='utf-8'><style>"
-                    "html,body{margin:0;width:100%;height:100%;overflow:hidden}"
-                    "*{box-sizing:border-box}.slide{width:640px;height:360px;padding:28px;"
-                    "display:grid;grid-template-rows:auto 1fr auto;background:#f5f1e8;color:#171717;"
-                    "font-family:'Noto Sans SC',sans-serif}.slide-title{font-size:30px;font-weight:700}"
-                    ".slide-body{display:grid;place-items:center;font-size:22px}.slide-footer{font-size:14px}"
-                    "</style><section class='slide'><header class='slide-title'>环境预检</header>"
-                    "<main class='slide-body'>Browser · Fonts · Pixels</main>"
-                    "<footer class='slide-footer'>Mural Presenter</footer></section>",
-                    encoding="utf-8",
-                )
-                try:
-                    timeout = max(15.0, float(os.environ.get("MURAL_PREFLIGHT_BROWSER_TIMEOUT", "90")))
-                except ValueError:
-                    timeout = 90.0
-                try:
-                    result = subprocess.run(
-                        [sys.executable, str(renderer), str(html), str(png), "640", "360"],
-                        capture_output=True,
-                        text=True,
-                        check=False,
-                        timeout=timeout,
-                    )
-                except subprocess.TimeoutExpired as exc:
-                    raise RuntimeError(f"Chromium 预检在 {timeout:g}s 内未完成") from exc
-                if result.returncode or not png.is_file() or not png.stat().st_size:
-                    detail = (result.stderr or result.stdout or f"exit={result.returncode}").strip()
-                    raise RuntimeError("Chromium/Playwright 无法完成最小渲染: " + detail[-1800:])
-        except (OSError, ValueError, RuntimeError) as exc:
-            _atomic_text(
-                cache,
-                json.dumps(
-                    {"status": "failed", "checked_at": time.time(), "error": str(exc)[-1800:]},
-                    ensure_ascii=False,
-                ) + "\n",
-            )
-            raise
-        _atomic_text(
-            cache,
-            json.dumps({"status": "ready", "checked_at": time.time()}, ensure_ascii=False) + "\n",
-        )
-        return "fresh"
-    finally:
-        if locked:
-            try:
-                import fcntl
-
-                fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
-            except (ImportError, OSError):
-                pass
-        lock.close()
-
-
-def _preflight_workspace(root: Path, scope: str = "all") -> dict:
-    """Validate deployment capabilities and/or one staged Deck workspace."""
-    if scope not in {"all", "environment", "workspace"}:
-        raise ValueError(f"unsupported preflight scope: {scope}")
-    root = root.resolve()
-    errors: list[str] = []
-    warnings: list[str] = []
-    if not root.is_dir():
-        errors.append(f"工作区不存在: {root}")
-    elif not os.access(root, os.R_OK | os.W_OK | os.X_OK):
-        errors.append(f"工作区不可读写: {root}")
-    missing_modules: list[str] = []
-    fonts = {"available": 0, "declared": len(FAMILY_FACES), "custom": 0}
-    browser = "skipped"
-    if scope in {"all", "environment"}:
-        if sys.version_info < (3, 10):
-            errors.append(f"需要 Python 3.10+，当前为 {sys.version.split()[0]}")
-        skill_root = Path(__file__).resolve().parent.parent
-        for relative in (
-            "assets/base-template.css",
-            "assets/vendor/echarts.min.js",
-            "assets/licenses/OFL-1.1.txt",
-            "scripts/render.py",
-            "scripts/stage_materials.py",
-        ):
-            path = skill_root / relative
-            if not path.is_file() or not path.stat().st_size:
-                errors.append(f"Skill 必需文件缺失或为空: {relative}")
-        missing_modules = [
-            module for module in ("PIL", "fontTools", "brotli")
-            if importlib.util.find_spec(module) is None
-        ]
-        if missing_modules:
-            errors.append("缺少必需 Python 模块: " + ", ".join(missing_modules))
-        if not missing_modules:
-            try:
-                fonts = _preflight_fonts(root)
-            except (OSError, ValueError, RuntimeError) as exc:
-                errors.append(f"字体环境不可用: {exc}")
-        browser = "unavailable"
-        if not errors:
-            try:
-                browser = _probe_browser_runtime()
-            except (OSError, ValueError, RuntimeError) as exc:
-                errors.append(str(exc))
-    attachment_count = 0
-    if scope in {"all", "workspace"}:
-        attachment_count, attachment_errors, attachment_warnings = _preflight_attachment_inventory(root)
-        errors.extend(attachment_errors)
-        warnings.extend(attachment_warnings)
-        if scope == "workspace":
-            try:
-                custom, _roles = _load_custom_config(root)
-                fonts["custom"] = len(custom)
-            except (OSError, ValueError, RuntimeError) as exc:
-                errors.append(f"工作区字体配置不可用: {exc}")
-    if errors:
-        raise RuntimeError("环境预检未通过:\n- " + "\n- ".join(errors))
-    for warning in warnings:
-        print("preflight:WARN " + warning)
-    summary = {
-        "scope": scope,
-        "python": sys.version.split()[0],
-        "browser": browser,
-        "fonts": fonts,
-        "attachments": attachment_count,
-        "warnings": len(warnings),
-    }
-    print("preflight:PASS " + json.dumps(summary, ensure_ascii=False, sort_keys=True))
-    return summary
-
-
 ASSET_ORIGINS = {"downloaded", "generated", "material", "derived"}
 
 _CANVAS_RESET_MARKER = "/* deck-runtime-canvas-reset */"
-_THEME_OVERRIDE_MARKER = "/* deck-theme-overrides */"
 _CANVAS_RESET = """/* deck-runtime-canvas-reset */
 *, *::before, *::after { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; width: 100%; height: 100%; }
@@ -642,88 +352,67 @@ def _ensure_runtime_assets(root: Path) -> None:
         shutil.copy2(source, target)
 
 
-def _materialize_base_css(root: Path) -> None:
-    """Build the generated deck stylesheet from the stable asset plus small overrides.
-
-    The Orchestrator writes ``plan/theme.css`` only.  It never needs to read or
-    reproduce the long template in a model response.  Re-running ``prepare`` is
-    deterministic and also removes stale font-bundle blocks before fonts are
-    bundled again later in the command.
-    """
-    template = Path(__file__).resolve().parent.parent / "assets/base-template.css"
-    if not template.is_file():
-        raise ValueError(f"base.css template is missing: {template}")
-    theme = root / "plan/theme.css"
-    overrides = theme.read_text(encoding="utf-8", errors="ignore").strip() if theme.is_file() else ""
-    payload = _CANVAS_RESET + "\n" + template.read_text(
-        encoding="utf-8", errors="ignore"
-    ).lstrip()
-    if overrides:
-        payload = payload.rstrip() + "\n\n" + _THEME_OVERRIDE_MARKER + "\n" + overrides + "\n"
-    path = root / "base.css"
-    if not path.is_file() or path.read_text(encoding="utf-8", errors="ignore") != payload:
-        _atomic_text(path, payload)
-
-
 def _ensure_canvas_reset(root: Path) -> None:
     """Keep the browser viewport and the 1600×900 canvas edge-aligned.
 
-    ``base.css`` is materialized during prepare.  The browser's default 8px body
-    margin is runtime plumbing rather than art direction, so prepare adds this
-    tiny idempotent reset before any authored page is rendered or reviewed.
+    ``base.css`` remains an Orchestrator-owned design system, but the browser's
+    default 8px body margin is runtime plumbing rather than art direction.  Add
+    this tiny idempotent reset at prepare/build so a rewritten theme cannot
+    accidentally wrap every slide in a white frame.
     """
     path = root / "base.css"
     if not path.is_file():
-        template = Path(__file__).resolve().parent.parent / "assets/base-template.css"
+        template = Path(__file__).resolve().parent.parent / "references/base-template.css"
         if not template.is_file():
             raise ValueError(f"base.css and its template are missing: {template}")
         shutil.copy2(template, path)
     text = path.read_text(encoding="utf-8", errors="ignore")
+    original = text
     if _CANVAS_RESET_MARKER not in text:
-        _atomic_text(path, _CANVAS_RESET + "\n" + text.lstrip())
+        text = _CANVAS_RESET + "\n" + text.lstrip()
+
+    # A page that declares width:var(--canvas-w) without defining the variable
+    # renders at its intrinsic content width in a browser.  The PNG renderer
+    # still has a fixed viewport, so the two outputs silently diverge.  Supply
+    # deterministic defaults (without overriding later theme declarations) and
+    # migrate workspaces produced by the older reset-only implementation.
+    missing = []
+    if not re.search(r"--canvas-w:\s*[0-9.]+px", text):
+        missing.append("--canvas-w")
+    if not re.search(r"--canvas-h:\s*[0-9.]+px", text):
+        missing.append("--canvas-h")
+    if missing:
+        width, height = _detect_canvas(root)
+        declarations = []
+        if "--canvas-w" in missing:
+            declarations.append(f"--canvas-w: {width}px")
+        if "--canvas-h" in missing:
+            declarations.append(f"--canvas-h: {height}px")
+        defaults = ":root { " + "; ".join(declarations) + "; }"
+        text = text.replace(_CANVAS_RESET_MARKER, _CANVAS_RESET_MARKER + "\n" + defaults, 1)
+
+    if text != original:
+        _atomic_text(path, text)
 
 
-def _validate_prepared_runtime(root: Path) -> dict:
-    """Validate prepare-time assets without changing reviewed pixel sources."""
-    errors = []
-    base_css = root / "base.css"
-    try:
-        css = base_css.read_text(encoding="utf-8", errors="ignore")
-    except OSError:
-        css = ""
-    if _CANVAS_RESET_MARKER not in css:
-        errors.append("base.css 缺少 prepare 生成的画布 reset")
-
-    source = Path(__file__).resolve().parent.parent / "assets/vendor/echarts.min.js"
-    runtime = root / "assets/vendor/echarts.min.js"
-    if not runtime.is_file() or not runtime.stat().st_size:
-        errors.append("assets/vendor/echarts.min.js 缺失；请重新运行 prepare")
-    elif source.is_file() and runtime.read_bytes() != source.read_bytes():
-        errors.append("assets/vendor/echarts.min.js 与 Skill 运行资源不一致")
-
-    for slide in sorted((root / "slides").glob("slide_*.html")):
+def _normalize_runtime_references(root: Path) -> None:
+    """Rewrite every ECharts reference to the Deck-local portable copy."""
+    for slide in (root / "slides").glob("slide_*.html"):
         text = slide.read_text(encoding="utf-8", errors="ignore")
-        for match in _ECHARTS_SCRIPT_RE.finditer(text):
-            if match.group(2).strip() != _ECHARTS_LOCAL_SRC:
-                errors.append(
-                    f"{slide.relative_to(root).as_posix()} 的 ECharts 必须引用 "
-                    f"{_ECHARTS_LOCAL_SRC}，得到 {match.group(2).strip()}"
-                )
-
-    errors.extend(validate_font_bundle(root))
-    manifest_path = root / "assets/fonts/manifest.json"
-    try:
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    except (OSError, ValueError, TypeError):
-        manifest = {}
-        errors.append("assets/fonts/manifest.json 缺失或不可读；请重新运行 prepare")
-    if errors:
-        raise ValueError("prepared runtime validation failed:\n" + "\n".join(errors))
-    return manifest
+        normalized = _ECHARTS_SCRIPT_RE.sub(
+            lambda match: match.group(1) + _ECHARTS_LOCAL_SRC + match.group(3), text
+        )
+        if normalized != text:
+            _atomic_text(slide, normalized)
 
 
 def _is_external_reference(value: str) -> bool:
-    value = value.strip().lower()
+    # CSS embedded SVG commonly percent-encodes its local fragment reference:
+    # ``filter="url(%23noise)"`` means ``url(#noise)`` inside the current SVG.
+    # It is not a Deck-local file named ``%23noise``.  Decode only for
+    # classification; the original value remains untouched in the delivered
+    # HTML/CSS.
+    value = unquote(value.strip()).lower()
     return value.startswith(("http://", "https://", "//", "data:", "blob:", "#", "javascript:"))
 
 
@@ -784,7 +473,7 @@ def _validate_player_runtime(root: Path) -> None:
         cwd=root,
         capture_output=True,
         text=True,
-        timeout=_optional_timeout("PLAYER_RUNTIME_AUDIT_TIMEOUT"),
+        timeout=180,
         check=False,
     )
     if proc.returncode:
@@ -801,29 +490,6 @@ def _asset_catalog(root: Path) -> tuple[Path, dict]:
         payload = {}
     entries = payload.get("assets") if isinstance(payload, dict) else None
     return path, {"schema_version": 2, "assets": entries if isinstance(entries, list) else []}
-
-
-@contextmanager
-def _asset_catalog_lock(root: Path):
-    """Serialize short read-modify-write catalog updates across Image groups."""
-    assets = root / "assets"
-    assets.mkdir(parents=True, exist_ok=True)
-    with (assets / ".catalog.lock").open("a+", encoding="utf-8") as stream:
-        try:
-            import fcntl
-
-            fcntl.flock(stream.fileno(), fcntl.LOCK_EX)
-        except (ImportError, OSError):
-            pass
-        try:
-            yield
-        finally:
-            try:
-                import fcntl
-
-                fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
-            except (ImportError, OSError):
-                pass
 
 
 def _write_asset_catalog(path: Path, catalog: dict) -> None:
@@ -881,96 +547,24 @@ def _register_asset(
         raise ValueError("generated assets require --generator-model")
     if origin == "derived" and not parent_asset:
         raise ValueError("derived assets require --parent-asset")
-    with _asset_catalog_lock(root):
-        path, catalog = _asset_catalog(root)
-        entry = {
-            "path": relative,
-            "origin": origin,
-            "source_url": source_url,
-            "source_path": source_path,
-            "generator_model": generator_model,
-            "prompt": prompt,
-            "parent_asset": parent_asset,
-            "material_asset_type": material_asset_type,
-            "status": "unassigned",
-        }
-        entries = [item for item in catalog["assets"]
-                   if not isinstance(item, dict) or item.get("path") != relative]
-        entries.append(entry)
-        catalog["assets"] = entries
-        _write_asset_catalog(path, catalog)
+    path, catalog = _asset_catalog(root)
+    entry = {
+        "path": relative,
+        "origin": origin,
+        "source_url": source_url,
+        "source_path": source_path,
+        "generator_model": generator_model,
+        "prompt": prompt,
+        "parent_asset": parent_asset,
+        "material_asset_type": material_asset_type,
+        "status": "unassigned",
+    }
+    entries = [item for item in catalog["assets"]
+               if not isinstance(item, dict) or item.get("path") != relative]
+    entries.append(entry)
+    catalog["assets"] = entries
+    _write_asset_catalog(path, catalog)
     print(f"asset:PASS {relative} origin={origin}")
-
-
-def _download_assets(root: Path, urls: list[str]) -> None:
-    """Download verified raster images and register source provenance.
-
-    This is a deterministic Skill command, not a model-visible custom tool.
-    Repeated ``--url`` options let Image localize a candidate batch in one
-    terminal call without exposing a custom download function to the model.
-    """
-    from io import BytesIO
-    from PIL import Image
-
-    if not urls:
-        raise ValueError("asset-download requires at least one --url")
-    assets = root / "assets"
-    assets.mkdir(parents=True, exist_ok=True)
-    timeout = _optional_timeout("ASSET_DOWNLOAD_TIMEOUT")
-    downloaded = []
-    for url in urls:
-        parsed = urlparse(str(url))
-        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-            raise ValueError(f"asset-download only accepts http(s) URLs: {url}")
-        request = Request(
-            url,
-            headers={
-                "User-Agent": (
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 Chrome/124.0 Safari/537.36"
-                ),
-                "Referer": f"{parsed.scheme}://{parsed.netloc}/",
-                "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
-            },
-        )
-        open_options = {"timeout": timeout} if timeout is not None else {}
-        with urlopen(request, **open_options) as response:
-            data = response.read(32 * 1024 * 1024 + 1)
-        if not data or len(data) > 32 * 1024 * 1024:
-            raise ValueError(f"asset-download returned an empty or oversized file: {url}")
-        try:
-            with Image.open(BytesIO(data)) as image:
-                image.verify()
-                image_format = str(image.format or "").lower()
-        except Exception as exc:
-            raise ValueError(
-                f"asset-download response is not a valid raster image: {url}"
-            ) from exc
-        extension = {
-            "jpeg": ".jpg", "png": ".png", "webp": ".webp", "gif": ".gif",
-        }.get(image_format)
-        if not extension:
-            raise ValueError(
-                f"unsupported downloaded image format {image_format!r}: {url}"
-            )
-        digest = hashlib.sha1(url.encode("utf-8")).hexdigest()[:10]
-        relative = f"assets/web_{digest}{extension}"
-        destination = root / relative
-        descriptor, temporary = tempfile.mkstemp(
-            prefix=destination.name + ".", suffix=".tmp", dir=assets
-        )
-        try:
-            with os.fdopen(descriptor, "wb") as output:
-                output.write(data)
-                output.flush()
-                os.fsync(output.fileno())
-            os.replace(temporary, destination)
-        finally:
-            if os.path.exists(temporary):
-                os.unlink(temporary)
-        _register_asset(root, relative, "downloaded", source_url=url)
-        downloaded.append(relative)
-    print("asset-download:PASS " + json.dumps(downloaded, ensure_ascii=False))
 
 
 def _material_figure_crop(
@@ -1038,28 +632,27 @@ def _material_figure_crop(
 
     output.parent.mkdir(parents=True, exist_ok=True)
     _save_image_atomic(output, cropped)
-    with _asset_catalog_lock(root):
-        path, catalog = _asset_catalog(root)
-        entry = {
-            "path": output_value.as_posix(),
-            "origin": "derived",
-            "source_path": source_value.as_posix(),
-            "parent_asset": source_value.as_posix(),
-            "derivative_kind": "material_figure_crop",
-            "material_asset_type": "figure_crop",
-            "figure_id": figure_id,
-            "source_page": source_page,
-            "crop_box_normalized": [x0, y0, x1, y1],
-            "crop_box_pixels": [left, top, right, bottom],
-            "page_fraction": round(page_fraction, 6),
-            "caption_mode": caption_mode,
-            "status": "unassigned",
-        }
-        catalog["assets"] = [
-            item for item in catalog["assets"]
-            if not isinstance(item, dict) or item.get("path") != output_value.as_posix()
-        ] + [entry]
-        _write_asset_catalog(path, catalog)
+    path, catalog = _asset_catalog(root)
+    entry = {
+        "path": output_value.as_posix(),
+        "origin": "derived",
+        "source_path": source_value.as_posix(),
+        "parent_asset": source_value.as_posix(),
+        "derivative_kind": "material_figure_crop",
+        "material_asset_type": "figure_crop",
+        "figure_id": figure_id,
+        "source_page": source_page,
+        "crop_box_normalized": [x0, y0, x1, y1],
+        "crop_box_pixels": [left, top, right, bottom],
+        "page_fraction": round(page_fraction, 6),
+        "caption_mode": caption_mode,
+        "status": "unassigned",
+    }
+    catalog["assets"] = [
+        item for item in catalog["assets"]
+        if not isinstance(item, dict) or item.get("path") != output_value.as_posix()
+    ] + [entry]
+    _write_asset_catalog(path, catalog)
     print(json.dumps({
         "status": "ok",
         "path": output_value.as_posix(),
@@ -1095,19 +688,18 @@ def _assign_asset(root: Path, relative: str, asset_id: str, group_id: str) -> No
     group_id = group_id.strip()
     if not asset_id or not group_id:
         raise ValueError("asset-id and group-id must be non-empty")
-    with _asset_catalog_lock(root):
-        path, catalog, selected = _asset_entry(root, relative)
-        for entry in catalog["assets"]:
-            if not isinstance(entry, dict) or entry is selected:
-                continue
-            if entry.get("asset_id") == asset_id and entry.get("status") != "rejected":
-                entry["status"] = "rejected"
-                entry["review_note"] = f"superseded by {relative}"
-        selected["asset_id"] = asset_id
-        selected["group_id"] = group_id
-        selected["status"] = "candidate"
-        selected.pop("review_note", None)
-        _write_asset_catalog(path, catalog)
+    path, catalog, selected = _asset_entry(root, relative)
+    for entry in catalog["assets"]:
+        if not isinstance(entry, dict) or entry is selected:
+            continue
+        if entry.get("asset_id") == asset_id and entry.get("status") != "rejected":
+            entry["status"] = "rejected"
+            entry["review_note"] = f"superseded by {relative}"
+    selected["asset_id"] = asset_id
+    selected["group_id"] = group_id
+    selected["status"] = "candidate"
+    selected.pop("review_note", None)
+    _write_asset_catalog(path, catalog)
     print(f"asset-assign:PASS {asset_id} -> {relative} group={group_id}")
 
 
@@ -1231,19 +823,18 @@ def _review_assets(
         raise ValueError("provide at least one of --ready, --needs-review, or --rejected")
     if len(flattened) != len(set(flattened)):
         raise ValueError("the same asset_id cannot receive multiple statuses")
-    with _asset_catalog_lock(root):
-        path, catalog = _asset_catalog(root)
-        by_id = {
-            str(item.get("asset_id")): item for item in catalog["assets"]
-            if isinstance(item, dict) and item.get("group_id") == group_id and item.get("asset_id")
-        }
-        missing = sorted(set(flattened) - set(by_id))
-        if missing:
-            raise ValueError("unknown asset_id for group: " + ", ".join(missing))
-        for status, asset_ids in requested.items():
-            for asset_id in asset_ids:
-                by_id[asset_id]["status"] = status
-        _write_asset_catalog(path, catalog)
+    path, catalog = _asset_catalog(root)
+    by_id = {
+        str(item.get("asset_id")): item for item in catalog["assets"]
+        if isinstance(item, dict) and item.get("group_id") == group_id and item.get("asset_id")
+    }
+    missing = sorted(set(flattened) - set(by_id))
+    if missing:
+        raise ValueError("unknown asset_id for group: " + ", ".join(missing))
+    for status, asset_ids in requested.items():
+        for asset_id in asset_ids:
+            by_id[asset_id]["status"] = status
+    _write_asset_catalog(path, catalog)
     print(json.dumps({"group_id": group_id, **requested}, ensure_ascii=False))
 
 
@@ -1303,14 +894,16 @@ def _validate_render_quality(root: Path, expected: int | None) -> None:
             errors.append(f"slide_{key}: HTML changed after structured render")
         if _sha256_path(png) != record.get("png_sha256"):
             errors.append(f"slide_{key}: PNG changed outside canonical renderer")
-        # Older renderer snapshots may have persisted ``boxoverflow`` as a
-        # hard issue.  It is now an advisory bbox candidate: only current
-        # pixel/DOM evidence can turn it into a real repair.  Filtering here
-        # keeps historical decks editable without forcing a destructive
-        # shrink-to-clear cycle.
+        # Older renderer snapshots may have persisted heuristic geometry or
+        # typography candidates as hard issues.  They are advisory now: only
+        # fresh pixel/DOM evidence can turn one into a real repair.  Filtering
+        # here keeps historical decks editable without a shrink-to-clear loop.
+        advisory_types = {
+            "boxoverflow", "overlap", "crowded", "cjktypography", "contrast",
+        }
         hard = [
             item for item in (record.get("hard_issues") or [])
-            if str(item.get("type") or "").lower() != "boxoverflow"
+            if str(item.get("type") or "").lower() not in advisory_types
         ]
         if hard:
             kinds = ",".join(str(item.get("type") or "unknown") for item in hard)
@@ -1318,6 +911,60 @@ def _validate_render_quality(root: Path, expected: int | None) -> None:
     if errors:
         raise ValueError("render quality gate failed:\n" + "\n".join(errors[:40]))
     print(f"render-quality:PASS pages={len(list(wanted))}")
+
+
+_MARKDOWN_FENCE_LINE_RE = re.compile(r"^\s*```(?:[A-Za-z0-9_+-]+)?\s*$")
+_SPEECH_WRAPPER_HEADINGS = {
+    "讲稿内容", "讲述内容", "口语讲稿", "讲稿", "口播",
+    "spoken script", "speaker script", "speech", "talk track",
+}
+_INTERNAL_SOURCE_RE = re.compile(
+    r"(?i)(?:"
+    r"(?:^|[\s`'\"(（])(?:plan|research|materials|_trace)/[^\s`'\")）]+"
+    r"|grounded-knowledge\.md"
+    r"|编排器假设|内部假设|生产备注|orchestrator assumption|production note"
+    r")"
+)
+
+
+def _clean_spoken_script(value: str) -> str:
+    """Normalize presentation prose without rewriting its authored meaning.
+
+    A weak model occasionally wraps an otherwise valid talk track in a
+    Markdown code fence or repeats a wrapper heading inside the canonical
+    ``## 口语讲稿`` section.  Those tokens are formatting accidents and must
+    never become words shown to the presenter.
+    """
+    lines = [line.rstrip() for line in str(value or "").splitlines()]
+    lines = [line for line in lines if not _MARKDOWN_FENCE_LINE_RE.fullmatch(line)]
+    while lines and not lines[0].strip():
+        lines.pop(0)
+    while lines and not lines[-1].strip():
+        lines.pop()
+    if lines:
+        first = re.sub(r"^\s{0,3}#{1,6}\s*", "", lines[0]).strip().lower()
+        first = first.rstrip("：:").strip()
+        if first in _SPEECH_WRAPPER_HEADINGS:
+            lines.pop(0)
+            while lines and not lines[0].strip():
+                lines.pop(0)
+    return "\n".join(lines).strip()
+
+
+def _public_delivery_sources(value: str) -> str:
+    """Remove production-only provenance from the user-facing speech file.
+
+    Internal plan/research paths remain useful in the canonical page plan, but
+    ``speech.md`` is a delivery artifact surfaced by the WebUI.  Keep external
+    citations and user-provided/none markers while filtering lines that only
+    expose pipeline paths or orchestrator notes.
+    """
+    lines = []
+    for line in str(value or "").splitlines():
+        if _INTERNAL_SOURCE_RE.search(line):
+            continue
+        lines.append(line.rstrip())
+    return "\n".join(lines).strip()
 
 
 def _sync_speech(root: Path, expected: int | None) -> None:
@@ -1340,10 +987,10 @@ def _sync_speech(root: Path, expected: int | None) -> None:
         try:
             title = _plan_title(plan_text)
             parts = _sections(plan_text)
-            speech = _first_section(parts, SPEECH_HEADINGS)
+            speech = _clean_spoken_script(_first_section(parts, SPEECH_HEADINGS))
             if not speech:
                 raise ValueError("missing spoken script section")
-            sources = _first_section(parts, SOURCE_HEADINGS)
+            sources = _public_delivery_sources(_first_section(parts, SOURCE_HEADINGS))
             if language == "zh":
                 rows.extend([f"# 第 {number:02d} 页｜{title}", "", "## 讲述内容", "", speech, "",
                              "## 参考资料（不朗读）", "", sources or "- 本页无外部引用。", ""])
@@ -1360,7 +1007,6 @@ def _sync_speech(root: Path, expected: int | None) -> None:
 
 def _prepare_workspace(root: Path, expected: int | None) -> None:
     """Freeze plan-derived speech and portable fonts before page production."""
-    _materialize_base_css(root)
     _ensure_canvas_reset(root)
     _ensure_runtime_assets(root)
     _validate_no_pictographs(root, expected, include_html=False)
@@ -1445,94 +1091,7 @@ def _save_image_atomic(path: Path, image):
         temporary.unlink(missing_ok=True)
 
 
-def _contact_snapshot(render_dir: Path, pages: list[int]):
-    evidence = []
-    for page in pages:
-        path = render_dir / f"slide_{page:02d}.png"
-        data = path.read_bytes()
-        evidence.append({
-            "page": page,
-            "path": path.relative_to(render_dir.parent).as_posix(),
-            "sha256": hashlib.sha256(data).hexdigest(),
-            "mtime_ns": path.stat().st_mtime_ns,
-        })
-    return evidence
-
-
-def _validate_review_contact(root: Path, expected: int | None = None) -> None:
-    """Require the Review contact sheet to describe the current page PNGs.
-
-    The final build deliberately does not regenerate contact sheets.  Rewriting
-    them after Vision would invalidate the exact evidence Review inspected and
-    would hide a stale page behind a newly packaged overview.
-    """
-    render_dir = root / "renders"
-    manifest_path = render_dir / "review-contact.json"
-    try:
-        payload = json.loads(manifest_path.read_text(encoding="utf-8")).get("full") or {}
-    except (OSError, ValueError, TypeError, AttributeError):
-        raise ValueError("缺少有效 renders/review-contact.json；请在最终 Review 前运行 deck.py contact")
-
-    pages = []
-    for raw in payload.get("pages") or []:
-        try:
-            pages.append(int(raw))
-        except (TypeError, ValueError):
-            pass
-    wanted = list(range(1, (expected or (max(pages) if pages else 0)) + 1))
-    if pages != wanted:
-        raise ValueError(
-            "review contact 页码覆盖不完整："
-            f"expected={wanted or 'none'} actual={pages or 'none'}"
-        )
-
-    evidence = {
-        int(item.get("page")): item
-        for item in payload.get("evidence") or []
-        if isinstance(item, dict) and str(item.get("page") or "").isdigit()
-    }
-    stale = []
-    for page in wanted:
-        png = render_dir / f"slide_{page:02d}.png"
-        item = evidence.get(page) or {}
-        try:
-            digest = hashlib.sha256(png.read_bytes()).hexdigest()
-        except OSError:
-            stale.append(f"{page:02d}:missing")
-            continue
-        if item.get("sha256") != digest:
-            stale.append(f"{page:02d}:changed")
-    if stale:
-        raise ValueError(
-            "Review 联系表早于当前逐页 PNG：" + ",".join(stale)
-            + "；请重新运行 deck.py contact 并复验变化页"
-        )
-
-    required = [payload.get("overview")]
-    required.extend(
-        item.get("path") for item in payload.get("groups") or []
-        if isinstance(item, dict)
-    )
-    missing = [
-        str(path) for path in required
-        if not path or not (root / str(path)).is_file()
-    ]
-    if missing:
-        raise ValueError("Review 联系表文件缺失：" + ",".join(missing))
-
-
-def _contact_label(label: str | None, pages: list[int]):
-    raw = label or "pages-" + "-".join(f"{page:02d}" for page in pages)
-    safe = re.sub(r"[^A-Za-z0-9._-]+", "-", raw.strip()).strip("-._")
-    return (safe or "focus")[:80]
-
-
-def _build_contact(
-    root: Path,
-    expected: int | None = None,
-    focus: str | None = None,
-    label: str | None = None,
-):
+def _build_contact(root: Path, expected: int | None = None, focus: str | None = None):
     render_dir = root / "renders"
     available = _available_render_pages(render_dir)
     if not available:
@@ -1541,26 +1100,18 @@ def _build_contact(
     missing = [page for page in pages if page not in available]
     if missing:
         raise ValueError("missing rendered pages: " + ",".join(f"{page:02d}" for page in missing))
+    manifest_path = render_dir / "review-contact.json"
+    try:
+        audit = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.is_file() else {}
+    except (OSError, ValueError):
+        audit = {}
     if focus:
-        key = _contact_label(label, pages)
-        path = render_dir / f"contact-sheet-focus-{key}.png"
+        path = render_dir / "contact-sheet-focus.png"
         _save_image_atomic(path, _make_sheet(render_dir, pages, min(3, len(pages)), 500,
                                              "REVIEW FOCUS · " + ", ".join(f"{page:02d}" for page in pages)))
-        payload = {
-            "mode": "focus",
-            "label": key,
-            "pages": pages,
-            "focus": path.relative_to(root).as_posix(),
-            "evidence": _contact_snapshot(render_dir, pages),
-        }
-        sidecar = path.with_suffix(".json")
-        _atomic_text(sidecar, json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
+        payload = {"mode": "focus", "pages": pages, "focus": path.relative_to(root).as_posix()}
+        audit["focus"] = payload
     else:
-        manifest_path = render_dir / "review-contact.json"
-        try:
-            audit = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.is_file() else {}
-        except (OSError, ValueError):
-            audit = {}
         for stale in render_dir.glob("contact-sheet-review-*.png"):
             stale.unlink()
         overview_path = render_dir / "contact-sheet.png"
@@ -1570,24 +1121,17 @@ def _build_contact(
         # 查看全部 sheet；因此这里保持每张最多 8 页，不封顶联系表数量。
         group_count = max(1, math.ceil(len(pages) / 8))
         group_size = math.ceil(len(pages) / group_count)
-        evidence = _contact_snapshot(render_dir, pages)
-        evidence_by_page = {int(item["page"]): item for item in evidence}
         groups = []
         for index, start in enumerate(range(0, len(pages), group_size), 1):
             group = pages[start:start + group_size]
             path = render_dir / f"contact-sheet-review-{index:02d}.png"
             _save_image_atomic(path, _make_sheet(render_dir, group, min(4, len(group)), 400,
                                                    f"REVIEW GROUP {index:02d} · {group[0]:02d}–{group[-1]:02d}"))
-            groups.append({
-                "path": path.relative_to(root).as_posix(),
-                "pages": group,
-                "evidence": [evidence_by_page[page] for page in group],
-            })
+            groups.append({"path": path.relative_to(root).as_posix(), "pages": group})
         payload = {"mode": "full", "page_count": len(pages), "pages": pages,
-                   "overview": overview_path.relative_to(root).as_posix(),
-                   "evidence": evidence, "groups": groups}
+                   "overview": overview_path.relative_to(root).as_posix(), "groups": groups}
         audit["full"] = payload
-        _atomic_text(manifest_path, json.dumps(audit, ensure_ascii=False, indent=2) + "\n")
+    _atomic_text(manifest_path, json.dumps(audit, ensure_ascii=False, indent=2) + "\n")
     print(json.dumps(payload, ensure_ascii=False))
 
 
@@ -1608,110 +1152,25 @@ body.hud #hud{opacity:1}</style></head>
 <script>
 const S=__SLIDES__;let i=0;const fr=[];
 let resolveFontsReady;const fontsReady=new Promise(resolve=>{resolveFontsReady=resolve;});
-let CW=__CW__,CH=__CH__;   /* build 时从 base.css 探测的画布尺寸;运行时再从 .slide 复测兜底 */
+let CW=__CW__,CH=__CH__;   /* build 时从 base.css 探测的确定画布尺寸 */
 const wrap=document.getElementById('wrap'),p=document.getElementById('p'),bar=document.getElementById('bar');
-const MOTION_STYLE_ID='mural-present-motion';
-const MOTION_CSS=`
-:root[data-mural-player="true"] .slide [data-mural-reveal-step]{will-change:opacity,translate}
-:root[data-mural-player="true"] .slide:not(.mural-present-active) [data-mural-reveal-step]{
-  opacity:0;translate:0 12px
-}
-:root[data-mural-player="true"] .slide.mural-present-active [data-mural-reveal-step]{
-  animation:mural-enter .42s cubic-bezier(.22,1,.36,1) both;
-  animation-delay:var(--mural-reveal-delay,60ms)
-}
-@keyframes mural-enter{
-  from{opacity:0;translate:0 12px}
-  to{opacity:var(--mural-reveal-opacity,1);translate:none}
-}
-@media (prefers-reduced-motion:reduce){
-  :root[data-mural-player="true"] .slide [data-mural-reveal-step]{
-    animation:none!important;transition:none!important;
-    opacity:var(--mural-reveal-opacity,1)!important;translate:none!important
-  }
-}`;
-const MOTION_DECOR_RE=/(^|[-_])(bleed|scrim|decor|doodle|blob|ornament|watermark|background|overlay|noise|grain|texture|halo|glow)([-_]|$)/i;
-function motionDecor(el){
-  if(!el||['STYLE','SCRIPT','LINK','TEMPLATE'].includes(el.tagName))return true;
-  if(el.getAttribute('aria-hidden')==='true')return true;
-  return [...el.classList].some(name=>MOTION_DECOR_RE.test(name));
-}
-function motionVisible(d,el){
-  if(motionDecor(el)||el.getAttribute('data-reveal')==='none')return false;
-  try{const s=d.defaultView.getComputedStyle(el);
-    return s.display!=='none'&&s.visibility!=='hidden'&&Number(s.opacity||1)>0;
-  }catch(_){return true;}
-}
-function directMotionChildren(d,el){return el?[...el.children].filter(child=>motionVisible(d,child)):[];}
-function motionTargets(d){
-  const slide=d.querySelector('.slide')||d.body;if(!slide)return {slide:null,targets:[]};
-  if(slide.dataset.motion==='none'||slide.getAttribute('data-reveal')==='none')return {slide,targets:[]};
-  const explicit=[...slide.querySelectorAll('[data-reveal]')].filter(el=>motionVisible(d,el));
-  if(explicit.length){
-    explicit.sort((a,b)=>{const av=Number(a.dataset.revealOrder),bv=Number(b.dataset.revealOrder);
-      const ah=Number.isFinite(av),bh=Number.isFinite(bv);if(ah&&bh&&av!==bv)return av-bv;
-      if(ah!==bh)return ah?-1:1;return a.compareDocumentPosition(b)&4?-1:1;});
-    return {slide,targets:explicit};
-  }
-  const roots=[...slide.children],targets=[];
-  const add=items=>items.forEach(el=>{if(motionVisible(d,el)&&!targets.includes(el))targets.push(el);});
-  const isTitle=el=>el.matches('.slide-title,.page-header,header');
-  const isFooter=el=>el.matches('.slide-footer,.page-footer,.special-footer,footer');
-  const isBody=el=>el.matches('.slide-body,.page-body,.closing-stage,.special-safe,main,[data-slide-owned="body"]');
-  add(roots.filter(isTitle));
-  const body=roots.find(isBody);
-  if(body){
-    const special=body.querySelector('.sec-block,.closing-core,.special-copy');
-    const parts=directMotionChildren(d,special||body);
-    add(parts.length?parts:[body]);
-    add(roots.filter(el=>el!==body&&!isTitle(el)&&!isFooter(el)));
-  }else{
-    add(roots.filter(el=>!isTitle(el)&&!isFooter(el)));
-  }
-  add(roots.filter(isFooter));
-  return {slide,targets};
-}
-function prepareMotion(e){try{
-  const d=e.contentDocument;if(!d||!d.head)return;
-  if(!d.getElementById(MOTION_STYLE_ID)){
-    const style=d.createElement('style');style.id=MOTION_STYLE_ID;style.textContent=MOTION_CSS;d.head.appendChild(style);
-  }
-  const {slide,targets}=motionTargets(d);if(!slide)return;
-  targets.forEach((el,index)=>{let opacity='1';try{opacity=d.defaultView.getComputedStyle(el).opacity||'1';}catch(_){}
-    el.dataset.muralRevealStep=String(index+1);
-    el.style.setProperty('--mural-reveal-opacity',opacity);
-    el.style.setProperty('--mural-reveal-delay',(60+index*70)+'ms');});
-  d.documentElement.dataset.muralPlayer='true';e.dataset.motionTargets=String(targets.length);
-}catch(_){}}
-function activateMotion(e,active){try{
-  const d=e.contentDocument,slide=d&&(d.querySelector('.slide')||d.body);if(!slide)return;
-  if(!active){slide.classList.remove('mural-present-active');return;}
-  slide.classList.remove('mural-present-active');void slide.offsetWidth;slide.classList.add('mural-present-active');
-}catch(_){}}
 const fit=()=>{wrap.style.width=CW+'px';wrap.style.height=CH+'px';
 wrap.style.transform='scale('+Math.min(innerWidth/CW,innerHeight/CH)+')';};
-/* 从已加载的 iframe 里读 .slide 真实像素尺寸,校正画布(处理 base.css 未用 --canvas-* 或 build 探测失准的情况) */
-/* 用 offsetWidth/Height(.slide 的 border-box = 画布真实尺寸),不用 scrollWidth/Height:后者会把画到
-   画布外、被 .slide overflow:hidden 视觉裁掉的装饰(halftone 圆/斜切色块等,常伸出画布)也算进去,
-   于是画布被撑成 1710/1950 之类 → 整册被多缩、右侧留黑边;且各页溢出量不同 + CW/CH 全局共享,
-   相邻页懒加载先后会互相污染当前页缩放(偶发)。offset 只量 .slide 盒本身,横竖版都对。 */
+/* 只接受显式画布变量，不用内容的 offset/scroll 尺寸反推画布。后者会在变量缺失、
+   字体尚未稳定或装饰溢出时把某一页的内容宽度误当成整册画布，造成播放器与 PNG 不一致。 */
 function remeasure(e){try{const d=e.contentDocument;if(!d)return;
-const el=d.querySelector('.slide')||d.body;if(!el)return;
-const w=Math.round(el.offsetWidth||el.scrollWidth),h=Math.round(el.offsetHeight||el.scrollHeight);
+const style=d.defaultView&&d.defaultView.getComputedStyle(d.documentElement);if(!style)return;
+const w=Math.round(parseFloat(style.getPropertyValue('--canvas-w'))||0);
+const h=Math.round(parseFloat(style.getPropertyValue('--canvas-h'))||0);
 if(w>50&&h>50&&(Math.abs(w-CW)>1||Math.abs(h-CH)>1)){CW=w;CH=h;fit();}}catch(err){}}
 function ensure(n){if(n<0||n>=S.length)return null;if(fr[n])return fr[n];
 const e=document.createElement('iframe');e.dataset.ok='0';e.dataset.slide=String(n+1);e.title='slide '+(n+1);
 e.addEventListener('load',async()=>{try{const d=e.contentDocument;if(d&&d.fonts)await d.fonts.ready;}catch(_){}
-e.dataset.ok='1';remeasure(e);prepareMotion(e);
+e.dataset.ok='1';remeasure(e);
 try{e.contentDocument.addEventListener('keydown',onKey);}catch(_){}   /* 焦点进 iframe(用户一点幻灯片)也能 ←/→ 翻页:同源,给页内文档挂同一监听 */
 if(n===i){reveal();resolveFontsReady();}});
 e.src=S[n];wrap.appendChild(e);fr[n]=e;return e;}
-let motionRun=0;
-function reveal(){const run=++motionRun;fr.forEach((e,k)=>{if(!e)return;const active=k===i;
-  if(active)activateMotion(e,true);
-  e.classList.toggle('cur',active);e.classList.toggle('active',active);
-  if(!active)setTimeout(()=>{if(run===motionRun&&!e.classList.contains('cur'))activateMotion(e,false);},340);
-});}
+function reveal(){fr.forEach((e,k)=>{if(e){e.classList.toggle('cur',k===i);e.classList.toggle('active',k===i);}});}
 function show(n,push){i=Math.max(0,Math.min(S.length-1,n));
 const e=ensure(i);ensure(i-1);ensure(i+1);
 if(e.dataset.ok==='1')reveal();   /* 已加载→立即交叉淡入;未加载→其 load 事件再 reveal,旧页保持可见,无白闪 */
@@ -1730,31 +1189,24 @@ addEventListener('resize',fit);
 let x=null;addEventListener('touchstart',e=>x=e.touches[0].clientX,{passive:true});
 addEventListener('touchend',e=>{if(x==null)return;const d=e.changedTouches[0].clientX-x;if(Math.abs(d)>40)d<0?next():prev();x=null;});
 document.getElementById('stage').addEventListener('click',e=>e.clientX>innerWidth/2?next():prev());
-window.muralDeck={go:n=>show(Number(n)-1),step:d=>show(i+Number(d||0)),count:S.length,fontsReady};
+window.cleanDeck={go:n=>show(Number(n)-1),step:d=>show(i+Number(d||0)),count:S.length,fontsReady};
 fit();const s=parseInt((location.hash||'#1').slice(1),10);show(isNaN(s)?0:s-1,false);
 </script></body></html>"""
 
 
 def main(argv=None):
-    if argv is None:
-        _reexec_configured_runtime()
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
     for name in (
-        "preflight", "sync", "prepare", "contact", "build", "audit", "asset-register",
-        "asset-download", "asset-assign", "asset-contact", "asset-review", "material-figure",
+        "sync", "prepare", "contact", "build", "audit", "asset-register",
+        "asset-assign", "asset-contact", "asset-review", "material-figure",
     ):
         command = subparsers.add_parser(name)
         command.add_argument("root", nargs="?", default=".")
-        if name == "preflight":
-            command.add_argument(
-                "--scope", choices=("all", "environment", "workspace"), default="all",
-            )
         if name in {"sync", "prepare", "contact", "build", "audit"}:
             command.add_argument("--expected", type=int)
         if name == "contact":
             command.add_argument("--focus", help="comma-separated pages or ranges, e.g. 3,7,12-14")
-            command.add_argument("--label", help="stable unique label for a focus contact sheet")
         if name == "asset-register":
             command.add_argument("--path", required=True)
             command.add_argument("--origin", required=True, choices=sorted(ASSET_ORIGINS))
@@ -1765,11 +1217,6 @@ def main(argv=None):
             command.add_argument("--parent-asset")
             command.add_argument("--material-asset-type",
                                  choices=("attachment-image", "page-facsimile"))
-        if name == "asset-download":
-            command.add_argument(
-                "--url", action="append", required=True,
-                help="repeat for each image URL; quote URLs containing '&'",
-            )
         if name == "asset-assign":
             command.add_argument("--path", required=True)
             command.add_argument("--asset-id", required=True)
@@ -1794,14 +1241,12 @@ def main(argv=None):
     args = parser.parse_args(argv)
     root = Path(args.root).resolve()
     try:
-        if args.command == "preflight":
-            _preflight_workspace(root, args.scope)
-        elif args.command == "sync":
+        if args.command == "sync":
             _sync_speech(root, args.expected)
         elif args.command == "prepare":
             _prepare_workspace(root, args.expected)
         elif args.command == "contact":
-            _build_contact(root, args.expected, args.focus, args.label)
+            _build_contact(root, args.expected, args.focus)
         elif args.command == "asset-register":
             _register_asset(
                 root, args.path, args.origin, source_url=args.source_url,
@@ -1809,8 +1254,6 @@ def main(argv=None):
                 prompt=args.prompt, parent_asset=args.parent_asset,
                 material_asset_type=args.material_asset_type,
             )
-        elif args.command == "asset-download":
-            _download_assets(root, args.url)
         elif args.command == "asset-assign":
             _assign_asset(root, args.path, args.asset_id, args.group_id)
         elif args.command == "material-figure":
@@ -1826,6 +1269,9 @@ def main(argv=None):
                 needs_review=args.needs_review, rejected=args.rejected,
             )
         elif args.command == "build":
+            _ensure_canvas_reset(root)
+            _ensure_runtime_assets(root)
+            _normalize_runtime_references(root)
             _validate_no_pictographs(root, args.expected, include_html=True)
             _validate_image_presentations(root, args.expected)
             _sync_speech(root, args.expected)
@@ -1834,7 +1280,7 @@ def main(argv=None):
             if _build_player(root, args.expected):
                 return 1
             _validate_runtime_dependencies(root, args.expected)
-            _validate_review_contact(root, args.expected)
+            _build_contact(root, args.expected)
         else:
             _validate_no_pictographs(root, args.expected, include_html=True)
             _validate_image_presentations(root, args.expected)

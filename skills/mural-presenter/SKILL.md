@@ -1,346 +1,345 @@
 ---
 name: mural-presenter
-description: 创建和编辑完整的 HTML 演示文稿。支持主题、提纲、文档、多附件和已有 deck，交付 1600×900 的逐页 HTML、渲染图、逐页讲稿与 present.html。新建时按需使用 Material、Research、Image、Slide Group 和 Review；编辑时根据影响范围选择局部快修或多 Agent 改造。适用于制作、续编、重排、统一风格、审校和修改 PPT、deck、slides 或 presentation。
+description: 创建或编辑完整的 HTML 幻灯片 deck；支持主题、提纲、文档和多附件输入，生成每页独立 HTML（1600×900）、渲染图、逐页讲稿与播放器。新建时编排 Research、Material、Image、Slide、Review；编辑现有 PPT 时按复杂度选择单 Review 快修或 Orchestrator 多 Agent 改造。适用于制作、改稿、续编、重排、统一风格或审校 PPT、deck、slides、presentation。
 ---
 
-# Mural Presenter
+# MURAL Presenter
 
-## 1. 定义与质量目标
+把本文件当作**路线图**，不要当作需要一次背完的规范全集。先判断任务模式，再只读取该路径要求的 reference 和职责卡。
 
-Mural Presenter 把用户的主题、材料或已有演示稿转成一套可播放、可检查、可继续编辑的静态 HTML 演示文稿。
+## 0. 先选择任务模式
 
-成品首先要好看，也要好讲、好读。每页应有清楚的视觉焦点和阅读顺序；图片、排印、图表或解释图至少有一种真正承担画面。信息不能挤成一团，也不能缩在角落、留下大片无职责空白。视觉冲击来自尺度、对比、构图和有意义的素材，不来自堆叠装饰或塞满卡片。
+| 用户目标 | 模式 | 执行入口 |
+| --- | --- | --- |
+| 从主题、brief、附件创建一套新 deck | 新建 | 走「2. 新建 PPT」 |
+| 修改现有 deck，且只影响少量页面/局部表现 | 简单编辑 | 走「3.2 Review 快修」 |
+| 修改会改变叙事、事实、素材、全局风格或多页结构 | 复杂编辑 | 走「3.3 Orchestrator 改造」 |
 
-准确性和可读性是底线。在此基础上，优先选择更有表现力、更适合投影的方案。
+判断不清时先做只读影响分析。**不因用户说“简单改一下”就忽略实际影响范围，也不因改动页数少就把叙事级变化当成简单编辑。**
 
-正式文件就是阶段记忆：
+## 1. 所有模式共享的合同
 
-- 事实以用户原文和 `plan/grounded-knowledge.md` 为准；
-- 整册视觉以 `plan/design-brief.md` 为准；
-- 页面内容以 `plan/slide_NN.md` 为准；
-- 素材状态以 `assets/catalog.json` 为准；
-- 最终质量以最新 PNG 为准。
+### 1.1 Orchestrator 的职责与边界
 
-已经确认的决定和未解决项要及时写入对应文件，不只留在对话或工具历史中。逐页计划只能细化上游决定，不能静默削弱整册方案；确有冲突时先修改上游文件。
+Orchestrator 只负责：**判断模式、规划、委派、合并、验收和确定性收尾**。
 
-## 2. 工作流与职责
+- 可写：`plan/`、`base.css`、知识汇总和构建产物。
+- 不直接写：`slides/slide_NN.html`；页面由 Slide 或 Review 修改。
+- 不伪装工具能力，不把计划动作写成已完成动作。
+- 每个 subagent 必须有显式 label；失败、超时或未自然收尾的结果不得当成完成品。
+- `delegate_task` 返回的结构化 contract、artifact paths 与 `handoff_path` 是父级交接真相；Orchestrator 不读取子 Agent 的 `messages.json`、`tool_log.json` 或 system/tool 快照来轮询进度。Research 是任务级单例；Review 最多执行 3 次，后续实例只能用于修复后的受控复验，不能为了审美偏好反复重审。
 
-按下面的顺序推进，不跳过真实依赖：
+### 1.2 角色
+
+| 角色 | 数量与时机 | 唯一职责 |
+| --- | --- | --- |
+| Research | 至多 1 个 | 核验会改变结论的外部事实，写 `research/research.md` |
+| Material | 按附件并行 | 每个实例只处理自己的附件分片，写 `research/materials/material_NN.md` |
+| Image | 按素材量并行 | 获取或生成位图素材，返回实际路径 |
+| Slide | 新建或复杂编辑时按设计亲缘页组并行 | 只制作/重做自己的页组并完成组内像素闭环 |
+| Review | 首次验收 1 个，修复后最多复验 2 次；简单编辑时也是执行者 | 先诊断、后集中修复、批量重渲和最终讲稿收口 |
+
+所有角色开工前完整读取自己的 `subagents/<role>.md`。任何选中的文件或章节出现截断提示时，续读到结束；**未被路由命中的 reference 不读**。
+
+### 1.3 语言与能力
+
+开始前锁定：
+
+- `response_language`：过程与最终回复语言；
+- `deliverable_language`：屏显、规划和讲稿语言；
+- attachments、web、真实图片获取、图片生成、渲染、vision、写文件等能力状态。
+
+默认采用用户 query 的主要语言；用户明确指定交付语言时单独覆盖。只能规划实际可用的能力。
+`vision_analyze` 由当前角色所用的同一个模型直接查看像素；视觉判断、问题账本和看图后的回复使用 `response_language`，不得因模型默认语言切换，屏显原文与专有名词可保留原语言。
+
+### 1.4 工作区真相源
 
 ```text
-Step 0  环境预检并读完输入
-Step 1  判断新建或编辑，解析用户需求
-Step 2  建立事实基础
-Step 3  确定整册视觉方案
-Step 4  完成逐页计划与页面组
-Step 5  准备正式图片
-Step 6  Slide Group 制作并自检页面
-Step 7  Review 全册并锁定最终像素，再做无损构建与交付
+research/research.md
+research/materials/material_NN.md
+plan/grounded-knowledge.md
+plan/design-brief.md
+plan/deck.md
+plan/slide_NN.md
+base.css
+assets/
+slides/slide_NN.html
+renders/slide_NN.png
+speech.md
+present.html
 ```
 
-| 角色 | 进入条件 | 唯一职责与正式产物 |
-| --- | --- | --- |
-| 编排器 | 始终存在 | 解析任务、整合证据、制定整册方案、划分页面组、委派和验收 |
-| Material | 有附件 | 完整读取一个互不重叠的附件分片，写 `materials/summaries/<assignment_id>.md` |
-| Research | 外部事实会影响结论，至多一个 | 核验事实缺口，写 `research/research.md` |
-| Image | 计划需要真实图片或生成图 | 准备、检查并登记 `assets/catalog.json` 中的正式素材 |
-| Slide Group | 新建或结构性编辑 | 制作一个页面组，并完成组内最终像素检查 |
-| Review | 每个任务一个 | 审查全册、集中修复、锁定最终像素、同步讲稿并做无损构建 |
+- `grounded-knowledge.md` 是事实真相源；
+- `design-brief.md` 是视觉真相源；
+- `slide_NN.md` 是页面内容合同；
+- `base.css` 是全局设计系统；
+- 最终判断必须基于最新 PNG，而不是只看 HTML。
 
-每个子 Agent 只读取自己的 `roles/` 角色卡、角色卡点名的文件和当前任务需要的输入。Research 和 Review 是任务级单例；失败或阻塞时如实结束，不用 `_r2`、`_r3` 绕过原结果。编排器不亲自制作页面，也不重复角色卡全文。
+### 1.5 Reference 路由
 
-委派只使用一个工具形状：`delegate_task({"tasks":[{"goal":"..."}]})`。每项只写 `goal`，并使用稳定首行让运行时推导角色、轨迹名和工具白名单：
+| 场景 | 读取 |
+| --- | --- |
+| 场景定调 | `design-rules.md` §T1–T3、§1–3 + 命中的主题节；`design-styles.md` 目录 + 一个风格家族 |
+| 全局与逐页规划 | `planning-contract.md`；每页只读 `layout-patterns.md` 对应页型 |
+| 编辑现有 deck | `editing-contract.md` |
+| Slide | 自己的逐页计划、`base.css`、`quality-checklist.md`“一、单页检查”与本页命中章节 |
+| Review | 完整读取 `quality-checklist.md`：先用“一、单页检查”核对视觉语义，再做“二、整套检查”和“三、可机核 lint 项” |
 
-- `Material <assignment_id>:`
-- `Research:`
-- `Image <group_id>:`
-- `Slide Group <group_id> [01,02,...]:`
-- `Review:`
+字体只在默认角色不足或场合敏感时读 `fonts.md`。不要在开工前扫描所有 design、style、layout、font 文档。
 
-不要给任务附加额外控制字段；任务所需路径、语言、边界和交付要求直接写进 `goal`。
+无论是否读取 `fonts.md`，中文眉签、部门名、页脚、来源和元数据都不得使用等宽字体或拉丁 ALL CAPS 的疏字距：使用 `--font-sans` / `--font-serif`，字距保持 `0–0.03em`。`--font-mono`、`--tracking-caps`、`.is-latin-label` 只用于纯拉丁技术标识、代码、坐标和真实编号。
 
-并行跟随依赖图：同一批互不重叠的 Material 分片、Image 组或已满足依赖的 Slide Group，在一次委派中同时启动；同一角色回合内，互不依赖的读取、检索、下载、生成和渲染应批量执行。有附件时，Material 分片可以彼此并行，但 Research 必须等全部 Material 返回并被编排器读完后再决定和启动。不得让多个 Agent 同时修改同一页面、计划文件或素材状态；每页始终只有一个 owner。
+同一句中文标题、结论或标签必须使用同一字体家族；强调词只通过颜色、字重、字号或下划线建立层级，禁止把其中几个字换成卡通、手写或另一套展示字体。**全册字体家族总数 ≤ 3 且必须全册统一**：同一角色在每页都用同一家族，不因页面题材临时换字体；严谨型收敛到 1–2 族。字体选择服从场景与 Style Lock——中文正文/表格/页脚/眉签一律 `--font-sans`（严谨衬线可 `--font-serif`），**中文绝不放进 `--font-mono`**（IBM Plex Mono 无中文字形，会回退成卡通体）；`--font-mono` 只服务纯拉丁代码、坐标、ID。`playful`、圆趣、手写和书法字体只有在主题与受众真正支持时启用（至多占那 3 族里的 1 个点缀位），并在对应元素加 `.is-expressive-type` 或 `data-type-intent="expressive"`，让渲染检查确认这是有意选择。
 
-## 3. Step 0–1：开始与任务解析
+### 1.6 视觉媒介优先级
 
-### Step 0：预检并读完输入
+按内容选择媒介：
 
-环境预检属于运行环境，不属于演示文稿 Agent 的生产职责。托管运行设置
-`MURAL_PREFLIGHT_DONE=1` 时，环境和当前工作区已经在模型调用前通过预检，直接读取输入，
-不要再次运行预检、检查版本、搜索字体或修复环境。仅在脱离托管运行的人工开发会话中，
-由操作者运行一次：
+1. 真实人物、地点、产品、事件：真实照片；
+2. 氛围、隐喻、故事场景、视觉主画面：生成图或高质量位图；
+3. 数据：ECharts；
+4. 大型流程、架构、机制、关系示意：**Canvas 绘制几何 + HTML 文字层**，或“无文字图片 + HTML 标注”；
+5. SVG：仅用于 icon、logo、箭头、标记和小型装饰。
 
-```bash
-${MURAL_RUNTIME_PYTHON:-python} ${SKILL_DIR:-skills/mural-presenter}/scripts/deck.py preflight .
+普通内容页只要存在人物、地点、产品、作品、活动、体验、自然/城市环境、故事场景或情绪画面等可见主体，优先让一张有分量的真实/生成位图成为主视觉，而不是用彩色块、图标或抽象线框替代。配图数量服从叙事，不机械凑数；但能够增加识别、证据、临场感或情绪价值的位图机会不得静默放弃。
+
+**默认禁止把手写 SVG 当作 hero、半屏/全屏主视觉或大型示意图。**SVG 只承担小型辅助图形；复杂的非位图主视觉若确需程序化表达，优先使用 Canvas 几何 + HTML 文字层。只有用户明确要求矢量交付，或必须复用用户提供的准确矢量资产时才例外。详细实现见 `design-rules.md` §5 和 `layout-patterns.md` 的 Canvas diagram 章节。
+
+## 2. 新建 PPT
+
+### 阶段 0：解析任务
+
+1. 锁定语言、能力、附件清单和交付范围。
+2. 建立场景卡：Speaker、Audience、Occasion、Objective、Duration、Page count、Screen vs speech、Core takeaway、Assumptions。场景卡只用于内部规划，不是屏显文案来源。
+3. 不向用户追问非阻塞偏好；在规划中显式记录合理假设。
+
+### 阶段 1：按需接地
+
+#### Material
+
+有附件时，按附件拆成互不重叠的 Material 分片并行执行；默认一个附件一个分片。每个 goal 给出：
+
+- `response_language` 与 `deliverable_language`；
+- `assignment_id`；
+- 确切附件路径；
+- 独立目录 `materials/_work/material_NN/`；
+- 独立输出 `research/materials/material_NN.md`。
+
+所有格式都先走 Material 角色卡中的统一 `stage_materials.py` 入口：文本读全文，图片真实看图，PDF/Office 同时保留文本与页面/内嵌图视觉；音视频、压缩包或未知格式按 catalog 的建议动作使用环境已有转换能力。不能将文件元数据、压缩包成员名或媒体代表帧冒充语义内容。
+
+全部返回后逐项核对 catalog：每个附件必须有唯一 `coverage_id`，状态为 `ok`，coverage 为 `complete`，文本 chunk 区间连续覆盖全文或扫描页覆盖全部页；各分片摘要的 Coverage ledger 必须包含对应 `coverage_id`。任何 `semantic_coverage: incomplete`、`truncated`、`unsupported`、`incomplete`、`failed` 或 `missing` 都阻塞下游，不得把非空摘要、元数据或代表帧视为读完材料。
+
+#### Research
+
+只有外部事实会改变结论时才派唯一 Research。具名真实产品、临床/经营统计、外部基准和会承担结论的具体数字都属于需要核验的外部事实，除非已经由用户或附件提供。goal 使用：
+
+```text
+Research:
+Response language: <response_language>
+Deliverable language: <deliverable_language>
+Raw user query (verbatim): <原文>
+Unresolved terms: <待核对象或 none>
+Evidence needed: <会改变结论的缺口>
+Parent interpretations are hypotheses, not user claims.
 ```
 
-预检检查工作区读写、Python、便携字体依赖、Skill 内置资源，以及 Chromium/Playwright 的最小真实渲染；有附件时还检查原件和相应转换器。部署环境只通过 `scripts/install.sh` 一次性安装或修复；生产 Agent 永远不安装依赖。失败时由运行层在首个模型请求前终止并报告具体缺口，不把环境故障转交给 Agent。不要改变 `PATH` 或 Python 解释器，不要用 `which`、`--help`、全盘 `find /`、临时安装或多组版本命令替代统一预检。
+`Raw user query (verbatim)` 必须逐字复制完整用户消息，不摘要、不改写、不补充标点，也不能省略视觉要求。`Unresolved terms` 与 `Evidence needed` 可以加入编排器认为值得核验的候选，但新增项必须明确标为 `orchestrator hypothesis`，不得伪装成用户已声明的日期、数字、人物、地点或观点。只有某句话能在 Raw user query 或 Material 原文中逐字定位时，才允许称为“用户要求 / 用户 brief / 用户原文”；否则只能称为“委派假设”或“核验候选”。
 
-然后建立输入清单：原始 query、用户提供的全部附件、明确给出的 URL，以及编辑任务中的既有 deck。每项都必须有去向：
+Research 在一个工具回合并行提交首轮独立查询，在下一工具回合并行抽取最佳来源，最多再做一轮定向补搜。
 
-- 保持原始 query 的含义，不把编排器假设改写成用户要求；
-- 附件进入 Material coverage，长文档和多附件按互不重叠的分片并行读取；
-- 承担内容或证据的 URL 交给 Research 实际访问，并记录成功、失败或未解决边界；
-- 当前阶段选中的角色卡、reference 和文本文件必须读到末尾；看到续读 offset 就按该 offset 继续，直到不再出现截断提示；
-- 不扫描无关工作区，也不通读当前阶段没有选择的 references。
+#### Grounding gate
 
-编排器只用原始 query 与 `materials/attachments.json` 判断附件范围，不直接读取或通过终端查看 `materials/_raw/`、`materials/_work/` 的正文和页图。附件内容由 Material 完整解析；编排器随后只读取 `materials/summaries/` 的正式摘要。
+Material / Research 回收后，Orchestrator 的下一项动作必须是写唯一 `plan/grounded-knowledge.md`，随后用 `read_file` 验证文件存在且内容完整；完成前不得进入 `design-brief.md`、Style Lock 或逐页规划。文件区分用户事实、外部核验、编排器假设、示意、冲突和未确认项，不添加无来源的新事实。Research 若返回 `partial`，必须把合同中的 `unresolved` 原样写入 `## 未解决与使用边界`，并说明相关命题不得作为确定结论上屏；未传播该边界即视为 Grounding 未完成。Research 若把委派假设误称为用户原话，合并时必须按 Raw user query 纠正归因，不能把“假设被否定”写成“更正用户”。
 
-所有附件必须取得 `coverage: complete`，或明确返回无法继续的缺口；输入未读完时，不开始写计划或页面。
+附件提供的是**事实与可复用素材边界，不是默认设计上限**。合并时同时整理材料里的可复用页图、内嵌图片、图表结构和品牌线索；随后在 `design-brief.md` 明确 `material_visual_mode`：`facts-only`、`visual-reuse`、`style-reference` 或用户明确要求的 `faithful-restyle`。对每张图片附件另写 `attachment_visual_map`，决定 must-show / reuse / reference-only / omit、上屏页与处理方式；论文整页视觉与页内命名 Figure 必须区分为 `page-facsimile` 和 `figure-crop`。这项判断独立于外部搜图/生图的 `image_opportunity`。除 `faithful-restyle` 外，不继承附件的小字号、密集表格、普通文档排版或低质量视觉；仍按听众、场合和叙事重新定调。
 
-### Step 1：解析任务
+### 阶段 2：场景定调与 Style Lock
 
-先确定任务模式：
+1. 按 Reference 路由读取视觉规则，不扫描全库。
+2. 先锁定 `scene_register`（庄重汇报 / 编辑叙事 / 产品发布 / 教学解释 / 文化体验等）和一个明确的主风格；风格必须能解释“为什么适合这个受众、场合与内容”，不能只写抽象形容词，也不要把多个风格编号拼成折中套餐。允许借一种辅助 craft，但整册要能用一句视觉主张说清。
+3. 写 `plan/design-brief.md#Style Lock`：
+   - scene；
+   - primary_style；
+   - supporting_craft（最多一种）；
+   - visual_thesis / signature_visual；
+   - palette / typography / numeric_voice；
+   - image_language / image_opportunity_map / composition_grammar；
+   - background_system：先根据场景说明背景应偏“克制秩序”还是“氛围表达”，再定义一个贯穿内容页的 `base_canvas_family` 与允许变化的视觉状态（明度、色场、环境光、肌理、图片占比、密度和章节状态）；每种状态写清叙事用途、适用页面及进入/退出承接。学术、组会、合规、严肃评审等场景可以更安静，但仍需有排版和证据视觉；其他场景不要把整册同一纯色底当作安全默认。统一不等于全册同底色；变化也不能脱离同一画布家族；
+   - motif_role：说明主题母题在哪些页作为主视觉、在哪些页只作次要线索、哪些页主动缺席。同一装饰母题不得承担封面、章节页和大多数内容页的主要视觉；一致性主要来自字体、颜色语义、图片处理和构图语法。技术注、坐标、场记、档案编号等只有在传递真实且有用的信息时才可成为母题，不能编造伪元数据营造“高级感”；
+   - special_pages；
+   - avoid；
+   - spatial_rhythm：内容页如何铺开、呼吸页如何聚焦、峰值页在哪里；
+   - special_page_system：封面、章节页、结尾页共享什么设计 DNA，各自用什么构图动作。
+   - material_visual_mode（有附件时）：哪些只作为事实，哪些图片/图表可直接复用，哪些风格线索值得保留。
+   - attachment_visual_map（有图片附件时）：原路径、must-show / reuse / reference-only / omit、`material_asset_type`、正式 asset 路径、上屏页、裁切/整图/抠图/调色与理由。论文 `Figure N` 必须记录 figure-crop 的来源页与边界，不能直接复用整页 PDF PNG。
+4. 用户未指定风格时，按主题 × 受众 × 场合主动判断。没有 Style Lock 不进入规划；没有可见的 `signature_visual` 兑现页，也不把通用配色和字体清单当作完成定调。
 
-- **新建**：从主题、brief、提纲、文档或模板创建新 deck，继续执行第 4、5 节；
-- **编辑**：修改已有 deck，按第 6 节选择局部编辑或结构性编辑。
+`image_language` 先说明哪些颜色本身承担识别、证据或教学信息，再决定统一处理。人物、动物、植物、作品、产品、场地、实验输出等真实主体默认保留有意义的原始色彩；统一感优先来自选图、裁切、色温、局部色罩、边框与背景。只有用户明确要求黑白/双色调，或本册视觉主张确实依赖该处理且不会损害辨认与证据价值时，才使用整图灰阶或 duotone；“学术感”“高级感”“为了统一”本身不构成把整册真实图片去色的理由。对承担识别、证据或主视觉职责的图片，同时定义轻量 `crop_contract`：焦点、必须保留的主体部位/图内信息、允许裁掉的背景与推荐 fit；不能只写宽高比后让 Slide 猜裁切。
 
-两种模式最终都进入第 7 节完成验收、构建和交付。
+Style Lock 锁定的是**视觉语言与判断边界**，不是一套固定 HTML 模板，也不锁死每页几何。必须明确区分：
 
-新建任务依次判断：
+- 稳定语言：字体角色、颜色语义、间距节奏、背景语法、图片裁切/调色、图形语法与特殊页亲缘关系；
+- 受控变化：每页主焦点、构图方向、媒介比例、信息密度、留白位置和章节状态；
+- 禁止项：临时引入新字体、新配色、无主题装饰或复制上一页几何只换文案。
 
-1. **设计方向**
-   - 自主设计：用户没有偏好，或只给简单风格约束；
-   - 设计系统：用户指定完整设计规范或明确点名本 Skill 的系统；
-   - 使用模板：用户提供必须沿用的模板；
-   - 风格迁移：用户提供图片、网页、PDF 等视觉参考，只迁移设计语言，不把参考内容当成用户事实。
-2. **输入类型**
-   - 仅主题；
-   - 完整文档；
-   - 大纲或讲稿；
-   - 模板或风格参考。
-3. **页数**
-   - 用户明确指定时严格遵从；
-   - 逐页大纲或讲稿默认与有效页面单元一致；
-   - 完整文档或仅主题未指定页数时，结合结构、时长和复杂度给出建议；能够交互时确认，无法等待时自主确定并记录理由。
-4. **语言、能力与证据路径**
-   - `response_language` 跟随 query，控制过程说明和最终回复；
-   - `deliverable_language` 控制屏显文案和讲稿；
-   - 记录时长、附件、交付范围，以及 web、图片搜索、图片生成、渲染、Vision 和写文件能力；
-   - `evidence_path: direct | grounded`：用户原文和明确假设足够时用 `direct`；附件需保真、外部事实影响结论或数据与实体需核验时用 `grounded`。
+它应当像可执行的 Art Direction：足够具体，使不同 Slide 能做出同一世界里的页面；又保留足够空间，让每页按内容选择最佳构图。无需另建模板文件或共享装饰素材。
 
-完整文档、大纲或讲稿没有明确禁止扩写时，可以用 Research 补充必要背景、案例和事实；补充内容不能覆盖用户原文、改变既定结构或伪装成用户提供的信息。用户明确要求不扩写时，只做结构化、编辑和视觉表达。
+`image_opportunity_map` 必须先做一次与实现方式无关的“可见主体扫描”：这页有没有值得被看见的人物、场地、产品、作品、活动、体验场景、虚构角色或情绪主画面；先说明图片能增加的证据、识别、临场感或情绪价值，再选择真图、生成图或代码视觉。不得先偏爱 CSS/Canvas，再倒推“没有图片机会”。
 
-初始化 `plan/deck.md`，写入 `## 已解析任务`：演讲者、听众、场合、目标、时长、页数、核心结论、设计方向、输入类型、语言、能力、证据路径和必要假设。后续步骤在同一文件中补全结构与页面组，不再重新解释任务。
+当页面的核心内容是一组**具名真实人物、主创、嘉宾或团队成员**时，默认把“人物可识别”视为真实图片机会，并交给 Image 批量检索人物肖像、官方简介照、活动照或团队合影。“不应生成假真人”只意味着不能用生成肖像冒充本人，不能据此把该页改判为 `image_opportunity: none`。若只能可靠取得部分人物照片，优先采用一张可信团队/机构场景图配少量关键人物肖像，或降低人物数量并重组叙事；不得用身份不明的相似面孔补齐。只有经过真实检索仍无可辨认、可下载且适合上屏的素材，且图片不会增加识别价值时，才使用纯排印，并在计划中记录缺口与降级理由。
 
-任务卡只服务内部规划。`受众：…`、`页面角色：…`、素材编号、文件路径和制作状态等内部信息不得直接出现在页面上。
+同样审视具名作品、软件/产品、制作流程与案例：可检索的官方画面、界面、幕后制作图、过程拆解、实物或现场照片通常比小图标和空卡片更能建立识别与可信度。每张普通内容页都应有一个与内容相称的主要视觉载体——真实/生成图片、图表、解释性 Canvas，或真正能独立成立的排印主视觉。边框、空面板、微型图标和装饰线不算主要视觉载体；纯排印只有在文字本身被有意放大、组织并形成明确焦点时才成立。增加配图不等于增加散点：优先一张有分量的主图或一组视觉口径一致的素材，让其他元素安静地服务它。
 
-**完成标志：**任务模式、设计方向、输入类型、语言、页数、附件、能力、事实风险和证据路径均已明确。
+有附件时同样执行完整扫描：优先复用其中真正有信息价值且清晰的图片；附件没有实景、人物或品牌图，只说明“没有附件真图”，不等于“生成图会虚构所以禁止配图”。用于气氛、愿景、概念体验或非特定场景的生成图可以作为表达层使用，准确事实、数字和关系仍留在 HTML / 图表层。把事实保真与视觉想象分开，不把材料摘要机械搬成卡片墙。
 
-## 4. Step 2–4：新建演示文稿的规划
+图片附件不能只被“读懂后重画”而默认消失。用户明确要求根据某张图制作，或该图本身是唯一产品、人物、场地、作品、证据、前后对比或流程总图时，将其标为 `must-show`，至少在一页以可辨认的整图或忠实裁切出现；复杂流程图可以先用原图建立全貌，再用 Canvas/HTML 分步重绘。只有重复、无关、不可读或用户明确不希望展示时才 omit。`image_opportunity: none` 只表示不新增外部/生成位图，不能覆盖 `attachment_visual_map`。
 
-### Step 2：建立事实基础
+真实对象的识别与证据、场景的临场感、人物与产品的可信度、故事与情绪的锚点，都属于有效配图机会。虚构人物、概念场景、未建成空间和风格化主视觉正是生成图的适用对象，不应因其不是真实对象而改用彩色方块、抽象符号或纯 CSS 占位。“CSS 更可控”“没有用户实拍”“担心 AI 生成错误”“为了风格统一”都不能单独成为 `none` 的理由；这些问题应通过真图/生成图分流、提示词约束、统一裁切与调色解决。只有当位图确实不增加听众价值，或会比图表、Canvas 或排印更含糊时，才选择 `none`。如果一册存在多个明显可见主体，却被整体判成无位图或仅封面一张图，在冻结计划前必须重做这次扫描。这里不设图片数量配额，也不为装饰而配图。
 
-先根据原始 query 建立附件分片范围，再在同一次委派中并行启动互不重叠的 Material。每个 goal 明确写入 `assignment_id`、附件路径和唯一输出 `materials/summaries/<assignment_id>.md`；`materials/_work/` 只存解析中间物，不另造 `plan/materials-*`、`research/materials-*` 或散落的 summary 文件。常见文本、PDF、Office、图片、音视频和压缩包统一通过 `stage_materials.py` 处理，具体方法见 `roles/material.md`。附件未读完、扫描页未查看或关键表格无法可靠还原时，不能把摘要当成完整材料。
+当搜图或生图能力可用时，**整册全部 `none` 或只有封面一张图属于需要证明的异常，不是默认安全路线**。数据、商业、技术、学术或代码题材也不能因此整册退回卡片墙：事实页可以用图表/Canvas，但封面、章节转场、案例、场景、愿景或结论中至少应选择两个真正能从图像获益的节点，给出可执行的搜索/生成 brief；短册则至少保证一个内容节点，而不只是封面。只有用户明确要求纯排印/纯图表，或逐页证明位图都会降低准确性与可读性时，才允许整册无位图，并在 `plan/deck.md` 写明逐页例外理由。这是防止误判的最低覆盖线，不是为了凑数；事实型真图与非证据性的氛围生成图必须明确分流。卡片、极简、学术、商务等风格描述不等于禁止位图，也不能作为免配图理由。只有用户原文明确要求“纯文字”“不要图片”或语义完全等价的限制时，才能把 `explicit_user_request` 作为图片豁免依据；不得根据风格标签自行推断用户拒绝图片。
 
-全部 Material 返回后，编排器必须逐份把 `materials/summaries/*.md` 读到末尾，再把附件事实、冲突和缺口与原始 query 合并。只有这些缺口需要外部证据且会影响结论时，才委派唯一 Research；不得在有附件时把 Material 与 Research 放进同一波。Research goal 必须包含完整原始 query、正式材料摘要路径、待核对象和明确证据缺口。编排器新增解释只能标为假设。Research 唯一正式产物是 `research/research.md`，不要另起 `plan/research-brief.md` 等路径。
+可见主体扫描必须同步落盘为 `plan/image-strategy.json`，供生成流程在 Slide 委派前确定性验收。存在配图机会时写入 `status: images_required`、`visible_subject_scan_complete: true` 和完整的 `image_opportunity_pages`；整册无位图时必须写入 `status: bitmap_exception`、`visible_subject_scan_complete: true`、覆盖全部计划页的 `reviewed_pages`、不少于 20 字的 `exception_reason`，以及 `explicit_user_request | pure_typography | pure_chart | wireframe | accuracy_critical` 之一的 `exception_basis`。不能用自然语言总结替代该文件。
 
-证据子任务返回后，编排器立即写 `plan/grounded-knowledge.md`，分别记录用户事实、附件事实、外部核验、编排器假设、冲突与使用边界。`direct` 路径且没有证据子任务时不必创建该文件。启动过 Material 或 Research 时，必须确认它存在且完整后才能继续。
+背景不等于一块纯色，也不等于每页随机换皮。学术、组会、合规、严肃评审等场景可用安静画布承托事实；产品、品牌、招商、文旅、文化、故事、课程导入、活动与大众传播等表达型场景，应主动考虑一层与主题相容的环境设计，而不是整册退回纯色：可以是有方向的柔和光场、局部光晕、低对比颗粒/网点/纸纹/地形等主题肌理、图片背景，或由 Image 统一生成的背景。光晕只有在能解释光源、主题和视觉焦点，且形状、位置与构图相关时才成立；标题后反射式复制的圆形模糊光斑仍属于无主题 glow。先确定贯穿普通内容页的基础画布家族，再选择少量相容手法形成背景语法。章节差异优先通过局部大色场、图片调色、条带或母题状态表达；只有章节页、hero、结尾或叙事确需整体换场时才更换整页画布，并在前一张或后一张保留颜色、肌理、图片处理或构图方向的承接。图片或生成背景必须进入 `image_opportunity_map` 与素材 brief，不能由 Slide 临时发明路径。避免出现数页突然像另一套 Deck、随后又无过渡切回，也避免把深藏青、霓虹蓝紫渐变或通用科技 glow 当作默认“高级感”。
 
-**完成标志：**上屏事实均可追溯，未确认内容没有被写成确定结论。
+后续主链只有一条：`Style Lock → 全册计划 + prepare → Image 分片并行 → 素材路径一次回填 → Slide 页组并行 → Review 诊断/有限返修 → 讲稿同步 + build → Review 查看 build 后最终像素并返回合同`。前一节点的真相源未冻结，不启动依赖它的下游；互不依赖的同层任务一次并行派出。`build` 可能裁剪字体、更新 `base.css` 并重渲全册，因此 build 前的 Vision 只能用于诊断，不能作为最终像素证据。
 
-### Step 3：确定整册视觉方案
+### 阶段 3：全局规划与字体前置
 
-先读取 `references/scenario-routing.md`，选择一个主场景，再只读取它链接的一个 `references/slide-categories/*.md`。分类指南负责听众任务、叙事、证据对象、页面家族和疏密节奏；视觉外观再按设计方向选择一条路线：
+完整读取 `references/planning-contract.md`，然后按顺序：
 
-- **自主设计**：先读 `references/style-routing.md` 的导航，只进入一个相关的 `references/style-families/*.md` 风格簇，从中选择并转译一个主家族；不自动套用完整预设；
-- **设计系统**：只读取用户指定的规范，或 `style-routing.md` 路由到的一个明确内置系统文件，不混入另一套系统；
-- **使用模板**：沿用模板的颜色、字体、栅格和组件，仅修正可读性与交付风险；
-- **风格迁移**：提取参考的颜色职责、字体角色、图片处理、密度和构图关系，不照搬其内容，也不再叠加预设。
+若存在 `materials/font-config.json`，先读取一次并把其中 title/body/number/annotation 角色作为 Style Lock 的字体输入；用户上传字体优先于自动选型，未覆盖字符由交付字体包自动回退，禁止凭字体名改用未上传的本机字体。
 
-只读取当前路线真正需要的 reference：页面需要选择图型、数据构图、流程、架构或复杂关系时读 `references/charts-and-diagrams.md`；需要设计节点、连接、判断、归组或几何母题时再读 `references/shape-grammar.md`；默认字体角色不足、用户指定字体或字体是风格主声部时读 `references/fonts.md`；通用排版、图片和密度原则按需读 `references/design-rules.md`。路线确定后停止横向比较。
-
-按 `references/planning-contract.md` 在 `plan/design-brief.md` 写明主场景、分类 reference、已选择 references、视觉主张、空间原型、画布与栅格、字体角色、颜色语义、图片处理、图表语言、形状语法、页面家族、特殊页系统、疏密节奏、fallback 和应避免的习惯。已选择 reference 必须是实际读过并采用的文件；后续 Agent 消费设计合同，不重新浏览整个参考库。
-
-整册方案约束的是设计语言，不是固定模板。页面可以改变重心、方向和媒介，但字体角色、颜色语义、图片处理和构图逻辑应属于同一个世界。
-
-同时逐页判断配图机会：用户附件优先，其次是官方或可信来源、直接相关的搜索图片、概念生成图。真实人物、地点、产品、作品、事件、案例、界面和实验对象优先用真实图片或截图；氛围、隐喻、故事画面、空间体验和可以被一个具体画面讲清的过程切面优先生成图片。只有关系、方向、层级或数值必须精确时，才使用 Canvas + HTML 文字或 ECharts；不要为省事把本可成为主画面的内容降级成抽象几何。Logo、小图标、箭头、标记和局部装饰才使用小型 SVG，SVG 不承担半屏或全屏主体视觉。图片必须帮助识别、理解、举证或建立场景。
-
-**完成标志：**整套 deck 能用一句视觉主张解释，且封面、章节峰值页和适合配图的内容页会真实兑现它。
-
-### Step 4：完成逐页计划与页面组
-
-按 `references/planning-contract.md` 完成：
-
-1. `plan/deck.md`：补全目标、结构、节奏、视觉摘要、页面地图和页面组；
-2. `plan/theme.css`：只写本册真正需要覆盖的全局 token、字体角色和少量共享组件；不要读取、复制或重写 `assets/base-template.css`，`prepare` 会确定性生成 `base.css`；
-3. 全部 `plan/slide_NN.md`：标题、听众所得、屏显文案、证据、视觉实现、素材、验收和讲稿。
-
-先在内存中完成连续页面批次的判断，再在一个工具回合写入多个互不冲突的逐页计划；不要按“写一页 → 读回 → 校验 → 再写一页”串行推进。全部计划写完后统一运行一次 `prepare`，只有失败项才局部修补。
-
-先完成页面地图、页型、视觉媒介和素材依赖，再拆页面组。分组优先考虑制作方式与构图亲缘性，其次考虑共享素材、叙事连续和并行负载；章名相同不等于制作问题相同。合并真正需要共享设计记忆的页面，拆出图片叙事、数据图、复杂机制图和特殊页系统，并拆解会形成串行长尾的主导组。
-
-只有一至三页、且制作方式确实统一时，单组通常才划算。四页以上的新建 deck 至少拆成两个可独立开工的设计单元；短 deck 常见拆法是“封面与结尾 / 核心内容”，或再把复杂数据、机制、图片叙事拆成第三组。不要按页数机械平均，也不为填满并发退化成单页 Agent。
-
-为每组写明 `load_reason`、`parallel_with` 和 `boundary_handoff`。每页必须且只能有一个 owner。
-
-冻结前做一次页面地图预检：
-
-- 每页是否有不可替代的听众所得和足够的事实、机制、对比、案例、行动或边界；
-- 信息是否疏密适中，主要视觉是否获得与职责相称的画布；
-- 主图、视觉证据或 Hero 是否被降成角落小缩略图；
-- 同一短语是否在标题、角标、标签、图片和页脚中无意义重复；
-- 文案是否具体、自然、直接面向听众，且没有生产术语、内部信息或默认 AI 套话；
-- 章节之间是否机械复制页面脚本，特殊页是否各司其职，参考文献与结尾是否分开；
-- 防坑清单、规则集合和多组行动项是否留在内容页；结尾只选择“收束页”或“行动末页”一种身份；
-- 需要图片的页面是否已经写明素材路线和裁切要求。
-
-把结果写入 `plan/deck.md` 的 `## Repetition & rhythm preflight`，然后运行：
+1. 补全 `design-brief.md`；
+2. 写 `plan/deck.md`；
+3. 复制 `base-template.css` 为 `base.css` 并填写 token；
+4. 一次写完全部 `plan/slide_NN.md`，每页附自己的 Reference route；
+5. 在 `plan/deck.md` 定义 Production groups：全部过渡页为 `dividers`，封面与结尾为 `bookends`；内容页首先按**制作方式与构图亲缘性**分组，再考虑叙事连续，最后才考虑章节归属。一个组应共享同一种制作问题，而不是把 cards、复杂 Canvas、数据图表、真实照片等不同媒介仅因属于同一章就塞给一个 Agent；章名相同不构成分组理由。每组同时写 `boundary_handoff`，说明进入本组前与离开本组后的画布、明度、色场和母题状态；分组完成后按逐页表复核一次，确保每页恰好归属一个组，章节页与互动页等页型没有错号。
+6. 参考文献与结尾页分开承担职责：需要上屏的来源使用独立 references 页或前置内容页；closing 只负责收束命题、行动或提问，不与长参考文献、详细回顾或多栏总结合并。
+7. 在启动 Image 或 Slide 前写一段简短的 `## Repetition & rhythm preflight`：逐页比较画布状态、标题锚点、构图方向、媒介、图片占比、信息密度与母题角色；同时纵向比较各章的页面脚本，不能把同一套“痛点—案例前—案例后—步骤—工具”机械复制到不同章节。共享节奏可以形成亲缘性，但每章仍应有自己的问题视角、证据任务与阅读动作；某页没有独立职责时合并或重构。发现重复或节奏扁平时先改页面地图、Style Lock 或 Production groups，再冻结计划。
+8. 做一次**内容充分性与屏显语义去重**：每个普通内容页先写清不可替代的听众所得，再用最适合该页的证据、机制、对比、案例、行动或边界继续解释；不设固定条数，但只有主题句、同义副题和状态角标的页面不算内容成立。若没有新的支撑层，合并页面、改变叙事职责或改成真正有单一焦点的过渡/呼吸页，不用大片无职责空白或重复标签把薄内容拉成一页。逐页确认主要视觉载体与 `spatial_budget` 相符；不能靠大边框、等高卡或空面板在几何上“占满”，却把短文字钉在边缘、留下大块未参与阅读的内部空白。逐页比较标题、kicker / subtitle、图片角标、badge、callout、图例和页脚；同一短语通常只选择一个最强载体，其他区域补充对象、原因、变化或结果。只有导航或同屏比较确有必要时才重复，且每次出现必须承担不同作用。`dense` 不是一句标签：若主内容只压在半张画布或一条窄带里、其余空间没有焦点或方向，必须重做空间计划。
+9. 做一次 `screen-copy firewall`：逐页区分“观众必须看到”与“只供生产使用”。Speaker/Audience/Occasion/Objective、页面职责、production group、视觉验收、素材路线、证据编号、假设、文件名和 Research/Material 来源都留在计划或讲稿中，不得自动进入 `## 最终屏显文案`。只有当页面主题本身确实讨论目标受众、项目目标或研究方法时，才把相关内容重新写成观众可理解的叙事，而不是显示 `受众：…`、`主体：…`、`页面角色：…` 等内部标签。屏显文案和 HTML 不使用 emoji / Unicode 图标（如 `👀 ✋ 💡 ✨ ★ ✦`）；需要图标时使用与 Style Lock 一致的本地小 SVG、CSS 形状或直接用文字表达。星芒、爱心、礼花等通用装饰不能作为“全册点缀”散布到多数页面，只在确有构图职责的页面出现。
+10. 用一个确定性命令同步讲稿并从计划前置字体包：
 
 ```bash
 python ${SKILL_DIR:-skills/mural-presenter}/scripts/deck.py prepare . --expected <总页数>
 ```
 
-**完成标志：**事实、页序、标题、屏显文案、素材 brief、页面组、初版讲稿和字体均已冻结。
+规划冻结条件：事实、页序、屏显文案、视觉媒介、逐页配图机会、素材 brief、背景处理、来源、讲稿、页型和字体全部确定，`plan/image-strategy.json` 已写入，并已通过内容充分性、屏显语义去重与 screen-copy firewall。冻结前专门反证所有 `image_opportunity: none`：若页面已经有可视化的主体或场景，不能只用“代码更可控”将它排除。屏显文案或字体 token 变化时，先同步计划再重跑 `deck.py prepare`。
 
-## 5. Step 5–6：素材与页面制作
+逐页计划还必须完成一次空间预演与视觉验收预演：写清主视觉与文字各占哪块、主信息如何使用安全区、剩余空间为什么存在，以及观众从最终像素应读出哪些对象、方向、领域证据和结论。`deck.md` 与逐页计划的媒介不能互相矛盾。普通内容页若预演结果是“主体缩在中间、外围大片无归属空白”“只能靠小字塞下”或“只能用通用几何代替领域证据”，先改计划，不把问题留给 Slide。章节过渡页则预演“主信息团 + 视觉对重 + 留白职责”：内容保持简洁，但不能只在局部放一小团文字、让其余画布成为未设计的纯空白。
 
-### Step 5：准备正式图片
+### 阶段 4：素材与页面制作
 
-按视觉口径把真实图片和生成图需求分组，在同一次委派中启动互不依赖的 Image 组。素材准备完成前不启动 Slide Group。
+1. 汇总所有被判定为真实图或生成图的图片 brief，再启动 Image subagent；每个 goal 显式带上稳定 `group_id`、`response_language` 与 `deliverable_language`。**第一次 Image 委派前**，每个 `plan/slide_NN.md` 的唯一 `## 视觉实现` 都必须已有一条完整单行机器字段 `- image_opportunity: <枚举>`；有位图页另用同级独立行写 `- presentation: <四枚举之一>`，不得写成空的 `image_opportunity:` 父块，不得把 `full-bleed` / `framed-scene` 填进 `image_opportunity`，也不得把 `split-media` 等 layout 值填进 `presentation`。缺字段时直接修计划并重试，不搜索或修改运行时代码。只要计划中存在有效配图机会，就不能静默跳过 Image 阶段；若计划需要图片但当前没有 Image Worker，必须重新规划为真正成立的非位图表达，或补派 Image Agent，不能直接进入完成状态。同一视觉配方且能在一张联系表中共同审清的素材归入同一分片，多张生成图在同一工具回合并行提交。Image 与 Slide 不得在同一次 `delegate_task` 中派出：先完成并验收素材，再启动页面制作。
+2. 先把 `attachment_visual_map` 中 must-show / reuse 的图片复制并登记来源，再交给对应 Image 分组；论文命名 Figure 先由 Image 使用 `deck.py material-figure` 从页图生成独立、可追溯的 Figure 裁图，整页 PNG 只作为定位上下文。每个 Image 分组将候选路径绑定到稳定 `asset_id`，由 `deck.py asset-contact` 生成一张带 ID 的素材联系表，默认只做一次整组 Vision；只有被标红、要求抠图、比例可疑或主体完整性无法从缩略图判断的素材才打开单图复核。Image 用 `asset-review` 写回最终状态后，Orchestrator 只按 `ready` 的 `asset_id → actual path + origin + crop_contract` 回填逐页计划；候选、被替换与废弃图片不算正式素材。`assets/catalog.json` 是唯一素材真相源，必须保留下载 URL、生成模型、用户附件路径和派生关系；Image 的自然语言总结不能代替 catalog。逐页图片先锁定 `presentation: subject-only | framed-scene | full-bleed | evidence-crop`（这是位图的展示/背景处理合同，**只允许这四个枚举**；`split-media`/`right-half`/`cards`/分屏等是版式不是 presentation，放到 `layout`；**无位图页完全省略 presentation**，不写 `无`/`none` 占位）：任何要悬浮、跨色场叠放或作为独立角色/物件的图都属于 `subject-only`，必须由 Image 完成透明检查、主体抠图、最终 Alpha 检查与必要的单图 Vision，再回填可用的 `*-cutout.png`；普通 RGB 图不得作为透明资产返回 `ready`。带背景图片只能作为有意的画框场景、满幅裁切或证据裁图，不能把其白底/奶油底矩形偶然贴到另一种画布上。Slide 不临时去背，也不用 CSS mask/multiply 冒充。映射确有问题时交回同一个 Image 复核。失败素材先换可行的真实图或生成图路线，确实不可得时才改为 Canvas 或排版降级，并写清原因，不留占位。Slide 启动前，Image 必须有 `status: ready` 的完成合同，catalog 中所有计划 `asset_id` 都必须为 `ready`、实际文件存在，且路径与裁切合同已经回填逐页计划。
+3. 一个 Production group 委派一个 Slide，可并行执行；goal 的首行必须精确写成 `Slide Group <group_id> [NN,NN]:`，例如 `Slide Group bookends [01,20]:`。页码所有权以已冻结的 `production_group` 为准；不用“负责封面和结尾”、“第一组页面”等叙述取代组 ID 与标准页码头。显式带上 `response_language`、`deliverable_language` 与该组 `boundary_handoff`。不得为了提高并发把已经冻结的多页 group 再拆成“一页一个 Slide”；只有计划本身确实定义为单页组时才单页委派。同组必须同时满足叙事亲缘、设计亲缘和制作负荷相容；复杂 Canvas、独立数据图或重图像合成页在没有真正共享构图系统时应单独成组。Grouping 提供的是共享设计记忆，不是批量降精度：同一个 Slide 按组内页序串行完成每页闭环。
+4. Slide 先读取 Style Lock 与组合同，然后对每一页依次执行“完整首稿 → 单页渲染 → `vision_analyze` → 最多一次合并修复 → 重渲复看”；当前页达到 ready 后才进入下一页。全部页面完成后，再批量渲染本组并查看组内全部最终 PNG，确认亲缘性与明显回归，但不为审美偏好开启新循环。封面、每张章节页、结尾页都必须完成自己的单页闭环。首次看图后的“合并修改 → 重渲 → 复看”记为一轮 refine，每页最多 1 轮；仍有真实硬伤时改用更稳定的结构或返回 blocked。最后一次修改后没有重新渲染和看图，不得返回 ready。
+5. 等待全部页面完成后再启动首次 Review。新建或复杂编辑过程中不得额外委派 `simple_edit` 或 `review-fix` 角色；Orchestrator 不得追逐 `cjkTypography`、`crowded`、bbox/contrast 候选、轻微换行/标点等 advisory，也不得在 Review 前开启审美清门循环。Review 发现有新鲜像素/DOM 证据的真实硬伤时，只交回原所属 Slide Group；每组最多返修 2 次，每次失败由运行时恢复该组最后一次已看过的版本。返修后才可启动下一次 Review，Review 总计最多 3 次。
 
-Image 下载、生成或复用本地图片；从论文页裁出真正的 Figure；为悬浮主体生成真实 Alpha 抠图；记录来源、派生关系和裁切要求；最后生成素材联系表并做一次整组检查。唯一正式状态是 `assets/catalog.json`，不要另写 manifest。
+### 阶段 5：全册 Review 与交付
 
-Image 不受固定搜索次数限制，但每轮“获取—检查”必须写回采用、淘汰、待处理或缺口；没有状态变化时不得继续扩大候选池。编排器只把 `ready` 的 `asset_id → path` 回填到逐页计划，候选图和待复核图不算正式素材。
-
-**完成标志：**计划中的图片路径真实存在，来源、比例和裁切要求明确。
-
-### Step 6：制作页面并完成组内检查
-
-一个页面组委派一个 Slide Group。所有素材依赖满足后，在同一次 `delegate_task` 中派发互不重叠的页面组，让它们同时开工或按可用槽位排队。目标首行必须使用：
+每次 Review 的 goal 必须以以下语言合同开头，再写具体诊断范围：
 
 ```text
-Slide Group <group_id> [01,02,03]:
+Review:
+Response language: <response_language>
+Deliverable language: <deliverable_language>
+mode=final_review
 ```
 
-委派内容只传回复语言、交付语言、组 ID、页码、角色卡路径、`plan/deck.md` 和本组逐页计划路径，不重复整份视觉合同。
+不得只在父任务或 system 中隐含语言，也不得省略后让 Review 自行猜测。随后严格两段执行：
 
-每个 Slide Group 执行同一闭环：
+1. **完整诊断：**先看 overview，再按 `review-contact.json` 分批看完全部联系表和必要单页；每批将覆盖页码与发现记入同一 `_trace/review-issues.md`。全册覆盖并冻结账本前禁止修改或渲染；不因 Deck 页数较长而跳过后续批次。
+2. **内容保真核验：**任务含附件或使用了 Research 时，在像素修改前把每页屏显事实与 `grounded-knowledge.md` 对照；有附件时再对照 Material 摘要及 coverage ledger，并写 `_trace/content-fidelity.md`。数字、名称、日期、单位、产品身份、原话或关系无法追溯、自相矛盾时修正或 blocked。生成图只能承担概念/氛围表达；若用于具名真实产品、人物或案例识别，页面必须明确标“概念示意”，不能作为事实证据。仅当既无附件、又无 Research 和高风险外部事实时，`content_fidelity` 才可为 `not-applicable`。
+   Review 停滞收口时允许补齐或更新的正式产物只有 `_trace/review-issues.md` 与 `_trace/content-fidelity.md`；运行时不得禁止写入最终验收合同明确要求的这两份文件，也不得在收口阶段允许继续修改页面。
+3. **集中修复：**Review 既诊断也直接修复本次边界内可安全解决的问题；当前文件与已有素材能解决的问题不得只上报给 Orchestrator。按共同根因先全局、后局部，全部修改结束后才统一批量渲染。这一整批“修改 → 批量渲染 → focus 复验”记为 Review 的 1 轮 refine。任何 HTML/`base.css` 修改都会使旧 PNG 失效，重渲前禁止再次调用 Vision；Canvas/SVG/HTML 叠加页必须同步修正 CSS 尺寸、Canvas 属性、SVG `viewBox`、JS 坐标与节点锚点，不能只放大外容器。机检中的 `boxoverflow`、bbox 相交和装饰相交仅为定位候选；若新鲜像素没有真实遮挡、裁切或不可读，不得为清除告警缩字、压缩主体或删除有构图作用的元素。
+4. 改过 base.css/字体时全册 batch；只改局部时 page batch。该批渲染用于确认修复没有退化，不是最终交付证据。
+5. 生成一次 focus 联系表确认变化页。单个 Review 只做 1 轮 refine；仍有可见硬伤时返回 `blocked`，由 Orchestrator 将有证据的硬伤交回原页组。原页组保留最后验证版、做一次合并修复并重渲复看；新版退化或仍未解决时恢复验证版。修复后启动新的 Review 复验，最多形成 3 次 Review，不新增审美目标。
+6. 修复确认后先同步讲稿，再执行一次 `deck.py build`。随后重新生成 `renders/review-contact.json` 与最终联系表，并用 Vision 覆盖 build 后的全部最终像素；若 build 改变 `base.css`、字体或任一页面渲染，build 前看过的 PNG 全部视为过期。最终看图后只允许更新 `_trace/review-issues.md` / `_trace/content-fidelity.md` 与返回合同，不得再改页面、渲染或 build。
+7. Review 返回 `ready` 后，Orchestrator 只读取其结构化结论并确认交付文件存在；不得再次渲染、build、查看同一 PNG/contact sheet 或重新诊断相同问题。只有 Review 后发生新的页面修改，才启动下一次受控 Review 复验。
 
-1. 一次完成组内全部页面的完整首稿；
-2. 批量渲染整组；
-3. 生成覆盖整组的联系表并做一次 Vision；
-4. 对特殊页、复杂图表和联系表无法判断的页面查看全分辨率单页；
-5. 合并修复，批量重渲变化页，再检查新鲜像素。
+Review 超时、返回 `blocked`、缺少最终像素复验或没有自然返回合同时，先进入有限恢复流程，而不是立即把整项任务判失败。达到 3 次 Review 或每个受影响页组 2 次返修预算后停止继续改页，保留 `_trace/review-issues.md`，恢复每组最后验证版并执行确定性 build。只要全部 slide、非空最终渲染、`speech.md` 与可打开的 `present.html`/交付包存在，任务以“完成（有待改进）”交付并携带 warnings；只有缺页、渲染缺失/空白、播放器或交付包无法构建/打开等不可用技术故障才判失败。
 
-首轮集中解决同页全部已知问题。只要新鲜像素仍在明确改善且存在真实硬伤，可以继续合并修复；一轮带新像素的修复没有减少问题、只是移动缺陷或引入退化时，立即恢复已验证的最佳版本、改用更稳定的结构，或返回 `blocked`。不为凑轮次微调，也不因固定轮数耗尽而带着已知问题交付。最后一次修改没有新像素覆盖时不能返回 `ready`。
-
-**完成标志：**每页最终 PNG 均有新鲜像素证据，且没有已知硬伤。
-
-## 6. 编辑已有演示文稿
-
-先完整读取 `references/editing-contract.md`，再做只读影响分析。
-
-满足以下条件时属于**局部编辑**，由唯一 Review 以 `mode=simple_edit` 完成：影响页面明确，不改变核心论点、页序、跨页叙事、事实、素材或全局视觉，也不需要新的 Material、Research 或 Image。Review 只改目标页，批量重渲变化页，检查 focus 联系表；随后跳过第 7.2 节的全册 Review，直接按第 7.3 节重新构建和交付。
-
-其余属于**结构性编辑**。编排器先记录影响范围，再按真实缺口启动必要的 Material、Research、Image 和 Slide Group；只重做受影响页面，保留仍有效的事实、素材和页面，最后进入第 7 节的唯一 Review。
-
-## 7. Step 7：Review、构建与交付
-
-### 7.1 统一的视觉检查方法
-
-Material、Image、Slide Group 或 Review 需要检查一组附件页、素材或页面时，都使用：
-
-1. **总览路由**：先看覆盖整组的联系表、总览图或缩略图索引，一次列出可疑项；
-2. **全分辨率确认**：再打开特殊页、复杂图表、关键证据，以及总览无法判断的单页或单图；
-3. **新鲜像素复验**：修改后重新生成总览，只复核变化项和受共同样式影响的内容；
-4. **完整覆盖**：长 deck 自动拆成多张联系表，逐片看完，不设置全册累计图片上限。
-
-总览只负责路由。表格文字、论文 Figure、数据映射、身份识别和精细裁切必须以全分辨率证据判断。若当前角色没有图片输入能力，只能做 DOM、边界、资源、对比度、长文本和结构检查，并明确记录未完成像素质检；需要最终像素证据的 Image、Slide Group 和 Review 不得因此返回 `ready`。
-
-### 7.2 全册 Review
-
-新建或结构性编辑的所有页面完成后，只委派一个 Review，使用 `mode=final_review`：
-
-1. **先诊断**：按联系表批次逐步读取对应逐页计划和证据，看完全部联系表与必要单页，核对事实、视觉语义、可读性、特殊页和跨页一致性，写 `_trace/review-issues.md`；诊断完成前不修改；
-2. **再修复**：按共同根因合并修改，批量重渲变化页，通过前后对比确认新版确实更好。
-
-修改前记录旧版成立的焦点、尺度、阅读路径和语义关系。bbox、overflow 和 lint 只是诊断线索；新鲜像素没有真实问题时，不为清除告警而删元素、缩主体或压缩版面。
-
-先做一轮集中修复；新鲜像素仍显示明确改善时继续处理残余硬伤。问题账本没有减少、缺陷只是移位或出现新退化时，恢复最佳版本、换稳定解法或返回 `blocked`。不得另派第二个 Review，也不得把未经像素验证的版本当作完成。
-
-最后一次页面修改和重渲完成后，重新运行一次全册 `deck.py contact`，让联系表清单记录当前每页 PNG 的哈希；再检查受影响的联系表分片和必要单页。该像素证据一旦确认，后续不得再运行 `prepare`、修改 HTML/CSS、改素材或重渲。
-
-### 7.3 构建、动效与交付
-
-问题清零后，Review 根据最终页面同步 `speech.md`，再运行：
+Review 不只查“有没有溢出”，还要比较全册设计兑现：封面是否具有统治性焦点和必要层级，章节页是否既有亲缘性又体现章节推进，结尾是否回应开场；普通页是否在投影字阶下充分使用画布并形成明确阅读路径；每个章节边界是否仍属于同一基础画布家族，整页换场是否有明确的进入与退出承接；屏显是否泄漏内部规划字段、来源、文件名或无听众价值的伪元数据。未实际调用 `vision_analyze` 查看最终像素时必须 blocked。
 
 ```bash
 python ${SKILL_DIR:-skills/mural-presenter}/scripts/deck.py build . --expected <总页数>
 ```
 
-便携字体和运行资源已经在 `prepare` 阶段冻结，最终联系表也已由 Review 生成。`build` 只校验已验收的 HTML、CSS、字体、素材、依赖、PNG 和联系表新鲜度，再写播放器并同步讲稿；它不得修改页面像素源、重做 Review 证据或自动重渲。若 build 报告 HTML/CSS/PNG、联系表或前置资源不完整，先修复并重渲变化页，重新生成联系表并完成像素验收，再次 build。build 成功后，交付像素与 Review 最终证据必须保持相同哈希。
+Review ready 时交付为 `ready`。Review 最终仍有硬伤但全部页面、渲染、讲稿与 `present.html` 可用时，以 `needs_improvement` 交付并展示问题账本；不得因为 advisory、子 Agent 文本收尾或 Review 合同不完美丢弃可用成稿。
 
-构建器只在最终 `present.html` 中统一加入轻量动效：页面交叉淡入，页内按标题、正文一级内容和页脚的阅读顺序依次出现。背景、装饰和图表内部零件不逐个飞入；动效不改变布局、不写回逐页 HTML，也不影响 PNG 质检。确有特殊讲述顺序时，可给少量顶层内容添加 `data-reveal` 和 `data-reveal-order`。播放器必须尊重系统的“减少动态效果”设置。
+## 3. 编辑 PPT
 
-自包含项目目录至少包括：
+先完整读取 `references/editing-contract.md`，只读检查现有 plan、HTML、素材、讲稿和渲染图，建立受影响文件/页面清单，再选择编辑路径。
 
-```text
-materials/_raw/                   # 用户附件原件
-materials/_work/<assignment_id>/  # Material 解析中间物
-materials/summaries/<assignment_id>.md  # 正式附件摘要
-research/research.md              # 启动 Research 时的外部核验结果
-plan/grounded-knowledge.md       # 启动 Material / Research 时的事实与边界
-plan/design-brief.md             # 整册视觉方案
-plan/deck.md                     # 结构、节奏与页面组
-plan/theme.css                   # 本册主题覆盖，不复制基础模板
-plan/slide_NN.md                 # 逐页内容与设计交接
-base.css                         # prepare 生成的完整全局样式
-assets/                          # 正式素材、字体、脚本依赖与来源状态
-slides/slide_NN.html             # 逐页 HTML
-renders/slide_NN.png             # 最终渲染图
-renders/contact-sheet.png        # 全册总览
-speech.md                        # 逐页讲稿
-present.html                     # 最终播放入口
-```
+### 3.1 简单与复杂的判定
 
-交付前确认：
+**简单编辑**同时满足：
 
-- 所有本地图片、字体、CSS、JS 和 ECharts 依赖真实存在；
-- 图片没有拉伸、主体没有被错误裁切，生成图不伪造数据图表或承载必须准确的文字与数字；
-- SVG 不承担半屏或全屏大型主视觉；
-- 页面没有泄漏受众、页面角色、证据编号、来源路径或制作状态，也没有用 emoji 代替设计元素；
-- `slides/` 只保留正式 `slide_NN.html`，所有最终修改均已重渲并检查；
-- Review 覆盖全册最终像素并返回 `ready`；
-- `speech.md` 与页面逐页对应，可由演讲者直接面对听众口述，来源和备注位于对应页讲稿之后；
-- `present.html` 从通过验收的最新文件构建，并能加载全部本地依赖。
+- 不改变核心论点、页序、页面职责或跨页叙事；
+- 不需要新 Research、Material 或 Image；
+- 不改变全局 Style Lock、字体系统或多个 arch；
+- 可在少量页面内安全完成，且影响边界明确。
 
-最终回复使用绝对路径，至少链接项目目录、`present.html`、`speech.md` 和全册联系表。任何一项未完成时，准确说明阻塞原因，不把半成品说成完成。
+任一条件不满足即按复杂编辑处理。页数只是信号，不是唯一判据。
 
-## 8. 按需参考与模板资产
+### 3.2 Review 快修
 
-| 文件 | 什么时候读 |
-| --- | --- |
-| `scenario-routing.md` | Step 3 选择任务场景和表达重心 |
-| `slide-categories/*.md` | Step 3 只读主场景对应的一份分类指南 |
-| `style-routing.md` | Step 3 选择一个风格簇或路由到明确系统 |
-| `style-families/*.md` | 自主设计时只读当前风格簇对应的一份 |
-| `style-systems/*.md` | 用户明确点名内置系统时只读对应的一份 |
-| `design-rules.md` | Step 3 确定字体、颜色、图片、图表和密度原则 |
-| `charts-and-diagrams.md` | 页面需要选择图型、数据构图、流程、架构或复杂图解时 |
-| `shape-grammar.md` | 存在流程、层级、关系、标注或几何视觉语言时 |
-| `planning-contract.md` | Step 4 写 deck、逐页计划和页面组 |
-| `layout-patterns.md` | Step 6 为具体页型选择构图 |
-| `quality-checklist.md` | Step 6 组内检查和 Step 7 全册检查 |
-| `editing-contract.md` | 编辑已有 deck |
-| `fonts.md` | 用户提供字体或默认字体不足时 |
+简单编辑只委派一个 Review，goal 标明 `mode=simple_edit`、用户原始修改要求、目标页和不可改变项。
 
-只读当前阶段真正需要的文件。被选中的文件若出现截断提示，继续读取到文件末尾。
+Review：
 
-`assets/base-template.css` 只由 `deck.py prepare` 合并到 `base.css`，不是需要读取的设计 reference；`assets/vendor/` 和 `assets/licenses/` 同样只由确定性脚本复用。
+1. 看现有 overview 与目标页最终 PNG；
+2. 一次列完本次修改项；
+3. 读取目标页计划与 HTML，集中修改；
+4. 更新受影响的计划/讲稿；
+5. 用 `render.py --batch --pages` 一次重渲并看 focus，确认修改不退化；
+6. 同步讲稿并执行 `deck.py build`，再重新生成 focus、查看 build 后最终像素并返回 ready/blocked；最终看图后不再修改或 build。
 
-## 9. 脚本
+不派 Slide、Image、Research 或第二个 Review。
+
+### 3.3 Orchestrator 改造
+
+复杂编辑由 Orchestrator：
+
+1. 写影响图：事实、叙事、页序、Style Lock、base.css、素材、页面、讲稿分别受什么影响；
+2. 只复用仍有效的既有成果，不从头覆盖无关页面；
+3. 按缺口委派唯一 Research、多个 Material/Image、多个受影响 Slide 页组；互不依赖的任务并行；
+4. 更新受影响计划并运行 `deck.py prepare`；
+5. 只重做受影响页面；全局 token 变化时 batch 重渲全册；
+6. 最后委派唯一 Review，以 `mode=final_review` 做全册一致性与讲稿收口。
+
+复杂编辑不允许让 Review 独自重写叙事或凭空补素材，也不允许 Orchestrator 直接改页面 HTML。
+
+### 3.4 编辑交付门
+
+- 用户要求逐项可追踪到修改结果；
+- 未受影响页面和素材保持不变；
+- 新旧页面风格、页码、讲稿和播放器一致；
+- 所有变更页面已看最终像素；
+- 字体包、render freshness、`speech.md`、`present.html` 重新通过。
+
+## 4. 硬红线
+
+- 图表必须用 ECharts，不用生成图伪造数据图表。
+- AI 生成图不承载需要准确呈现的文字；文字放 HTML 层。
+- SVG 只做小元素，不做大型结构图或主视觉。
+- `slides/` 只保留正式 `slide_NN.html`，不放备份或临时页。
+- 页面固定骨架、页脚安全区、最小字号、对比度与无溢出是硬门。听众阅读的正文不得低于 20px，注释、来源和辅助说明不得低于 18px；若字体 token 规定了更大值，以更大值为准。内容放不下时减少卡片数量、删减重复屏显文字、调整信息层级或拆页，不得继续缩字。
+- 内部规划标签、来源、文件路径、制作状态和无听众价值的伪元数据不得出现在屏显内容中。
+- 最终判断看 PNG；修改后未重渲、未看新像素，不得声称完成。
+- Review 最多 3 个受控实例；只有页面实际修改并重渲后才允许复验。达到预算后停止返工并带 warnings 交付可用成稿。
+
+## 5. 确定性脚本
 
 | 脚本 | 用途 |
 | --- | --- |
-| `deck.py preflight` | Step 0 检查环境、浏览器、字体和附件原件 |
-| `stage_materials.py` | Step 2 解析附件并生成 coverage catalog |
-| `bundle_fonts.py` | 打包开源字体和用户授权字体 |
-| `cutout_image.py` | 检查透明通道并生成主体抠图 |
-| `render.py` | 渲染页面并输出几何诊断 |
-| `deck.py prepare` | Step 4 校验计划、准备字体并同步初版讲稿 |
-| `deck.py asset-*` | Step 5 批量下载、登记、分组、检查和确认图片素材 |
-| `deck.py contact` | Step 6–7 生成页面联系表 |
-| `deck.py build` | Step 7 校验最终产物并生成带轻量动效的 `present.html` |
+| `stage_materials.py` | 保留：统一处理文本、PDF、Office/ODF、图片、媒体、压缩包与未知格式的解析、视觉派生物和 coverage catalog |
+| `font_bundle.py` | 保留：OFL 白名单、官方来源、许可证随包、字符裁剪、交付校验和 render freshness 属于独立高风险能力 |
+| `render.py` | 保留：单页诊断；`--batch` 复用同一 Chromium 渲染整册或指定页 |
+| `image_cutout.py` | 保留：检查 Alpha、清除烘焙棋盘格/纯色背景，并在需要时用 GrabCut 生成独立主体 PNG；不覆盖来源原图 |
+| `deck.py` | 保留：`prepare` 一次完成计划讲稿与字体前置；`asset-register` 登记来源；`asset-assign / asset-contact / asset-review` 管理语义素材、分组联系表与最终状态；`contact` 生成页面联系表；`build` 校验来源并生成播放器；`sync` 仅供只改讲稿时使用 |
+| `install.sh` | 保留：跨环境依赖、字体和 Chromium 安装无法由运行脚本可靠替代；依赖清单已内联 |
 
-首次部署使用 `scripts/install.sh` 安装解析、字体和 Chromium 依赖。生产任务只运行统一 preflight；失败后再做定向诊断，不进行无目的环境探测。
+首次部署依赖解析 venv、PyMuPDF、可分发字体、FontTools/Brotli 和 Playwright Chromium；用 `scripts/install.sh` 安装。运行脚本时若 skill 挂载路径不同，使用实际 skill root。

@@ -1,0 +1,23 @@
+{
+  "product": "SenseNova Present WebUI",
+  "edition": "V1 static / no authentication",
+  "version": "v1.0.0",
+  "built_at_utc": "2026-08-13T00:00:00Z",
+  "source_revision": "workspace consolidation",
+  "source_worktree": "canonical MURAL Presenter pair plus WebUI integration",
+  "skills": [
+    "mural-presenter"
+  ],
+  "harness": "mural-presenter",
+  "harness_entry": "infer.py",
+  "display_name": "MURAL Presenter",
+  "canonical_skill_root": "../skills/mural-presenter",
+  "canonical_harness_root": "../harnesses/mural-presenter",
+  "experimental_line": "../research/mural-next",
+  "experimental_enabled_by_default": false,
+  "offline_fonts_included": true,
+  "offline_fonts_root": "../fonts",
+  "webui_skill_copies": 0,
+  "runtime_data_included": false,
+  "secrets_included": false
+}

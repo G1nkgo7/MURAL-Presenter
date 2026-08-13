@@ -99,7 +99,7 @@ class Trace:
         return {**m, "content": c}
 
     def _multimodal_manifest(self, messages):
-        """Describe every immutable image snapshot used by this trajectory."""
+        """Hash every reconstructable image snapshot referenced by this trace."""
         shots = {}
         for message in messages:
             content = message.get("content") if isinstance(message, dict) else None
@@ -115,48 +115,35 @@ class Trace:
                     if not (isinstance(item, dict) and item.get("type") == "image"):
                         continue
                     shot = str(item.get("shot") or "")
-                    if shot and shot not in shots:
-                        shots[shot] = {
-                            "tool_use_id": str(block.get("tool_use_id") or ""),
-                            "placement": "main_model_context",
-                        }
-        # External one-shot Vision consumes the image outside the main model
-        # context.  Its tool result is intentionally text-only, but the exact
-        # pixels are still part of the synthesis evidence and must appear in
-        # the immutable manifest rather than becoming an unindexed file.
+                    if shot:
+                        shots.setdefault(shot, str(block.get("tool_use_id") or ""))
         for tool_use_id, shot in self.shot_by_tcid.items():
-            shots.setdefault(
-                shot,
-                {
-                    "tool_use_id": str(tool_use_id or ""),
-                    "placement": "auxiliary_vision_request",
-                },
-            )
-        records = []
-        missing = []
-        for shot, metadata in shots.items():
+            shots.setdefault(shot, str(tool_use_id or ""))
+
+        images, missing = [], []
+        for shot, tool_use_id in sorted(shots.items()):
             path = os.path.join(self.sub_dir, shot)
             if not os.path.isfile(path):
                 missing.append(shot)
                 continue
             with open(path, "rb") as stream:
                 raw = stream.read()
-            records.append({
+            images.append({
                 "shot": shot.replace(os.sep, "/"),
+                "tool_use_id": tool_use_id,
                 "sha256": hashlib.sha256(raw).hexdigest(),
                 "bytes": len(raw),
                 "media_type": "image/png",
-                **metadata,
             })
         return {
             "schema": "mural.multimodal-trace.v1",
             "complete": not missing,
-            "image_count": len(records),
-            "images": records,
+            "image_count": len(images),
+            "images": images,
             "missing": missing,
-            "note": (
-                "Active model context may consume each image once; this immutable "
-                "manifest and the shot files are the synthesis source of truth."
+            "replay_contract": (
+                "messages.json plus the hash-addressed images reconstruct the exact "
+                "model-visible multimodal turns"
             ),
         }
 
@@ -165,14 +152,12 @@ class Trace:
         _write_json(os.path.join(self.sub_dir, "messages.json"), cleaned)
         _write_json(os.path.join(self.sub_dir, "tool_log.json"), tool_log)
         _write_text(os.path.join(self.sub_dir, "summary.md"), latest_assistant_text(cleaned) or _NO_SUMMARY)
-        status = {
-            "mode": run_mode,
-            "complete": True,
-            "image_count": 0,
-        }
+        status = {"mode": run_mode, "complete": True, "image_count": 0}
         if run_mode == "synthesis":
             manifest = self._multimodal_manifest(cleaned)
-            _write_json(os.path.join(self.sub_dir, "multimodal-manifest.json"), manifest)
+            _write_json(
+                os.path.join(self.sub_dir, "multimodal-manifest.json"), manifest
+            )
             status.update({
                 "complete": bool(manifest["complete"]),
                 "image_count": int(manifest["image_count"]),

@@ -30,10 +30,49 @@ def _strip_markdown_wrapper(value):
     return value
 
 
+def _normalize_contract_line(line):
+    """Normalize Markdown around a structured ``key:`` label.
+
+    Models sometimes bold the label including its colon, for example
+    ``**output:** research/research.md``.  Without this normalization the
+    closing ``**`` is parsed as part of the value and turns a valid workspace
+    path into ``** research/research.md``.
+    """
+    candidate = re.sub(r"^\s*[-*+]\s+", "", str(line or "").strip())
+    wrapped_label = re.match(
+        r"^(?P<wrapper>\*\*|__|`)"
+        r"(?P<label>[A-Za-z][A-Za-z0-9_-]*\s*[:：])"
+        r"(?P=wrapper)\s*(?P<value>.*)$",
+        candidate,
+    )
+    if wrapped_label:
+        return f"{wrapped_label.group('label')} {wrapped_label.group('value')}".strip()
+    return _strip_markdown_wrapper(candidate)
+
+
 def _contract_value(key, value):
     """Normalize one explicit field without guessing a verdict from prose."""
     normalized_key = str(key).lower().replace("-", "_")
-    cleaned = _strip_markdown_wrapper(value).strip().lower()
+    # Some Review models serialize "no unresolved issues" as an empty JSON
+    # array even though the compact acceptance contract uses the scalar
+    # ``remaining: none``.  Treat only the empty array as equivalent.  Preserve
+    # non-empty arrays as a non-``none`` scalar so the quality gate still fails.
+    if normalized_key == "remaining" and isinstance(value, list):
+        if not value:
+            return "none"
+        return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+    raw = _strip_markdown_wrapper(value).strip()
+    if normalized_key == "output":
+        # ``output`` is a case-sensitive workspace path.  Be defensive about
+        # dangling Markdown left by weak serializers, but do not lowercase it.
+        raw = re.sub(r"^(?:\*\*|__|`)+\s*", "", raw)
+        raw = re.sub(r"\s*(?:\*\*|__|`)+$", "", raw).strip()
+        if len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in {"'", '"'}:
+            raw = raw[1:-1].strip()
+        return raw
+    cleaned = raw.lower()
+    if normalized_key == "remaining" and cleaned == "[]":
+        return "none"
     if normalized_key == "status":
         # Weak models often append a sentence after an otherwise explicit
         # ``status: ready`` line.  Preserve the verdict token and discard only
@@ -72,16 +111,21 @@ def _final_contract(text):
         if not isinstance(payload, dict):
             continue
         for key, value in payload.items():
-            if (isinstance(key, str) and re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]*", key)
-                    and isinstance(value, (str, int, float, bool))):
-                normalized_key = key.lower().replace("-", "_")
+            if not (
+                isinstance(key, str)
+                and re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]*", key)
+            ):
+                continue
+            normalized_key = key.lower().replace("-", "_")
+            is_scalar = isinstance(value, (str, int, float, bool))
+            is_remaining_list = normalized_key == "remaining" and isinstance(value, list)
+            if is_scalar or is_remaining_list:
                 fields[normalized_key] = _contract_value(normalized_key, value)
 
     for line in source.splitlines():
         # A bullet must contain following whitespace.  This avoids mistaking the
         # first asterisk of ``**status: ready**`` for a list marker.
-        candidate = re.sub(r"^\s*[-*+]\s+", "", line.strip())
-        candidate = _strip_markdown_wrapper(candidate)
+        candidate = _normalize_contract_line(line)
         match = _CONTRACT_FIELD_RE.fullmatch(candidate)
         if not match:
             continue
@@ -93,8 +137,8 @@ def _final_contract(text):
     # as "not ready", "状态表" or "Review 已返回 ready".
     if "status" not in fields:
         for line in source.splitlines():
-            candidate = re.sub(r"^\s*[-*+]\s+", "", line.strip())
-            match = _LOCALIZED_STATUS_RE.fullmatch(_strip_markdown_wrapper(candidate))
+            candidate = _normalize_contract_line(line)
+            match = _LOCALIZED_STATUS_RE.fullmatch(candidate)
             if match:
                 fields["status"] = match.group(1).lower()
                 break

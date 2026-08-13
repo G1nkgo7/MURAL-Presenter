@@ -1,9 +1,10 @@
 # Repository layout
 
 This document defines the public implementation layout for MURAL-Presenter. Most core directories
-remain interface contracts. `apps/studio` additionally contains a sanitized compatibility import of
-the working SenseNova Present WebUI. The default MURAL-Presenter Skill and paired Harness are bundled;
-model endpoints and optional search/image services remain deployment-owned.
+remain interface contracts. `webui/` is the single runnable SenseNova Present WebUI. The default
+MURAL Presenter Skill and paired Harness have exactly one canonical editable source at
+`skills/mural-presenter/` and `harnesses/mural-presenter/`; the WebUI references those paths instead
+of carrying another copy. Model endpoints and optional search/image services remain deployment-owned.
 
 ## Two execution paths
 
@@ -26,7 +27,7 @@ versioned pools + synthesis config
 ### Interactive authoring
 
 ```text
-apps/studio → services/api → orchestration → inference
+webui → services/api → orchestration → inference
                                       ↘ rendering ↔ quality_control
                                                ↓
                                       HTML / PPTX / PDF / images
@@ -48,9 +49,9 @@ creates and filters reproducible records; the product path serves user projects 
 | `src/mural_presenter/schemas/` | Versioned records shared across stages | Stable serialized contracts without provider-specific fields |
 | `configs/` | Checked-in non-secret configuration | Named, reviewable experiment and pipeline settings |
 | `scripts/` | Human-facing command entrypoints | Thin wrappers around importable modules |
-| `apps/studio/` | Interactive authoring Web UI | Project, run, review, revision and export views |
-| `skills/mural-presenter/` | Executable lifecycle, role contracts, design references and deterministic deck tools | Versioned Skill snapshot copied into each run |
-| `harnesses/mural-presenter/` | Model calls, delegation, tool execution, traces and recovery | Paired multi-agent generation process |
+| `webui/` | Interactive authoring Web UI | Project, run, review, revision and export views |
+| `skills/mural-presenter/` | Frozen paper/release lifecycle, role contracts, design references and deterministic deck tools | Versioned Skill snapshot copied into each run |
+| `harnesses/mural-presenter/` | Frozen paper/release model calls, delegation, tool execution, traces and recovery | Paired multi-agent generation process |
 | `services/api/` | Authenticated server boundary for Studio | Project/run APIs plus streamed lifecycle events |
 | `tests/` | Unit, integration and end-to-end verification | Deterministic checks and small redistributable fixtures |
 
@@ -92,9 +93,9 @@ into Git. A future public release may commit small redistributable examples unde
 ## Web surfaces
 
 - `site/` is the static bilingual project website, blog, and manuscript reader.
-- `apps/studio/` contains the SenseNova Present interactive product WebUI compatibility bundle.
+- `webui/` contains the canonical runnable SenseNova Present interactive product WebUI.
 - `services/api/` is the target versioned browser-to-runtime boundary; equivalent routes currently
-  live inside the compatibility bundle's FastAPI server.
+  live inside the WebUI's FastAPI server.
 
 Keeping these surfaces separate lets the paper site remain dependency-light while the authoring UI
 can later adopt project persistence, streamed runs, visual editing, review, and export without

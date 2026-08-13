@@ -1,6 +1,6 @@
 # Release status and evidence boundary
 
-Last reviewed: 2026-08-09
+Last reviewed: 2026-08-13
 
 MURAL is a research project under active development. This repository intentionally separates
 what has been observed in the working system from what has been experimentally demonstrated or
@@ -15,8 +15,9 @@ cleared for public release.
 - A deployable project site.
 - A documented repository scaffold for query synthesis, data preparation, inference, QC, and the
   target Studio service boundary.
-- A sanitized SenseNova Present WebUI compatibility bundle with the current MURAL-Presenter Skill
-  and paired Harness. It can run as a UI preview or connect to a user-configured model service;
+- A sanitized SenseNova Present WebUI compatibility integration with the frozen MURAL Presenter
+  Skill/Harness pair. The workspace WebUI resolves the canonical repository pair without copying it.
+  It can run as a UI preview or connect to a user-configured model service;
   credentials, model weights, optional service backends, and production data remain external.
 - Bilingual working-paper PDFs whose main bodies fit the nine-page target; all effectiveness
   result slots remain explicitly pending.

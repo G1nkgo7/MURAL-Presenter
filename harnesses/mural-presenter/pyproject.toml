@@ -1,7 +1,7 @@
 [project]
 name = "mural-presenter-harness"
 version = "0.1.0"
-description = "Mural Presenter 独立薄 Harness：角色调度、工具执行与交付验收"
+description = "MURAL Presenter 推理与无损训练轨迹合成 Harness"
 requires-python = ">=3.10"
 dependencies = [
     "anthropic>=0.40",
@@ -13,6 +13,8 @@ dependencies = [
     "opencv-python-headless>=4.8,<4.11",
     "python-pptx>=1.0.2",
     "pymupdf>=1.28.0",
+    "pypdf>=5,<7",
+    "rapidocr-onnxruntime>=1.4,<2",
     "fonttools[woff]>=4.56",
 ]
 

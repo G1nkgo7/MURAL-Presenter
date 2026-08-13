@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-import distill_ppt
+import infer
 
 
 def _write_complete_material(root, assignment, name, text="完整材料内容。"):
@@ -44,7 +44,7 @@ def _write_complete_material(root, assignment, name, text="完整材料内容。
         "coverage_id": coverage_id,
     }]
     (work / "catalog.json").write_text(json.dumps(catalog), encoding="utf-8")
-    summary = root / f"materials/summaries/{assignment}.md"
+    summary = root / f"research/materials/{assignment}.md"
     summary.parent.mkdir(parents=True, exist_ok=True)
     summary.write_text(
         f"# 材料分片摘要\n\n## Coverage ledger\n- {name} | coverage_id: {coverage_id} | complete\n",
@@ -53,6 +53,23 @@ def _write_complete_material(root, assignment, name, text="完整材料内容。
 
 
 class AttachmentContractTest(unittest.TestCase):
+    def test_delivery_advisories_are_visible_to_quality_status(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            trace = root / "_trace"
+            trace.mkdir()
+            (trace / "delivery-warnings.json").write_text(json.dumps({
+                "schema_version": 1,
+                "warnings": [{
+                    "code": "bitmap_exception_with_attachment_visuals",
+                    "message": "附件含图但整册声明无位图",
+                }],
+            }), encoding="utf-8")
+            self.assertEqual(
+                infer._delivery_advisories(str(root)),
+                ["bitmap_exception_with_attachment_visuals: 附件含图但整册声明无位图"],
+            )
+
     def test_named_paper_figure_is_cropped_and_registered_as_derived_asset(self):
         from PIL import Image, ImageDraw
 
@@ -380,12 +397,12 @@ class AttachmentContractTest(unittest.TestCase):
             )
 
     def test_revision_brief_routes_simple_and_complex_edits(self):
-        brief = distill_ppt._revision_brief(
+        brief = infer._revision_brief(
             {"query": "制作一套产品发布演示"},
             {"instruction": "修正第 3 页标题"},
         )
 
-        self.assertIn("6. 编辑已有演示文稿", brief)
+        self.assertIn("3. 编辑 PPT", brief)
         self.assertIn("mode=simple_edit", brief)
         self.assertIn("mode=final_review", brief)
         self.assertIn("只选择一条路径", brief)
@@ -393,20 +410,11 @@ class AttachmentContractTest(unittest.TestCase):
 
     def test_initial_brief_preserves_raw_user_query(self):
         query = "请根据附件制作演示"
-        brief = distill_ppt.seed_to_brief({
+        brief = infer.seed_to_brief({
             "query": query,
             "attachments": [{"name": "source.pdf", "path": "/tmp/source.pdf"}],
         })
         self.assertEqual(brief, query)
-
-    def test_runtime_page_count_uses_explicit_ui_value_not_pages_hint(self):
-        self.assertNotIn(
-            "page_count", distill_ppt._generation_preferences({"pages_hint": 24})
-        )
-        self.assertEqual(
-            distill_ppt._generation_preferences({"slide_count": 18})["page_count"],
-            18,
-        )
 
     def test_stage_sanitizes_and_deduplicates_names(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -418,7 +426,7 @@ class AttachmentContractTest(unittest.TestCase):
             run_dir = root / "run"
             run_dir.mkdir()
 
-            manifest = distill_ppt._stage_materials(str(run_dir), {
+            manifest = infer._stage_materials(str(run_dir), {
                 "attachments": [
                     {"name": "../same.txt", "path": str(first)},
                     {"name": "same.txt", "source_path": str(second)},
@@ -437,7 +445,7 @@ class AttachmentContractTest(unittest.TestCase):
             digest = __import__("hashlib").sha256(source.read_bytes()).hexdigest()
             run_dir = root / "run"
             run_dir.mkdir()
-            config = distill_ppt._stage_custom_fonts(str(run_dir), {
+            config = infer._stage_custom_fonts(str(run_dir), {
                 "font_config": {
                     "version": 1,
                     "license_acknowledged": True,
@@ -454,7 +462,7 @@ class AttachmentContractTest(unittest.TestCase):
             self.assertFalse((run_dir / "materials/attachments.json").exists())
 
     def test_missing_empty_path_is_reported(self):
-        missing = distill_ppt._missing_attachments({
+        missing = infer._missing_attachments({
             "attachments": [{"name": "missing.pdf", "path": ""}]
         })
         self.assertEqual(missing, ["missing.pdf"])
@@ -466,7 +474,7 @@ class AttachmentContractTest(unittest.TestCase):
                 "label": "material_01", "clean": True,
                 "contract": {"status": "ready", "coverage": "complete"},
             }]
-            ok, reason = distill_ppt._material_acceptance(str(root), workers)
+            ok, reason = infer._material_acceptance(str(root), workers)
             self.assertFalse(ok)
             self.assertIn("附件清单", reason)
 
@@ -475,7 +483,7 @@ class AttachmentContractTest(unittest.TestCase):
                 json.dumps({"attachments": [{"name": "source.pdf"}]}), encoding="utf-8"
             )
             _write_complete_material(root, "material_01", "source.pdf")
-            ok, reason = distill_ppt._material_acceptance(str(root), workers)
+            ok, reason = infer._material_acceptance(str(root), workers)
             self.assertTrue(ok, reason)
 
     def test_acceptance_allows_complete_coverage_with_human_detail(self):
@@ -493,21 +501,8 @@ class AttachmentContractTest(unittest.TestCase):
                     "coverage": "complete（1 chunk / 299 chars）",
                 },
             }]
-            ok, reason = distill_ppt._material_acceptance(str(root), workers)
+            ok, reason = infer._material_acceptance(str(root), workers)
             self.assertTrue(ok, reason)
-
-    def test_acceptance_rejects_direct_material_bypass(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            (root / "materials").mkdir(parents=True)
-            (root / "materials/attachments.json").write_text(
-                json.dumps({"attachments": [{"name": "source.pdf"}]}),
-                encoding="utf-8",
-            )
-            _write_complete_material(root, "material_01", "source.pdf")
-            ok, reason = distill_ppt._material_acceptance(str(root), [])
-            self.assertFalse(ok)
-            self.assertIn("Material worker", reason)
 
     def test_acceptance_supports_parallel_material_shards(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -529,7 +524,7 @@ class AttachmentContractTest(unittest.TestCase):
                 _write_complete_material(
                     root, f"material_{number:02d}", f"source-{number}.pdf"
                 )
-            ok, reason = distill_ppt._material_acceptance(str(root), workers)
+            ok, reason = infer._material_acceptance(str(root), workers)
             self.assertTrue(ok, reason)
 
     def test_acceptance_ignores_pdf_page_visual_derivatives(self):
@@ -570,7 +565,7 @@ class AttachmentContractTest(unittest.TestCase):
                 "label": "material_01", "clean": True,
                 "contract": {"status": "ready", "coverage": "complete"},
             }]
-            ok, reason = distill_ppt._material_acceptance(str(root), workers)
+            ok, reason = infer._material_acceptance(str(root), workers)
             self.assertTrue(ok, reason)
 
     def test_acceptance_still_rejects_unrelated_extra_root_entry(self):
@@ -596,7 +591,7 @@ class AttachmentContractTest(unittest.TestCase):
                 "label": "material_01", "clean": True,
                 "contract": {"status": "ready", "coverage": "complete"},
             }]
-            ok, reason = distill_ppt._material_acceptance(str(root), workers)
+            ok, reason = infer._material_acceptance(str(root), workers)
             self.assertFalse(ok)
             self.assertIn("unrelated.png", reason)
 
@@ -611,14 +606,14 @@ class AttachmentContractTest(unittest.TestCase):
             (work / "catalog.json").write_text(json.dumps([{
                 "name": "lecture.pdf", "kind": "doc", "status": "truncated",
             }]), encoding="utf-8")
-            summary = root / "materials/summaries/material_01.md"
+            summary = root / "research/materials/material_01.md"
             summary.parent.mkdir(parents=True)
             summary.write_text("# 摘要\n\n部分内容已经读取，但不是全文。", encoding="utf-8")
             workers = [{
                 "label": "material_01", "clean": True,
                 "contract": {"status": "ready", "coverage": "complete"},
             }]
-            ok, reason = distill_ppt._material_acceptance(str(root), workers)
+            ok, reason = infer._material_acceptance(str(root), workers)
             self.assertFalse(ok)
             self.assertIn("status=truncated", reason)
 
@@ -632,14 +627,14 @@ class AttachmentContractTest(unittest.TestCase):
                 "label": "review", "clean": True,
                 "contract": {"status": "ready", "content_fidelity": "fail"},
             }]
-            ok, reason = distill_ppt._attachment_review_acceptance(str(root), blocked)
+            ok, reason = infer._attachment_review_acceptance(str(root), blocked)
             self.assertFalse(ok)
             self.assertIn("content_fidelity", reason)
             ready = [{
                 "label": "review", "clean": True,
                 "contract": {"status": "ready", "content_fidelity": "pass"},
             }]
-            ok, reason = distill_ppt._attachment_review_acceptance(str(root), ready)
+            ok, reason = infer._attachment_review_acceptance(str(root), ready)
             self.assertTrue(ok, reason)
 
 

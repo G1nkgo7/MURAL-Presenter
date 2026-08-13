@@ -1,0 +1,4 @@
+interface:
+  display_name: "Static HTML PPT（中文说明）"
+  short_description: "按用户要求的语言生成高完成度、面向听众的 HTML 演示文稿"
+  default_prompt: "使用 $mural-presenter-v0-1-zh，按用户要求的语言生成高完成度 HTML 演示文稿。"

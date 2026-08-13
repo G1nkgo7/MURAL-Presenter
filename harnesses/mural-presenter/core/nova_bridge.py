@@ -1,4 +1,4 @@
-"""Optional Nova exact-raw transport for the Mural Presenter harness.
+"""Optional Nova exact-raw transport for the MURAL Presenter harness.
 
 The Presenter Skill and role workflow remain unchanged.  This module only
 replaces the two model transports required by the Nova V2 brushing contract:
@@ -28,15 +28,6 @@ _recorder_module = None
 _client_local = threading.local()
 
 
-def parse_optional_request_timeout(raw_value, default_seconds=None):
-    """Allow long-running Nova model calls to opt out of client deadlines."""
-    value = str(default_seconds if raw_value is None else raw_value).strip().lower()
-    if value in {"", "0", "none", "off", "disabled", "false"}:
-        return None
-    seconds = float(value)
-    return None if seconds <= 0 else seconds
-
-
 def enabled() -> bool:
     return os.environ.get("NOVA_RAW_V2", "0") == "1"
 
@@ -48,7 +39,7 @@ def _load_recorder_module():
             return _recorder_module
         configured = os.environ.get("NOVA_RAW_RECORDER_MODULE", "").strip()
         path = (
-            Path(configured).expanduser()
+            Path(configured).expanduser().resolve()
             if configured
             else Path(__file__).with_name("nova_raw.py")
         )
@@ -90,11 +81,6 @@ def create_recorder(agent):
         label=agent.label,
         tools=agent.tools,
         initial_user=agent.initial_user,
-        parent_main_trajectory_id=getattr(
-            agent, "parent_main_trajectory_id", ""
-        ),
-        root_main_trajectory_id=getattr(agent, "root_main_trajectory_id", ""),
-        delegation_depth=getattr(agent, "delegation_depth", 0),
     )
 
 
@@ -105,9 +91,7 @@ def _aux_client() -> anthropic.Anthropic:
     client = getattr(_client_local, "aux_client", None)
     client_base = getattr(_client_local, "aux_client_base", None)
     if client is None or client_base != base_url:
-        timeout = parse_optional_request_timeout(
-            os.environ.get("NOVA_REQUEST_TIMEOUT"), None
-        )
+        timeout = float(os.environ.get("NOVA_REQUEST_TIMEOUT", "1800"))
         client = anthropic.Anthropic(
             api_key=os.environ.get("ANTHROPIC_API_KEY", "nova-local-proxy"),
             base_url=base_url,
@@ -193,9 +177,7 @@ def _call_exact_raw(
     recorder = agent.nova_raw
     invocation_id = recorder.new_invocation_id(request_kind)
     max_retries = int(os.environ.get("NOVA_TRANSPORT_RETRIES", "6"))
-    timeout = parse_optional_request_timeout(
-        os.environ.get("NOVA_REQUEST_TIMEOUT"), None
-    )
+    timeout = float(os.environ.get("NOVA_REQUEST_TIMEOUT", "1800"))
     for ordinal in range(1, max_retries + 1):
         attempt_id = f"attempt-{ordinal:03d}-{uuid.uuid4().hex}"
         request_id = f"request-{uuid.uuid4().hex}"
@@ -451,39 +433,6 @@ def finalize_agent(agent, messages: list[dict[str, Any]], finished_clean: bool):
         exit_reason=str(agent.exit_reason or "unknown"),
         artifacts=[],
     )
-
-
-def sync_acceptance_status(agent, accepted: bool, reason: str) -> dict | None:
-    """Align the root Nova task metadata with the final delivery manifest.
-
-    ``run_loop`` can finish naturally before deterministic delivery acceptance
-    checks run.  Natural model completion therefore must not remain recorded as
-    ``completed`` when the Deck is later rejected.  Quarantine is preserved: a
-    raw-integrity failure is stricter than either delivery outcome.
-    """
-    recorder = getattr(agent, "nova_raw", None)
-    if recorder is None:
-        return None
-    target = Path(recorder.root) / "task_result.json"
-    try:
-        payload = json.loads(target.read_text(encoding="utf-8"))
-    except (OSError, ValueError, TypeError):
-        return None
-    previous = str(payload.get("status") or "")
-    if previous != "quarantine":
-        payload["status"] = "completed" if accepted else "rejected"
-    payload["delivery_acceptance"] = {
-        "accepted": bool(accepted),
-        "reason": str(reason or "")[:2000],
-        "checked_at_epoch": time.time(),
-    }
-    temporary = target.with_name(target.name + f".{os.getpid()}.tmp")
-    temporary.write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
-    )
-    os.replace(temporary, target)
-    return payload
 
 
 def abort_agent(agent, error: Exception) -> None:

@@ -321,6 +321,21 @@ class ConsolidatedScriptTest(unittest.TestCase):
         self.assertIn("讲稿已经解释不能成为删减理由", slide)
         self.assertIn("observed_carrier", review)
 
+    def test_creative_profile_preserves_engineering_and_restores_page_agency(self):
+        creative = (SKILL_ROOT / "SKILL.creative.md").read_text(encoding="utf-8")
+        creative_en = (SKILL_ROOT / "SKILL.creative.en.md").read_text(encoding="utf-8")
+        slide = (SKILL_ROOT / "subagents/slide.creative.md").read_text(encoding="utf-8")
+        review = (SKILL_ROOT / "subagents/review.creative.md").read_text(encoding="utf-8")
+        for content in (creative, creative_en):
+            self.assertIn("Creative", content)
+            self.assertIn("attachment_priority_ids", content)
+        self.assertIn("一页一个 Slide Agent", creative)
+        self.assertIn("own Slide Agent", creative_en)
+        self.assertIn("可以重写、压缩、合并或拆分正文措辞", slide)
+        self.assertIn("aesthetic completion", slide)
+        self.assertIn("content_fidelity", review)
+        self.assertIn("priority_id / source_locator / target_page / observed_carrier / verdict", review)
+
     def test_large_svg_is_available_without_disabling_quality_lint(self):
         skill = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
         layout = (SKILL_ROOT / "references/layout-patterns.md").read_text(encoding="utf-8")

@@ -1,18 +1,13 @@
-"""Single-request Vision tool transport for the internal distillation route.
+#!/usr/bin/env python3
+"""Single-request vision proxy for text-only Presenter main models.
 
-Unlike the Nova adapter, this module is deliberately not an Agent loop.  One
-``vision_analyze`` tool invocation produces exactly one OpenAI-compatible
-``/chat/completions`` request containing the question and the image, then
-returns the model's text as the tool result.  The main Presenter Agent never
-receives the image bytes, so both text-only and multimodal main models can use
-the same workflow.
-
-This transport is internal/audit-friendly rather than Nova exact-raw.  It
-stores a compact request/response ledger beside the owning Agent trace and
-never records credentials or base64 payloads.
+Each ``vision_analyze`` call sends the image to a dedicated OpenAI-compatible
+vision model and returns only its textual verdict to the main agent.  The main
+model therefore never receives image content blocks.
 """
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import os
@@ -29,9 +24,7 @@ _write_lock = threading.Lock()
 
 def enabled() -> bool:
     return os.environ.get("VISION_BACKEND", "").strip().lower() in {
-        "one_shot",
-        "oneshot",
-        "internal_one_shot",
+        "one_shot", "oneshot", "internal_one_shot",
     }
 
 
@@ -39,7 +32,6 @@ def _base_url() -> str:
     value = str(
         os.environ.get("VISION_ONESHOT_BASE_URL")
         or os.environ.get("TOKENHUB_BASE_URL")
-        or os.environ.get("OPENAI_BASE_URL")
         or "https://tokenhub.sensetime.com/v1"
     ).rstrip("/")
     return value if value.endswith("/v1") else value + "/v1"
@@ -66,41 +58,31 @@ def _model() -> str:
     ).strip()
 
 
-def _optional_timeout() -> float | None:
-    raw = str(os.environ.get("VISION_ONESHOT_TIMEOUT", "0")).strip().lower()
-    if raw in {"", "0", "none", "off", "disabled", "false"}:
-        return None
-    value = float(raw)
-    return None if value <= 0 else value
+def _timeout() -> float:
+    return max(30.0, float(os.environ.get("VISION_ONESHOT_TIMEOUT", "600")))
 
 
 def _response_text(payload: dict[str, Any]) -> str:
     choices = payload.get("choices") or []
-    if not choices or not isinstance(choices[0], dict):
-        return ""
-    message = choices[0].get("message") or {}
-    content = message.get("content")
+    message = choices[0].get("message") if choices and isinstance(choices[0], dict) else {}
+    content = (message or {}).get("content")
     if isinstance(content, str):
         return content.strip()
     if isinstance(content, list):
-        parts = []
-        for block in content:
-            if isinstance(block, dict) and block.get("type") in {"text", "output_text"}:
-                value = str(block.get("text") or block.get("content") or "").strip()
-                if value:
-                    parts.append(value)
-        return "\n".join(parts).strip()
+        return "\n".join(
+            str(block.get("text") or block.get("content") or "").strip()
+            for block in content
+            if isinstance(block, dict) and block.get("type") in {"text", "output_text"}
+        ).strip()
     return ""
 
 
 def _append_ledger(agent, record: dict[str, Any]) -> None:
     target = Path(agent.trace.sub_dir) / "aux_calls" / "vision-one-shot.jsonl"
     target.parent.mkdir(parents=True, exist_ok=True)
-    line = json.dumps(record, ensure_ascii=False, separators=(",", ":")) + "\n"
-    with _write_lock:
-        with target.open("a", encoding="utf-8") as stream:
-            stream.write(line)
-            stream.flush()
+    with _write_lock, target.open("a", encoding="utf-8") as stream:
+        stream.write(json.dumps(record, ensure_ascii=False, separators=(",", ":")) + "\n")
+        stream.flush()
 
 
 def call(
@@ -112,44 +94,36 @@ def call(
     question: str,
     parent_tool_use_id: str,
 ) -> str:
-    """Run one and only one Vision model request and return its text."""
     if not parent_tool_use_id:
         raise RuntimeError("one-shot Vision call is missing parent_tool_use_id")
     model = _model()
     if not model:
         raise RuntimeError("VISION_ONESHOT_MODEL is empty")
     language = str(getattr(agent, "prompt_language", "zh") or "zh").lower()
-    default_question = (
+    prompt = str(question or "").strip() or (
         "Inspect the image and report concrete pixel-grounded findings."
         if language == "en"
         else "检查图片并给出有像素依据的具体结论。"
     )
-    prompt = str(question or "").strip() or default_question
-    system = (
-        "You are a single-turn visual inspection tool, not an autonomous agent. "
-        "Inspect only the supplied image, answer the user's exact question, and "
-        "return concise pixel-grounded evidence. Do not call tools, plan future "
-        "steps, or invent content that is not visible."
-    )
-    import base64
-
-    payload: dict[str, Any] = {
+    payload = {
         "model": model,
         "messages": [
-            {"role": "system", "content": system},
+            {
+                "role": "system",
+                "content": (
+                    "You are a single-turn visual inspection tool. Inspect only the "
+                    "supplied image, answer the exact question, and return concise "
+                    "pixel-grounded evidence. Do not call tools or plan future steps."
+                ),
+            },
             {
                 "role": "user",
                 "content": [
                     {"type": "text", "text": prompt},
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": "data:"
-                            + media_type
-                            + ";base64,"
-                            + base64.b64encode(image_bytes).decode("ascii")
-                        },
-                    },
+                    {"type": "image_url", "image_url": {"url": (
+                        "data:" + media_type + ";base64," +
+                        base64.b64encode(image_bytes).decode("ascii")
+                    )}},
                 ],
             },
         ],
@@ -157,12 +131,11 @@ def call(
         "temperature": float(os.environ.get("VISION_ONESHOT_TEMPERATURE", "0.1")),
     }
     started = time.monotonic()
-    image_sha = hashlib.sha256(image_bytes).hexdigest()
     record: dict[str, Any] = {
-        "schema": "mural.vision-one-shot.v1",
+        "schema": "lhp.vision-one-shot.v1",
         "tool_use_id": parent_tool_use_id,
         "source_path": source_path.replace(os.sep, "/"),
-        "image_sha256": image_sha,
+        "image_sha256": hashlib.sha256(image_bytes).hexdigest(),
         "image_bytes": len(image_bytes),
         "media_type": media_type,
         "model": model,
@@ -177,35 +150,42 @@ def call(
                 "Content-Type": "application/json",
             },
             json=payload,
-            timeout=_optional_timeout(),
+            timeout=_timeout(),
         )
         if response.status_code != 200:
             raise RuntimeError(
                 f"one-shot Vision HTTP {response.status_code}: {response.text[:300]}"
             )
         body = response.json()
+        choices = body.get("choices") or []
+        finish_reason = (
+            str(choices[0].get("finish_reason") or "").strip().lower()
+            if choices and isinstance(choices[0], dict)
+            else ""
+        )
+        if finish_reason in {"length", "max_tokens"}:
+            raise RuntimeError(
+                "one-shot Vision output was truncated by max tokens; retry is allowed"
+            )
         text = _response_text(body)
         if not text:
             raise RuntimeError("one-shot Vision returned empty text")
         shot = agent.trace.snapshot_image(parent_tool_use_id, image_bytes)
-        record.update(
-            {
-                "status": "completed",
-                "wall_seconds": round(time.monotonic() - started, 3),
-                "shot": shot.replace(os.sep, "/"),
-                "response_text": text,
-                "usage": body.get("usage") or {},
-            }
-        )
+        record.update({
+            "status": "completed",
+            "wall_seconds": round(time.monotonic() - started, 3),
+            "shot": shot.replace(os.sep, "/"),
+            "response_text": text,
+            "usage": body.get("usage") or {},
+            "finish_reason": finish_reason or "stop",
+        })
         _append_ledger(agent, record)
         return text
     except Exception as exc:
-        record.update(
-            {
-                "status": "failed",
-                "wall_seconds": round(time.monotonic() - started, 3),
-                "error": f"{type(exc).__name__}: {str(exc)[:500]}",
-            }
-        )
+        record.update({
+            "status": "failed",
+            "wall_seconds": round(time.monotonic() - started, 3),
+            "error": f"{type(exc).__name__}: {str(exc)[:500]}",
+        })
         _append_ledger(agent, record)
         raise

@@ -172,13 +172,23 @@ class _Messages:
         }
         if tools:
             body["tools"] = to_openai_tools(tools)
-        if os.environ.get("STUDIO_THINKING_TRANSPORT") == "chat_template_kwargs":
+        if os.environ.get("STUDIO_THINKING_TRANSPORT", "").strip().lower() in {
+            "chat_template_kwargs", "openai",
+        }:
             body["chat_template_kwargs"] = {
                 "enable_thinking": os.environ.get(
                     "STUDIO_EFFECTIVE_THINKING",
                     os.environ.get("STUDIO_ENABLE_THINKING", "0"),
                 ) == "1"
             }
+        if os.environ.get("STUDIO_THINKING_TRANSPORT", "").strip().lower() == "deepseek":
+            enabled = os.environ.get(
+                "STUDIO_EFFECTIVE_THINKING",
+                os.environ.get("STUDIO_ENABLE_THINKING", "0"),
+            ) == "1"
+            body["thinking"] = {"type": "enabled" if enabled else "disabled"}
+            if enabled:
+                body["reasoning_effort"] = os.environ.get("THINK_EFFORT", "high")
         data = json.dumps(body, ensure_ascii=False).encode("utf-8")
         req = urllib.request.Request(self.shim.base.rstrip("/") + "/chat/completions",
                                      data=data, headers=self.shim.headers, method="POST")
@@ -222,7 +232,7 @@ class _PseudoStream:
 
 class OpenAIShim:
     """鸭子类型成 anthropic.Anthropic:只用到 .messages.create(...)。"""
-    def __init__(self, base, model, key="EMPTY", timeout=None):
+    def __init__(self, base, model, key="EMPTY", timeout=600):
         self.base = base
         self.model = model
         self.timeout = timeout

@@ -32,17 +32,12 @@ import re
 import glob
 os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", os.path.expanduser("~/.cache/ms-playwright"))
 
-
-def _optional_timeout(name):
-    """Use a process deadline only when the deployment explicitly requests one."""
-    value = str(os.environ.get(name, "") or "").strip().lower()
-    if value in {"", "0", "none", "off", "disabled", "false"}:
-        return None
-    seconds = float(value)
-    return None if seconds <= 0 else seconds
-
-# Chromium 稳定性参数。是否禁用 /dev/shm 由环境变量和实际容量决定：
-# 小型容器共享内存适合落到磁盘，大型 RAM tmpfs 则保留默认路径。
+# chromium 稳定性参数。关 GPU / 软渲染省内存,降低高并发下崩溃(TargetClosed)。
+# ★--disable-dev-shm-usage 的坑(2026-07-16 崩池真因)★:它逼 chromium 把 shm 从 /dev/shm 改用 /tmp。
+#   仅当 /dev/shm 是默认小盘(Docker 64MB)时才该加;若 /dev/shm 是大 RAM tmpfs(CCI=128G),
+#   加了反而把 shm 从「快 RAM」赶到「慢磁盘 overlay /tmp」→ 高并发磁盘 I/O 风暴 → D-state → 崩池。
+#   故按 /dev/shm 实际大小动态决定(env RENDER_FORCE_DISABLE_DEVSHM=1 强制加 / =0 强制不加)。
+#   ⚠️ 本补丁位于 skill 目录内,同步/覆盖 skill 会冲掉,覆盖后须重打(见 memory render-brokenpool-chromium-exhaustion)。
 def _devshm_bytes():
     try:
         st = os.statvfs("/dev/shm")
@@ -51,9 +46,11 @@ def _devshm_bytes():
         return 0
 
 def _should_disable_devshm():
-    # RAM /dev/shm 会计入 cgroup 内存；高并发默认落到磁盘，
-    # I/O 压力由全局渲染并发限制控制。
-    # RENDER_FORCE_DISABLE_DEVSHM=0 可由明确知道内存核算方式的部署环境强制关闭。
+    # ★2026-07-16 OOM 事故订正★:RAM /dev/shm(tmpfs)占用**算进 cgroup 256G 内存**,
+    #   80~128 并发下几十个 chromium 的 shm 把 RAM 顶到 100% → OOM 级联。
+    #   故默认改回 disk /tmp(不吃 cgroup RAM);D-state 风暴改由 flock 上限(RENDER_GLOBAL_LIMIT)+
+    #   适度并发压住(concurrent chromium 远低于当年 48×8 无界的 ~147)。
+    #   RENDER_FORCE_DISABLE_DEVSHM=0 可强制走 RAM(仅当 /dev/shm 不计入 cgroup 时才安全,CCI 不满足)。
     force = os.environ.get("RENDER_FORCE_DISABLE_DEVSHM", "")
     if force == "0":
         return False
@@ -68,7 +65,7 @@ if _should_disable_devshm():
 
 # —— 全局并发 chromium 上限(跨进程 flock 槽)——
 # render.py 在各 worker 子进程里独立跑;整机同时渲染数 = Σ 各 deck 各 slide。RENDER_GLOBAL_LIMIT 卡住它。
-# 这是防止渲染并发失控的部署保险。设为 0（默认）时关闭；进程退出后 flock 自动释放。
+# RAM-shm 治本后此上限降级为「防跑飞」软保险(设=WK)。=0(默认)关闭。flock:进程崩/被杀 OS 自动放锁不泄漏。
 import fcntl as _fcntl
 import atexit as _atexit
 import random as _random
@@ -82,8 +79,7 @@ def _acquire_render_slot():
     except Exception:
         return None
     slots = list(range(limit)); _random.shuffle(slots)
-    wait_timeout = _optional_timeout("RENDER_SLOT_TIMEOUT")
-    deadline = time.time() + wait_timeout if wait_timeout is not None else None
+    deadline = time.time() + int(os.environ.get("RENDER_SLOT_TIMEOUT", "900") or "900")
     waited = False
     while True:
         for i in slots:
@@ -96,7 +92,7 @@ def _acquire_render_slot():
                 return fd
             except OSError:
                 os.close(fd)
-        if deadline is not None and time.time() > deadline:
+        if time.time() > deadline:
             print("警告: 等 render 全局槽超时,直接渲染...", file=sys.stderr)
             return None
         if not waited:
@@ -190,7 +186,7 @@ def _sync_playwright():
 @contextmanager
 def _alarm_timeout(seconds, label):
     """Raise TimeoutError if a Playwright start/stop call hangs."""
-    if not hasattr(signal, "SIGALRM") or seconds is None or seconds <= 0:
+    if not hasattr(signal, "SIGALRM") or seconds <= 0:
         yield
         return
 
@@ -214,16 +210,18 @@ def _call_with_timeout(fn, seconds, label):
 
 def _stop_playwright(p):
     try:
-        _call_with_timeout(p.stop, 5, "Playwright stop")
+        _call_with_timeout(p.stop, 5, "Playwright stop")   # 1s→5s:高并发下 1s 常超时→chromium 没关干净泄漏
     except Exception as e:
         print(f"警告: Playwright 清理失败或超时({e});即将继续/退出。", file=sys.stderr)
 
 
 def _reap_leaked_chromium():
-    """Reap only Chromium children owned by this renderer or orphaned at init.
-
-    Chromium processes whose parent is another live renderer are never touched.
-    """
+    """★收割泄漏的 chromium(2026-07-18 内存泄漏事故)★:b.close()/p.stop 高并发下常超时→chromium(含
+    renderer/gpu/zygote 子进程)没被杀干净、500+ deck 累积几千僵尸吃几百 G。此函数杀掉:
+      ① 本 render.py 进程的 chromium 子进程(ppid==自己,close 没杀掉的)
+      ② 孤儿 chromium(ppid==1,其父 render.py 已死=确定泄漏)
+    **不碰 ppid 指向其他活着 render.py 的 chromium**(它们是别的在跑渲染),故安全、只清泄漏。
+    每次 render.py 退出都跑一遍 → 累积的孤儿僵尸也被陆续收割,内存不重启即回落。"""
     import signal as _sig
     mypid = os.getpid()
     killed = 0
@@ -914,6 +912,66 @@ _CONTRAST_JS = r"""
 })()
 """
 
+_CJK_TYPOGRAPHY_JS = r"""
+(() => {
+  const issues=[];
+  const cjk=/[\u3400-\u9fff\uf900-\ufaff]/;
+  const mono=/(?:ibm\s*plex\s*mono|\bmono\b|monospace|consolas|courier)/i;
+  const expressive=/(?:smiley\s*sans|zcool\s*kuai\s*le|zcool\s*qingke\s*huangyou|xiaolai|ma\s*shan\s*zheng|zhi\s*mang\s*xing|liu\s*jian\s*mao\s*cao|long\s*cang|ruanmeng|软萌|行书|草书)/i;
+  const presentationTitle=/(?:smiley\s*sans)/i;
+  const visible=(el,cs) => {
+    const r=el.getBoundingClientRect();
+    return cs.display!=='none' && cs.visibility!=='hidden' && Number(cs.opacity||1)>0.01 && r.width>1 && r.height>1;
+  };
+  const family=(cs) => (cs.fontFamily||'').split(',')[0].replace(/["']/g,'').trim().toLowerCase();
+  const declared=(el) => !!el.closest('.is-expressive-type,[data-type-intent="expressive"]');
+  const approvedPresentationTitle=(el,cs,fs) => presentationTitle.test(cs.fontFamily||'') && fs>=40 &&
+    !!el.closest('h1,h2,.slide-title,.sec-name,.headline,.title,.hero-title,.cover-title,.quote-tagline');
+  const push=(el,text,cs,kinds,extra={}) => {
+    if(!kinds.length) return;
+    issues.push({
+      text:text.slice(0,48), cls:(''+((el.className&&(el.className.baseVal??el.className))||'')).slice(0,48),
+      font:(cs.fontFamily||'').slice(0,96), letterSpacing:Math.round((parseFloat(cs.letterSpacing)||0)*10)/10,
+      fontSize:Math.round((parseFloat(cs.fontSize)||16)*10)/10, kinds, ...extra
+    });
+  };
+  for(const el of document.querySelectorAll('.slide *')){
+    const direct=[...el.childNodes].filter(n=>n.nodeType===3).map(n=>n.textContent||'').join(' ').trim();
+    if(!direct || !cjk.test(direct)) continue;
+    const cs=getComputedStyle(el); if(!visible(el,cs)) continue;
+    const fs=parseFloat(cs.fontSize)||16;
+    const ls=cs.letterSpacing==='normal' ? 0 : (parseFloat(cs.letterSpacing)||0);
+    const kinds=[];
+    if(mono.test(cs.fontFamily||'')) kinds.push('cjk-in-mono');
+    if(ls > fs*0.08+0.2) kinds.push('cjk-tracking-too-wide');
+    if(expressive.test(cs.fontFamily||'') && !declared(el) && !approvedPresentationTitle(el,cs,fs)) kinds.push('expressive-cjk-without-intent');
+    push(el,direct,cs,kinds);
+  }
+  for(const el of document.querySelectorAll('.slide h1,.slide h2,.slide h3,.slide h4,.slide h5,.slide h6,.slide p,.slide blockquote,.slide .slide-title,.slide .sec-name,.slide .headline,.slide .title,.slide .subtitle,.slide .kicker')){
+    const cs=getComputedStyle(el); if(!visible(el,cs)) continue;
+    const runs=[];
+    for(const node of el.childNodes){
+      if(node.nodeType===3){
+        const text=(node.textContent||'').trim();
+        if(cjk.test(text)) runs.push({text, family:family(cs)});
+      }else if(node.nodeType===1){
+        const child=node;
+        const childStyle=getComputedStyle(child);
+        if(!['inline','inline-block','contents'].includes(childStyle.display)) continue;
+        const text=(child.textContent||'').trim();
+        if(cjk.test(text)) runs.push({text, family:family(childStyle)});
+      }
+    }
+    const text=runs.map(r=>r.text).join('');
+    const families=[...new Set(runs.map(r=>r.family).filter(Boolean))];
+    if(runs.length>1 && text.length<=80 && families.length>1){
+      push(el,text,cs,['mixed-cjk-family'],{families:families.slice(0,4)});
+    }
+  }
+  return issues.slice(0,20);
+})()
+"""
+
 
 def _setup_libs():
     """把本地依赖库目录加进 LD_LIBRARY_PATH —— 在 chromium 子进程启动前设置即可生效。"""
@@ -936,6 +994,7 @@ def _setup_libs():
 def _render_once(p, html, out, w, h, browser_exe=None, browser=None):
     """渲染一次；可传共享 browser 供 batch 调用。返回版式诊断字典。"""
     rep = {"broken": [], "overflow": [], "overlap": [], "crowded": [], "vbalance": None,
+           "cjkTypography": [],
            "layout": {}, "runtime": {"script_failed": [], "page_errors": [], "charts_missing": []}}
     owns_browser = browser is None
     if owns_browser:
@@ -1123,6 +1182,10 @@ def _render_once(p, html, out, w, h, browser_exe=None, browser=None):
                 rep["contrast"] = pg.evaluate(_CONTRAST_JS)
             except Exception:
                 pass
+            try:
+                rep["cjkTypography"] = pg.evaluate(_CJK_TYPOGRAPHY_JS) or []
+            except Exception:
+                rep["cjkTypography"] = []
             pg.screenshot(path=out)
         finally:
             pg.close()
@@ -1150,6 +1213,7 @@ def _batch_warning_summary(report):
                    for key in ("customBody", "abs", "decor", "footer", "svgLarge")})
     counts["contrast"] = len((report.get("contrast") or {}).get("low") or [])
     counts["onimg"] = len((report.get("contrast") or {}).get("onimg") or [])
+    counts["cjkTypography"] = len(report.get("cjkTypography") or [])
     runtime = report.get("runtime") or {}
     counts["script_failed"] = len(runtime.get("script_failed") or [])
     counts["page_errors"] = len(runtime.get("page_errors") or [])
@@ -1159,16 +1223,16 @@ def _batch_warning_summary(report):
 
 
 _HARD_RENDER_KEYS = (
-    "broken", "overflow", "crowded",
+    "broken", "overflow",
 )
 
-# ``boxoverflow`` is intentionally advisory.  It compares child and parent
-# bounding boxes, so transformed type, optical punctuation, visible overflow
-# and deliberate editorial overlap can all trigger it even when no pixels are
-# clipped or unreadable.  Treating that signal as a process exit condition made
-# Slide/Review agents repeatedly shrink otherwise sound pages merely to clear a
-# checker.  The report is still persisted for DOM diagnosis; fresh rendered
-# pixels decide whether it is a real defect.
+# Geometry and typography heuristics (``boxoverflow``, ``overlap``, ``crowded``,
+# ``cjkTypography`` and contrast candidates) are intentionally advisory.  They
+# are useful diagnostic leads, but transforms, optical punctuation, intentional
+# editorial overlap and stylised CJK can trigger them on perfectly readable
+# pixels.  Only broken assets, confirmed overflow/clipping, runtime errors and
+# footer displacement are deterministic render blockers.  Advisory findings
+# remain in render.json for Slide/Review to verify against fresh pixels.
 
 
 def _sha256_file(path):
@@ -1290,11 +1354,7 @@ def render_batch(root, pages=None, width=1600, height=900):
     browser = None
     hard_pages = []
     try:
-        playwright = _call_with_timeout(
-            sync_playwright().start,
-            _optional_timeout("PLAYWRIGHT_START_TIMEOUT"),
-            "Playwright start",
-        )
+        playwright = _call_with_timeout(sync_playwright().start, 60, "Playwright start")
         browser_exe = _ensure_browser_available(playwright)
         browser = playwright.chromium.launch(executable_path=browser_exe, args=LAUNCH_ARGS)
         for number, slide in slides:
@@ -1366,11 +1426,7 @@ def audit_player(root):
     playwright = None
     browser = None
     try:
-        playwright = _call_with_timeout(
-            sync_playwright().start,
-            _optional_timeout("PLAYWRIGHT_START_TIMEOUT"),
-            "Playwright start",
-        )
+        playwright = _call_with_timeout(sync_playwright().start, 60, "Playwright start")
         browser_exe = _ensure_browser_available(playwright)
         browser = playwright.chromium.launch(executable_path=browser_exe, args=LAUNCH_ARGS)
         page = browser.new_page(viewport={"width": 1600, "height": 900})
@@ -1389,7 +1445,7 @@ def audit_player(root):
         page.goto("file://" + present, wait_until="load", timeout=30000)
         failures = []
         for number, ids, expected in targets:
-            page.evaluate("n => window.muralDeck.go(n)", number)
+            page.evaluate("n => window.cleanDeck.go(n)", number)
             page.wait_for_function(
                 "n => { const f=document.querySelector(`iframe[data-slide=\"${n}\"]`); "
                 "return f && f.dataset.ok === '1'; }",
@@ -1516,11 +1572,7 @@ def main():
         p = None
         try:
             rep = {"broken": [], "overflow": [], "overlap": [], "crowded": [], "boxoverflow": [], "innergap": [], "vbalance": None, "layout": {}}
-            p = _call_with_timeout(
-                sync_playwright().start,
-                _optional_timeout("PLAYWRIGHT_START_TIMEOUT"),
-                "Playwright start",
-            )
+            p = _call_with_timeout(sync_playwright().start, 60, "Playwright start")
             browser_exe = _ensure_browser_available(p)
             rep = _render_once(p, html, out, w, h, browser_exe)
             if os.path.exists(out) and os.path.getsize(out) > 0:
@@ -1705,6 +1757,12 @@ def main():
                           "或 `paint-order:stroke` 描边(别整图压暗、保住氛围):" % len(coni))
                     for e in coni:
                         print("   · 「%s」<%s> 字号 %spx" % (e.get("txt"), e.get("cls"), e.get("fs")))
+                cjk_typography = rep.get("cjkTypography") or []
+                if cjk_typography:
+                    print("⚠ CJK-TYPE: %d 处中文字体语义错误——同一句中文必须保持同一字体家族；强调只改颜色/字重/字号。中文不得误用 mono 或拉丁式疏字距；除 ≥40px 的默认 Smiley Sans 演讲标题外，卡通/手写体只有合题且加 `.is-expressive-type` 才允许：" % len(cjk_typography))
+                    for e in cjk_typography:
+                        print("   · 「%s」<%s> %s, letter-spacing=%spx"
+                              % (e.get("text"), e.get("cls"), "/".join(e.get("kinds") or []), e.get("letterSpacing")))
                 workspace = _workspace_from_render_paths(html, out)
                 number = _batch_page_number(html)
                 if workspace is not None and number is not None:

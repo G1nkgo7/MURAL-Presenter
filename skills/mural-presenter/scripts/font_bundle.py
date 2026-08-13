@@ -9,7 +9,6 @@ and injects a bounded ``@font-face`` block into the deck's root ``base.css``.
 """
 from __future__ import annotations
 
-import argparse
 from dataclasses import dataclass
 from functools import lru_cache
 import glob
@@ -31,15 +30,6 @@ OFL_TEMPLATE = Path(__file__).resolve().parents[1] / "assets/licenses/OFL-1.1.tx
 GOOGLE_FONTS_REV = "2796410152d4f9524b68ed46e69c1b60f8e0f7c3"
 
 
-def _optional_timeout(name: str):
-    """Use a process deadline only when deployment explicitly requests one."""
-    value = str(os.environ.get(name, "") or "").strip().lower()
-    if value in {"", "0", "none", "off", "disabled", "false"}:
-        return None
-    seconds = float(value)
-    return None if seconds <= 0 else seconds
-
-
 @dataclass(frozen=True)
 class Face:
     source_names: tuple[str, ...]
@@ -52,17 +42,18 @@ class Face:
 # through to the next allowed family in their CSS stack.
 FAMILY_FACES: dict[str, tuple[Face, ...]] = {
     "Noto Sans SC": (
-        Face(("NotoSansSC.ttf", "NotoSansSC[wght].ttf", "NotoSansSC-Regular.ttf", "NotoSansCJKsc-Regular.otf"), "400"),
-        Face(("NotoSansSC-Bold.ttf", "NotoSansSC-Bold.otf", "NotoSansSC.ttf"), "700"),
-        Face(("NotoSansSC-900.ttf", "NotoSansSC.ttf", "NotoSansCJKsc-Black.otf"), "900"),
+        Face(("NotoSansSC[wght].ttf", "NotoSansSC.ttf"), "100 900"),
     ),
     "Noto Serif SC": (
-        Face(("NotoSerifSC.ttf", "NotoSerifSC[wght].ttf", "NotoSerifSC-Regular.otf", "NotoSerifCJKsc-Regular.otf"), "400"),
-        Face(("NotoSerifSC-Bold.otf", "NotoSerifSC.ttf", "NotoSerifCJKsc-Bold.otf"), "700"),
+        Face(("NotoSerifSC[wght].ttf", "NotoSerifSC.ttf"), "200 900"),
     ),
     "IBM Plex Mono": (
         Face(("IBMPlexMono-Regular.ttf",), "400"),
         Face(("IBMPlexMono-SemiBold.ttf",), "600"),
+    ),
+    "IBM Plex Sans": (
+        Face(("IBMPlexSans_2.ttf",), "400"),
+        Face(("IBMPlexSans_1.ttf",), "500"),
     ),
     "Archivo": (Face(("Archivo.ttf", "Archivo[wdth,wght].ttf"), "100 900"),),
     "Fraunces": (Face(("Fraunces.ttf", "Fraunces[SOFT,WONK,opsz,wght].ttf"), "100 900"),),
@@ -73,14 +64,18 @@ FAMILY_FACES: dict[str, tuple[Face, ...]] = {
     "Xiaolai": (Face(("Xiaolai-Regular.ttf",), "400"),),
     "LXGW WenKai": (
         Face(("LXGWWenKai-Regular.ttf",), "400"),
-        # The official TTF distribution is a regular face; browsers may
+        # The official TTF release is a regular face; browsers may
         # synthesize bold while the portable bundle keeps the same glyph design.
         # Prefer the verified regular source here. Some historical authoring
         # images contain a malformed bold cmap; using it makes pyftsubset fail
         # even though the family passed a shallow availability check.
         Face(("LXGWWenKai-Regular.ttf", "LXGWWenKai-Bold.ttf"), "700"),
     ),
-    "Smiley Sans": (Face(("SmileySans-Oblique.ttf",), "100 900", "oblique"),),
+    # The official SmileySans-Oblique.ttf is a single static display face:
+    # OS/2 weight 400, oblique, with no fvar axis.  Its glyph design already
+    # looks heavy; declaring 100–900 falsely marks it as a variable font and
+    # makes the strict source validator reject an otherwise valid file.
+    "Smiley Sans": (Face(("SmileySans-Oblique.ttf",), "400", "oblique"),),
     "Ma Shan Zheng": (Face(("MaShanZheng-Regular.ttf",), "400"),),
     "ZCOOL KuaiLe": (Face(("ZCOOLKuaiLe-Regular.ttf",), "400"),),
     "ZCOOL QingKe HuangYou": (Face(("ZCOOLQingKeHuangYou-Regular.ttf",), "400"),),
@@ -131,6 +126,7 @@ FONT_LICENSES: dict[str, dict[str, str]] = {
     "Noto Sans SC": {"license": "OFL-1.1", "source": _google_font_source("notosanssc")},
     "Noto Serif SC": {"license": "OFL-1.1", "source": _google_font_source("notoserifsc")},
     "IBM Plex Mono": {"license": "OFL-1.1", "source": _google_font_source("ibmplexmono")},
+    "IBM Plex Sans": {"license": "OFL-1.1", "source": _google_font_source("ibmplexsans")},
     "Archivo": {"license": "OFL-1.1", "source": _google_font_source("archivo")},
     "Fraunces": {"license": "OFL-1.1", "source": _google_font_source("fraunces")},
     "Spectral": {"license": "OFL-1.1", "source": _google_font_source("spectral")},
@@ -255,62 +251,66 @@ def _font_source_dirs() -> list[Path]:
     result: list[Path] = []
     for value in values:
         resolved = value.resolve()
-        if resolved.is_dir() and resolved not in result:
+        if resolved not in result:
             result.append(resolved)
-        # Google Fonts archives are often unpacked into one family directory
-        # below ~/.local/share/fonts.  Discover only that bounded level; never
-        # recurse from / or from a mount root during a production preflight.
-        if resolved.is_dir():
-            try:
-                children = sorted(
-                    (item.resolve() for item in resolved.iterdir() if item.is_dir()),
-                    key=lambda item: item.as_posix(),
-                )[:128]
-            except OSError:
-                children = []
-            for child in children:
-                if child not in result:
-                    result.append(child)
     return result
 
 
-def _find_source(face: Face, source_dirs: list[Path]) -> Path:
-    unreadable: list[Path] = []
-    for directory in source_dirs:
+def _declared_weight_range(weight: str) -> tuple[float, float] | None:
+    values = weight.split()
+    if len(values) != 2:
+        return None
+    return float(values[0]), float(values[1])
+
+
+@lru_cache(maxsize=None)
+def _variable_weight_range(path: str) -> tuple[float, float] | None:
+    """Return the real ``wght`` axis bounds, never a filename/CSS guess."""
+    try:
+        from fontTools.ttLib import TTFont
+
+        font = TTFont(path, lazy=False)
         try:
-            names = {
-                item.name.casefold(): item
-                for item in directory.iterdir()
-                if item.is_file()
-            }
-        except OSError:
-            names = {}
+            if "fvar" not in font:
+                return None
+            for axis in font["fvar"].axes:
+                if axis.axisTag == "wght":
+                    return float(axis.minValue), float(axis.maxValue)
+        finally:
+            font.close()
+    except Exception:
+        return None
+    return None
+
+
+def _font_supports_face(path: Path, face: Face) -> bool:
+    if not _font_source_readable(str(path)):
+        return False
+    declared = _declared_weight_range(face.weight)
+    if declared is None:
+        return True
+    actual = _variable_weight_range(str(path))
+    return actual is not None and actual[0] <= declared[0] and actual[1] >= declared[1]
+
+
+def _find_source(face: Face, source_dirs: list[Path]) -> Path:
+    for directory in source_dirs:
         for name in face.source_names:
-            candidate = names.get(name.casefold(), directory / name)
-            try:
-                populated = candidate.is_file() and candidate.stat().st_size
-            except OSError:
-                populated = False
-            if not populated:
-                continue
-            if _font_source_readable(str(candidate)):
+            candidate = directory / name
+            if candidate.is_file() and candidate.stat().st_size and _font_supports_face(candidate, face):
                 return candidate
-            unreadable.append(candidate)
-    detail = (
-        "; unreadable candidates: " + ", ".join(str(item) for item in unreadable[:8])
-        if unreadable else ""
-    )
     raise FileNotFoundError(
-        f"missing delivery font source {list(face.source_names)!r}; searched "
+        f"missing compatible delivery font source {list(face.source_names)!r} "
+        f"for weight {face.weight!r}; searched "
         + ", ".join(str(item) for item in source_dirs)
-        + detail
     )
 
 
 def _family_available(family: str, source_dirs: list[Path]) -> bool:
     try:
         for face in FAMILY_FACES[family]:
-            _find_source(face, source_dirs)
+            if not _font_source_readable(str(_find_source(face, source_dirs))):
+                return False
         return True
     except FileNotFoundError:
         return False
@@ -515,6 +515,24 @@ def _generic_for(family: str) -> str:
     return "sans-serif"
 
 
+# Families whose subset actually carries CJK glyphs.  Any other delivery family
+# (Latin display / mono / English handwriting) must be followed by a bundled CJK
+# fallback in the :root stack, otherwise stray Chinese falls back to whatever CJK
+# font the viewer/worker happens to have (often a cartoon face) and the metric
+# mismatch between authoring and delivery renders pushes content past the footer.
+_CJK_COVERING = frozenset({
+    "Noto Sans SC", "Noto Serif SC", "Smiley Sans",
+    "Xiaolai", "LXGW WenKai", "Ma Shan Zheng",
+    "Zhi Mang Xing", "Long Cang", "Liu Jian Mao Cao",
+    "ZCOOL KuaiLe", "ZCOOL QingKe HuangYou", "ZCOOL XiaoWei",
+})
+
+
+def _covers_cjk(family: str) -> bool:
+    # User uploads have unknown coverage → always append a CJK fallback.
+    return family in _CJK_COVERING
+
+
 def _rename_subset_font(target: Path, delivery_family: str, weight: str, style: str) -> None:
     """Rename a modified subset so OFL Reserved Font Names are not reused."""
     from fontTools.ttLib import TTFont
@@ -564,12 +582,20 @@ def _subset(
         capture_output=True,
         text=True,
         check=False,
-        timeout=_optional_timeout("FONT_SUBSET_TIMEOUT"),
+        timeout=180,
     )
     if result.returncode or not target.is_file() or not target.stat().st_size:
         detail = (result.stderr or result.stdout or "font subset failed")[-1000:]
         raise RuntimeError(f"pyftsubset failed for {source.name}: {detail}")
     _rename_subset_font(target, delivery_family, weight, style)
+    declared = _declared_weight_range(weight)
+    actual = _variable_weight_range(str(target)) if declared is not None else None
+    if declared is not None and (
+        actual is None or actual[0] > declared[0] or actual[1] < declared[1]
+    ):
+        raise RuntimeError(
+            f"subset lost required variable weight range {weight} for {source.name}"
+        )
 
 
 def bundle_fonts(
@@ -720,7 +746,11 @@ def bundle_fonts(
     fallback_delivery = delivery_families["Noto Sans SC"]
     overrides = "\n".join(
         f"  {token}: {json.dumps(delivery_families[family])}, "
-        + (f"{json.dumps(fallback_delivery)}, " if family.startswith("User::") else "")
+        # Latin display / mono / English-handwriting / user subsets carry no CJK
+        # glyphs → append the bundled Noto CJK fallback so stray Chinese never
+        # falls through to a viewer/worker cartoon face (and both authoring and
+        # delivery renders resolve CJK to the same metrics, killing the overflow).
+        + (f"{json.dumps(fallback_delivery)}, " if not _covers_cjk(family) else "")
         + f"{_generic_for(family)};"
         for token, family in sorted(token_families.items())
     )
@@ -820,7 +850,7 @@ def render_all(root: Path) -> None:
         text=True,
         capture_output=True,
         check=False,
-        timeout=_optional_timeout("FONT_RENDER_TIMEOUT"),
+        timeout=600,
     )
     if result.returncode:
         detail = (result.stderr or result.stdout or "batch render failed")[-1600:]
@@ -878,26 +908,8 @@ def bundle_workspace(root: Path, from_plans: bool = False) -> dict:
 
 
 def main(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("root", nargs="?", default=".", help="deck workspace")
-    parser.add_argument(
-        "--validate",
-        action="store_true",
-        help="validate an existing deck-local font bundle without rebuilding it",
-    )
-    parser.add_argument(
-        "--from-plans",
-        action="store_true",
-        help="derive the initial character subset from plan files instead of slide HTML",
-    )
-    parser.add_argument(
-        "--render",
-        action="store_true",
-        help="refresh all renders after rebuilding the bundle",
-    )
-    args = parser.parse_args(argv)
-    root = Path(args.root).resolve()
-    if args.validate:
+    root = Path(argv[0] if argv else ".").resolve()
+    if len(argv) > 1 and argv[1] == "--validate":
         errors = validate_font_bundle(root)
         if errors:
             print("font bundle: FAIL", file=sys.stderr)
@@ -906,8 +918,9 @@ def main(argv: list[str]) -> int:
             return 1
         print("font bundle: PASS")
         return 0
-    manifest = bundle_workspace(root, from_plans=args.from_plans)
-    if args.render:
+    from_plans = "--from-plans" in argv[1:]
+    manifest = bundle_workspace(root, from_plans=from_plans)
+    if "--render" in argv[1:]:
         render_all(root)
         freshness_errors = validate_render_freshness(root)
         if freshness_errors:
@@ -915,7 +928,7 @@ def main(argv: list[str]) -> int:
     print(
         f"font bundle: PASS ({len(manifest['faces'])} faces, "
         f"{manifest['character_count']} characters"
-        + (", renders refreshed)" if args.render else ")")
+        + (", renders refreshed)" if "--render" in argv[1:] else ")")
     )
     return 0
 

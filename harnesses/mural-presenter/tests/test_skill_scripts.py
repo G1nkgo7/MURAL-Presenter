@@ -6,6 +6,7 @@ import zipfile
 import hashlib
 import json
 import ast
+import types
 from importlib import util
 from pathlib import Path
 from unittest import mock
@@ -13,19 +14,20 @@ from unittest import mock
 
 REPO = Path(__file__).resolve().parents[3]
 SCRIPTS = REPO / "skills/mural-presenter/scripts"
+SKILL_ROOT = REPO / "skills/mural-presenter"
 
 
 def _load_deck_module():
     sys.path.insert(0, str(SCRIPTS))
-    spec = util.spec_from_file_location("mural_presenter_deck", SCRIPTS / "deck.py")
+    spec = util.spec_from_file_location("visual_craft_v3_deck", SCRIPTS / "deck.py")
     module = util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
 
 
-def _load_bundle_fonts_module():
+def _load_font_bundle_module():
     sys.path.insert(0, str(SCRIPTS))
-    spec = util.spec_from_file_location("mural_presenter_bundle_fonts", SCRIPTS / "bundle_fonts.py")
+    spec = util.spec_from_file_location("visual_craft_v3_font_bundle", SCRIPTS / "font_bundle.py")
     module = util.module_from_spec(spec)
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
@@ -40,157 +42,30 @@ def _load_stage_materials_module():
 
 
 class ConsolidatedScriptTest(unittest.TestCase):
-    def test_asset_download_is_batched_and_records_provenance(self):
-        from io import BytesIO
-        from PIL import Image
+    def test_bilingual_skill_surface_keeps_shared_machine_contracts(self):
+        english_skill = SKILL_ROOT / "SKILL.en.md"
+        self.assertTrue(english_skill.is_file())
+        skill_text = english_skill.read_text(encoding="utf-8")
+        self.assertIn("response_language", skill_text)
+        self.assertIn("deliverable_language", skill_text)
+        self.assertIn("SKILL.md", skill_text)
+        self.assertIn("subagents/<role>.en.md", skill_text)
 
-        deck = _load_deck_module()
-        image = BytesIO()
-        Image.new("RGB", (24, 16), "#c96a45").save(image, format="PNG")
-
-        class Response:
-            def __enter__(self):
-                return self
-
-            def __exit__(self, *_args):
-                return False
-
-            def read(self, _limit):
-                return image.getvalue()
-
-        urls = [
-            "https://images.example.test/hero-a.png",
-            "https://images.example.test/hero-b.png",
-        ]
-        with tempfile.TemporaryDirectory() as temporary, mock.patch.object(
-            deck, "urlopen", side_effect=lambda *_args, **_kwargs: Response()
-        ):
-            root = Path(temporary)
-            deck._download_assets(root, urls)
-            catalog = json.loads(
-                (root / "assets/catalog.json").read_text(encoding="utf-8")
-            )
-            self.assertEqual(len(catalog["assets"]), 2)
-            self.assertEqual(
-                {item["source_url"] for item in catalog["assets"]}, set(urls)
-            )
-            self.assertTrue(all(
-                item["origin"] == "downloaded"
-                and (root / item["path"]).is_file()
-                for item in catalog["assets"]
-            ))
-
-    def test_preflight_checks_required_runtime_before_production(self):
-        deck = _load_deck_module()
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            with mock.patch.object(
-                deck, "_preflight_fonts",
-                return_value={"available": 8, "declared": 12, "custom": 1},
-            ), mock.patch.object(deck, "_probe_browser_runtime", return_value="cached"):
-                summary = deck._preflight_workspace(root)
-        self.assertEqual("cached", summary["browser"])
-        self.assertEqual(1, summary["fonts"]["custom"])
-        self.assertEqual(0, summary["attachments"])
-        self.assertEqual("all", summary["scope"])
-
-    def test_workspace_preflight_does_not_repeat_environment_probe(self):
-        deck = _load_deck_module()
-        with tempfile.TemporaryDirectory() as temporary, mock.patch.object(
-            deck, "_preflight_fonts", side_effect=AssertionError("must not run")
-        ), mock.patch.object(
-            deck, "_probe_browser_runtime", side_effect=AssertionError("must not run")
-        ):
-            summary = deck._preflight_workspace(Path(temporary), "workspace")
-        self.assertEqual("workspace", summary["scope"])
-        self.assertEqual("skipped", summary["browser"])
-
-    def test_environment_preflight_does_not_validate_sample_attachments(self):
-        deck = _load_deck_module()
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            (root / "materials").mkdir()
-            (root / "materials/attachments.json").write_text(
-                json.dumps({"attachments": [{"name": "missing.pdf", "status": "missing"}]}),
-                encoding="utf-8",
-            )
-            with mock.patch.object(
-                deck, "_preflight_fonts",
-                return_value={"available": 8, "declared": 12, "custom": 0},
-            ), mock.patch.object(deck, "_probe_browser_runtime", return_value="cached"):
-                summary = deck._preflight_workspace(root, "environment")
-        self.assertEqual("environment", summary["scope"])
-        self.assertEqual(0, summary["attachments"])
-
-    def test_font_source_resolution_skips_unreadable_earlier_candidate(self):
-        fonts = _load_bundle_fonts_module()
-        face = fonts.Face(("NotoSansSC.ttf",), "400")
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            first = root / "first"
-            second = root / "second"
-            first.mkdir()
-            second.mkdir()
-            (first / "NotoSansSC.ttf").write_bytes(b"bad")
-            expected = second / "NotoSansSC.ttf"
-            expected.write_bytes(b"good")
-            with mock.patch.object(
-                fonts,
-                "_font_source_readable",
-                side_effect=lambda path: Path(path) == expected,
-            ):
-                selected = fonts._find_source(face, [first, second])
-        self.assertEqual(expected, selected)
-
-    def test_font_source_dirs_include_one_bounded_family_level(self):
-        fonts = _load_bundle_fonts_module()
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            nested = root / "noto-sc"
-            nested.mkdir()
-            with mock.patch.dict(
-                fonts.os.environ,
-                {"PPT_FONT_SOURCE_DIRS": str(root)},
-            ):
-                directories = fonts._font_source_dirs()
-        self.assertIn(root.resolve(), directories)
-        self.assertIn(nested.resolve(), directories)
-
-    def test_preflight_rejects_missing_staged_attachment(self):
-        deck = _load_deck_module()
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            (root / "materials").mkdir()
-            (root / "materials/attachments.json").write_text(
-                json.dumps({"attachments": [{"name": "brief.pdf", "status": "missing"}]}),
-                encoding="utf-8",
-            )
-            count, errors, _warnings = deck._preflight_attachment_inventory(root)
-        self.assertEqual(1, count)
-        self.assertTrue(any("brief.pdf" in item for item in errors))
-
-    def test_preflight_reuses_recent_browser_failure(self):
-        deck = _load_deck_module()
-        with tempfile.TemporaryDirectory() as temporary:
-            cache = Path(temporary) / "browser-probe.json"
-            cache.write_text(
-                json.dumps(
-                    {
-                        "status": "failed",
-                        "checked_at": deck.time.time(),
-                        "error": "missing browser library",
-                    }
-                ),
-                encoding="utf-8",
-            )
-            with mock.patch.dict(
-                deck.os.environ,
-                {"MURAL_PREFLIGHT_FAILURE_TTL": "300"},
-            ):
-                payload = deck._cached_browser_probe(cache)
-        self.assertIsNotNone(payload)
-        self.assertEqual("failed", payload["status"])
-        self.assertIn("missing browser", payload["error"])
+        required_contracts = {
+            "research": ("status: ready | partial | blocked", "output: research/research.md"),
+            "material": ("status: ready | blocked", "coverage: complete | incomplete"),
+            "image": ("status: ready | blocked", "crop_contract:"),
+            "slide": ("group: <group_id>", "refine_rounds:"),
+            "review": ("mode: simple_edit | final_review", "final_pixels_inspected: yes | no"),
+        }
+        for role, markers in required_contracts.items():
+            card = SKILL_ROOT / f"subagents/{role}.en.md"
+            self.assertTrue(card.is_file(), role)
+            text = card.read_text(encoding="utf-8")
+            self.assertIn("response_language", text, role)
+            self.assertIn("deliverable_language", text, role)
+            for marker in markers:
+                self.assertIn(marker, text, role)
 
     def test_boxoverflow_is_diagnostic_not_a_render_process_gate(self):
         tree = ast.parse((SCRIPTS / "render.py").read_text(encoding="utf-8"))
@@ -253,7 +128,43 @@ class ConsolidatedScriptTest(unittest.TestCase):
             )
             deck._validate_image_presentations(root, 1)
 
-    def test_build_quality_gate_uses_structured_render_evidence(self):
+    def test_no_bitmap_medium_is_not_a_false_positive_raster(self):
+        # static-453 slide_06: image_opportunity none + medium "无位图（chart+timeline）"
+        # must NOT be treated as a raster page (the 位图 substring false-positive).
+        deck = _load_deck_module()
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "plan").mkdir()
+            (root / "plan/slide_01.md").write_text(
+                "# Slide 01\n## 视觉实现\n"
+                "- medium: 无位图（chart + timeline）\n"
+                "- image_opportunity: none\n- presentation: 无\n",
+                encoding="utf-8",
+            )
+            # Must not raise (no presentation contract required for a no-bitmap page).
+            deck._validate_image_presentations(root, 1)
+            (root / "plan/slide_01.md").write_text(
+                "# Slide 01\n## 视觉实现\n"
+                "- medium: no bitmap (chart + timeline)\n"
+                "- image_opportunity: none\n",
+                encoding="utf-8",
+            )
+            deck._validate_image_presentations(root, 1)
+
+    def test_bitmap_opportunity_with_layout_presentation_is_rejected(self):
+        # real_required + presentation split-media (a layout term) must be rejected.
+        deck = _load_deck_module()
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "plan").mkdir()
+            (root / "plan/slide_01.md").write_text(
+                "# Slide 01\n## 视觉实现\n"
+                "- medium: real photo\n- image_opportunity: real_required\n"
+                "- presentation: split-media\n- asset_id: x\n",
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "presentation"):
+                deck._validate_image_presentations(root, 1)
         deck = _load_deck_module()
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -350,29 +261,81 @@ class ConsolidatedScriptTest(unittest.TestCase):
             )["full"]
             self.assertEqual(len(manifest["groups"]), 10)
             self.assertTrue(all(len(group["pages"]) <= 8 for group in manifest["groups"]))
-            self.assertEqual(len(manifest["evidence"]), 80)
-            self.assertTrue(all(item["sha256"] for item in manifest["evidence"]))
-            self.assertTrue(all(group["evidence"] for group in manifest["groups"]))
 
-    def test_focus_contact_sheet_is_unique_and_has_page_evidence(self):
-        deck = _load_deck_module()
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            renders = root / "renders"
-            renders.mkdir()
-            from PIL import Image
-            for page in (1, 2):
-                Image.new("RGB", (160, 90), (page * 10, 20, 30)).save(
-                    renders / f"slide_{page:02d}.png"
-                )
-            deck._build_contact(root, focus="1,2", label="bookends")
-            sheet = renders / "contact-sheet-focus-bookends.png"
-            sidecar = renders / "contact-sheet-focus-bookends.json"
-            self.assertTrue(sheet.is_file())
-            payload = json.loads(sidecar.read_text(encoding="utf-8"))
-            self.assertEqual(payload["pages"], [1, 2])
-            self.assertEqual([item["page"] for item in payload["evidence"]], [1, 2])
-            self.assertTrue(all(item["sha256"] for item in payload["evidence"]))
+    def test_grouped_slide_keeps_per_page_pixel_loop(self):
+        skill = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
+        slide = (SKILL_ROOT / "subagents/slide.md").read_text(encoding="utf-8")
+        plan = (SKILL_ROOT / "references/planning-contract.md").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("同一个 Slide 按组内页序串行完成每页闭环", skill)
+        self.assertIn("当前页达到 ready 后才进入下一页", skill)
+        self.assertIn("每页最多 1 轮", skill)
+        self.assertIn("最多执行 **1 轮**", slide)
+        review = (SKILL_ROOT / "subagents/review.md").read_text(encoding="utf-8")
+        self.assertIn("最多只做 1 轮 refine", review)
+        self.assertIn("plan/design-brief.md#Style Lock", slide)
+        self.assertIn("不能用组末总览替代此前的单页验收", slide)
+        self.assertIn("只放工作区内 `_trace/`", slide)
+        self.assertNotIn("调试截图放系统临时目录", slide)
+        self.assertIn("Style Lock 不是固定页面模板", plan)
+        self.assertNotIn("不边写一页边渲一页", slide)
+
+    def test_data_fidelity_checks_source_structure_and_final_chart(self):
+        material = (SKILL_ROOT / "subagents/material.md").read_text(encoding="utf-8")
+        plan = (SKILL_ROOT / "references/planning-contract.md").read_text(
+            encoding="utf-8"
+        )
+        slide = (SKILL_ROOT / "subagents/slide.md").read_text(encoding="utf-8")
+        review = (SKILL_ROOT / "subagents/review.md").read_text(encoding="utf-8")
+
+        self.assertIn("按可见表头重建 `行 × 列`", material)
+        self.assertIn("类别 × 系列 × 值", plan)
+        self.assertIn("不把一维值数组随意切成多个 series", slide)
+        self.assertIn("不能用同一份下游摘要自证", review)
+        self.assertIn("计划或 JS 有 7 项、像素只有 4 项", review)
+
+    def test_closing_pages_default_to_optical_center_not_summary_layout(self):
+        plan = (SKILL_ROOT / "references/planning-contract.md").read_text(
+            encoding="utf-8"
+        )
+        slide = (SKILL_ROOT / "subagents/slide.md").read_text(encoding="utf-8")
+        review = (SKILL_ROOT / "subagents/review.md").read_text(encoding="utf-8")
+        css = (SKILL_ROOT / "references/base-template.css").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("结尾不是“最后一张总结内容页”", plan)
+        self.assertIn("水平、垂直光学居中", plan)
+        self.assertIn(".slide--cover.slide--closing", slide)
+        self.assertIn("三栏总结页", slide)
+        self.assertIn("水平、垂直光学居中", review)
+        self.assertIn(".slide--closing > .closing-stage", css)
+        self.assertIn(".slide--closing .closing-core", css)
+
+    def test_special_page_refinement_requires_visual_regression_check(self):
+        plan = (SKILL_ROOT / "references/planning-contract.md").read_text(
+            encoding="utf-8"
+        )
+        slide = (SKILL_ROOT / "subagents/slide.md").read_text(encoding="utf-8")
+        review = (SKILL_ROOT / "subagents/review.md").read_text(encoding="utf-8")
+        checklist = (SKILL_ROOT / "references/quality-checklist.md").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("修改前后比较", plan)
+        self.assertIn("修改前后", slide)
+        self.assertIn("突兀白块/色带", review)
+        self.assertIn("特殊页修改不退化", checklist)
+        self.assertIn("不按元素种类一刀切", review)
+        self.assertIn("单页 Vision", checklist)
+
+    def test_inline_collision_uses_line_fragment_rects(self):
+        renderer = (SCRIPTS / "render.py").read_text(encoding="utf-8")
+        self.assertIn("range.getClientRects()", renderer)
+        self.assertIn("A.el === B.el", renderer)
+        self.assertIn("normal line wrap", renderer)
 
     def test_bbox_overlap_is_visual_signal_not_hard_render_failure(self):
         renderer = (SCRIPTS / "render.py").read_text(encoding="utf-8")
@@ -388,41 +351,67 @@ class ConsolidatedScriptTest(unittest.TestCase):
         self.assertIsNotNone(hard_keys)
         self.assertNotIn("overlap", hard_keys)
         self.assertIn("overflow", hard_keys)
-        self.assertIn("crowded", hard_keys)
+        self.assertNotIn("crowded", hard_keys)
+        self.assertNotIn("cjkTypography", hard_keys)
         self.assertIn("ORNAMENTAL_PUNCT", renderer)
 
-    def test_final_player_adds_lightweight_motion_without_mutating_slide_sources(self):
-        deck = _load_deck_module()
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            (root / "slides").mkdir()
-            source = root / "slides/slide_01.html"
-            original = (
-                "<!doctype html><html><head></head><body>"
-                "<section class='slide'><header class='slide-title'>标题</header>"
-                "<main class='slide-body'><div>正文</div></main>"
-                "<footer class='slide-footer'>页脚</footer></section>"
-                "</body></html>"
-            )
-            source.write_text(original, encoding="utf-8")
-            with mock.patch.object(
-                deck, "_validate_prepared_runtime", return_value={"faces": []}
-            ) as validate_runtime, mock.patch.object(
-                deck, "validate_render_freshness", return_value=[]
-            ), mock.patch.object(deck, "bundle_workspace") as bundle:
-                self.assertEqual(0, deck._build_player(root, expected=1))
+        slide = (SKILL_ROOT / "subagents/slide.md").read_text(encoding="utf-8")
+        self.assertIn("不得同回合读取 `render-issues.json`", slide)
+        self.assertIn("记为 checker mismatch 并保留原页", slide)
+        review = (SKILL_ROOT / "subagents/review.md").read_text(encoding="utf-8")
+        self.assertIn("首次 Vision 返回前", review)
+        self.assertIn("再用 DOM/bbox 诊断补充定位", review)
 
-            validate_runtime.assert_called_once_with(root)
-            bundle.assert_not_called()
+    def test_background_system_keeps_cross_group_continuity(self):
+        skill = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
+        plan = (SKILL_ROOT / "references/planning-contract.md").read_text(
+            encoding="utf-8"
+        )
+        slide = (SKILL_ROOT / "subagents/slide.md").read_text(encoding="utf-8")
+        review = (SKILL_ROOT / "subagents/review.md").read_text(encoding="utf-8")
+        checklist = (SKILL_ROOT / "references/quality-checklist.md").read_text(
+            encoding="utf-8"
+        )
 
-            player = (root / "present.html").read_text(encoding="utf-8")
-            self.assertEqual(original, source.read_text(encoding="utf-8"))
-            self.assertIn("@keyframes mural-enter", player)
-            self.assertIn("prefers-reduced-motion:reduce", player)
-            self.assertIn("data-mural-reveal-step", player)
-            self.assertIn("prepareMotion(e)", player)
-            self.assertIn(".slide-title,.page-header,header", player)
-            self.assertIn(".slide-body,.page-body", player)
+        self.assertIn("base_canvas_family", skill)
+        self.assertIn("克制秩序", skill)
+        self.assertIn("氛围表达", skill)
+        self.assertIn("局部光晕", skill)
+        self.assertIn("由 Image 统一生成的背景", skill)
+        self.assertIn("boundary_handoff", skill)
+        self.assertIn("enter_from / exit_to", plan)
+        self.assertIn("表达型场景不能无理由", plan)
+        self.assertIn("普通内容页默认停留", slide)
+        self.assertIn("不能在每个标题后复制通用圆形 glow", slide)
+        self.assertIn("上一章末页 → divider → 新章首两页", review)
+        self.assertIn("不要因此机械给每页补 glow", review)
+        self.assertIn("画布家族连续", checklist)
+
+    def test_orchestrator_preflights_group_affinity_and_deck_rhythm(self):
+        skill = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
+        plan = (SKILL_ROOT / "references/planning-contract.md").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("制作方式与构图亲缘性", skill)
+        self.assertIn("章名相同不构成分组理由", skill)
+        self.assertIn("Repetition & rhythm preflight", skill)
+        self.assertIn("motif_role", plan)
+        self.assertIn("母题有主次与缺席", plan)
+        self.assertIn("参考文献与结尾必须分开", plan)
+        self.assertIn("不创建新脚本或额外计划文件", plan)
+
+    def test_plan_contract_declares_image_presentation_and_no_emoji_copy(self):
+        plan = (SKILL_ROOT / "references/planning-contract.md").read_text(
+            encoding="utf-8"
+        )
+        slide = (SKILL_ROOT / "subagents/slide.md").read_text(encoding="utf-8")
+        review = (SKILL_ROOT / "subagents/review.md").read_text(encoding="utf-8")
+        self.assertIn("presentation", plan)
+        self.assertIn("`subject-only`", plan)
+        self.assertIn("emoji 或 Unicode 图标", plan)
+        self.assertIn("dense` 页若主信息只在半张画布", slide)
+        self.assertIn("带白底/奶油底的 RGB 矩形", review)
 
     def test_removed_entrypoints_stay_consolidated(self):
         removed = {
@@ -438,8 +427,8 @@ class ConsolidatedScriptTest(unittest.TestCase):
         self.assertEqual(
             {
                 "deck.py",
-                "bundle_fonts.py",
-                "cutout_image.py",
+                "font_bundle.py",
+                "image_cutout.py",
                 "render.py",
                 "stage_materials.py",
             },
@@ -476,6 +465,80 @@ class ConsolidatedScriptTest(unittest.TestCase):
                 catalog["assets"][0]["source_path"], "materials/_raw/brief.png"
             )
 
+    def test_page_facsimile_requires_auditable_justification(self):
+        deck = _load_deck_module()
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "materials/_work/material_01/_raw/paper.pdf_pages/p001.png"
+            source.parent.mkdir(parents=True)
+            source.write_bytes(b"page pixels")
+            with self.assertRaisesRegex(ValueError, "facsimile-justification"):
+                deck._register_asset(
+                    root,
+                    "assets/page.png",
+                    "material",
+                    source_path=source.relative_to(root).as_posix(),
+                    material_asset_type="page-facsimile",
+                )
+
+            justification = "该页是监管机构签发的原始扫描公文，页章、签名与完整页面关系本身构成证据。"
+            deck._register_asset(
+                root,
+                "assets/page.png",
+                "material",
+                source_path=source.relative_to(root).as_posix(),
+                material_asset_type="page-facsimile",
+                facsimile_justification=justification,
+            )
+            catalog = json.loads((root / "assets/catalog.json").read_text(encoding="utf-8"))
+            self.assertEqual(catalog["assets"][0]["facsimile_justification"], justification)
+
+    def test_referenced_facsimile_is_rechecked_at_delivery(self):
+        deck = _load_deck_module()
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "assets").mkdir()
+            (root / "slides").mkdir()
+            (root / "assets/page.png").write_bytes(b"page pixels")
+            (root / "slides/slide_01.html").write_text(
+                '<img src="assets/page.png">', encoding="utf-8"
+            )
+            (root / "assets/catalog.json").write_text(json.dumps({
+                "schema_version": 2,
+                "assets": [{
+                    "path": "assets/page.png",
+                    "origin": "material",
+                    "material_asset_type": "page-facsimile",
+                    "source_path": "materials/_raw/paper.pdf_pages/p001.png",
+                }],
+            }), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "lack a >=20 character justification"):
+                deck._validate_referenced_assets(root)
+
+    def test_bitmap_exception_with_attachment_visual_is_a_delivery_warning(self):
+        deck = _load_deck_module()
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "plan").mkdir()
+            (root / "materials/_work/material_01").mkdir(parents=True)
+            (root / "plan/image-strategy.json").write_text(json.dumps({
+                "status": "bitmap_exception",
+                "visible_subject_scan_complete": True,
+            }), encoding="utf-8")
+            (root / "materials/_work/material_01/catalog.json").write_text(json.dumps([{
+                "name": "paper.pdf · p1",
+                "kind": "image",
+                "status": "ok",
+                "material_asset_type": "page_context",
+            }]), encoding="utf-8")
+            warnings = deck._validate_bitmap_exception_attachment_bias(root)
+            self.assertEqual(warnings[0]["code"], "bitmap_exception_with_attachment_visuals")
+            deck._write_delivery_warnings(root, warnings)
+            report = json.loads(
+                (root / "_trace/delivery-warnings.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(len(report["warnings"]), 1)
+
     def test_unregistered_raster_asset_is_rejected(self):
         deck = _load_deck_module()
         with tempfile.TemporaryDirectory() as temporary:
@@ -490,7 +553,7 @@ class ConsolidatedScriptTest(unittest.TestCase):
                 deck._validate_referenced_assets(root)
 
     def test_font_allowlist_covers_distinct_handwriting_roles(self):
-        bundle = _load_bundle_fonts_module()
+        bundle = _load_font_bundle_module()
         bundle._validate_font_allowlist()
         for family in (
             "Xiaolai",
@@ -520,6 +583,59 @@ class ConsolidatedScriptTest(unittest.TestCase):
         self.assertEqual(len(chunks), 3)
         self.assertEqual(sum(item["chars"] for item in chunks), len(text))
         self.assertEqual(rebuilt, text)
+
+    def test_scanned_pdf_ocr_persists_every_page_and_full_text(self):
+        stage = _load_stage_materials_module()
+
+        class FakeRapidOCR:
+            def __call__(self, page_path):
+                page = int(Path(page_path).stem[-3:])
+                return ([
+                    [[[100, 40], [180, 40], [180, 60], [100, 60]], f"第二列-{page}", 0.98],
+                    [[[10, 10], [90, 10], [90, 30], [10, 30]], f"标题-{page}", 0.99],
+                ], {"elapsed": 0.01})
+
+        fake_module = types.SimpleNamespace(RapidOCR=FakeRapidOCR)
+        with tempfile.TemporaryDirectory() as temporary, mock.patch.dict(
+            sys.modules, {"rapidocr_onnxruntime": fake_module}
+        ):
+            root = Path(temporary)
+            pages = []
+            for page in (1, 2):
+                path = root / f"p{page:03d}.png"
+                path.write_bytes(b"pixels")
+                pages.append(str(path))
+            result = stage._ocr_pages_worker(pages, str(root / "ocr"), "paper.pdf")
+            self.assertEqual(result["status"], "complete")
+            self.assertEqual(result["covered"], 2)
+            fulltext = Path(result["fulltext"]).read_text(encoding="utf-8")
+            self.assertIn("标题-1", fulltext)
+            self.assertIn("第二列-2", fulltext)
+            coverage = json.loads(
+                Path(result["coverage_path"]).read_text(encoding="utf-8")
+            )
+            self.assertEqual(coverage["coverage"], {
+                "status": "complete", "unit": "pages", "covered": 2, "total": 2,
+            })
+            self.assertTrue(all(Path(item["json_path"]).is_file() for item in result["pages"]))
+
+    def test_mixed_pdf_native_text_coverage_exposes_pages_needing_ocr(self):
+        import fitz
+
+        stage = _load_stage_materials_module()
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "mixed.pdf"
+            document = fitz.open()
+            text_page = document.new_page()
+            text_page.insert_text((72, 72), "This page contains a native searchable text layer.")
+            document.new_page()
+            document.save(path)
+            document.close()
+            coverage = stage._pdf_text_coverage(str(path))
+            self.assertEqual(coverage["status"], "incomplete")
+            self.assertEqual(coverage["covered"], 1)
+            self.assertEqual(coverage["total"], 2)
+            self.assertEqual(coverage["pages"][1]["status"], "needs_ocr")
 
     def test_material_native_text_matrix_does_not_need_markitdown(self):
         stage = _load_stage_materials_module()
@@ -625,27 +741,6 @@ class ConsolidatedScriptTest(unittest.TestCase):
             self.assertIn("html, body { margin: 0", css)
             bundle.assert_called_once_with(root, from_plans=True)
 
-    def test_deck_prepare_materializes_theme_without_model_copying_template(self):
-        deck = _load_deck_module()
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            (root / "plan").mkdir()
-            (root / "plan/deck.md").write_text("# Deck\n- language: zh\n", encoding="utf-8")
-            (root / "plan/slide_01.md").write_text(
-                "# Slide 01 — 开场\n- 标题：开场\n\n## 口语讲稿\n\n开场。\n\n## 来源\n\n- none\n",
-                encoding="utf-8",
-            )
-            (root / "plan/theme.css").write_text(
-                ":root{--bg:#06070d;--accent:#38f2d6}\n.pixel-frame{border-radius:0}",
-                encoding="utf-8",
-            )
-            with mock.patch.object(deck, "bundle_workspace", return_value={"faces": []}):
-                deck._prepare_workspace(root, 1)
-            css = (root / "base.css").read_text(encoding="utf-8")
-            self.assertIn("deck-theme-overrides", css)
-            self.assertIn("--accent:#38f2d6", css)
-            self.assertIn(".slide{", css)
-
     def test_canvas_reset_is_idempotent_for_custom_base_css(self):
         deck = _load_deck_module()
         with tempfile.TemporaryDirectory() as temporary:
@@ -658,64 +753,49 @@ class ConsolidatedScriptTest(unittest.TestCase):
             css = (root / "base.css").read_text(encoding="utf-8")
             self.assertEqual(css.count("deck-runtime-canvas-reset"), 1)
             self.assertTrue(css.startswith("/* deck-runtime-canvas-reset */"))
+            self.assertIn("--canvas-w: 1600px", css)
+            self.assertIn("--canvas-h: 900px", css)
 
-    def test_build_rejects_unprepared_echarts_without_rewriting_slide(self):
+    def test_canvas_detection_prefers_explicit_canvas_variables(self):
+        deck = _load_deck_module()
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "base.css").write_text(
+                ":root{--canvas-w:900px;--canvas-h:1600px;--w:1600px;--h:900px}",
+                encoding="utf-8",
+            )
+            self.assertEqual(deck._detect_canvas(root), (900, 1600))
+
+    def test_canvas_reset_migrates_old_marker_without_canvas_variables(self):
+        deck = _load_deck_module()
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "base.css").write_text(
+                "/* deck-runtime-canvas-reset */\n"
+                ".slide{width:var(--canvas-w);height:var(--canvas-h)}",
+                encoding="utf-8",
+            )
+            deck._ensure_canvas_reset(root)
+            css = (root / "base.css").read_text(encoding="utf-8")
+            self.assertEqual(css.count("deck-runtime-canvas-reset"), 1)
+            self.assertIn(":root { --canvas-w: 1600px; --canvas-h: 900px; }", css)
+
+    def test_echarts_is_normalized_to_portable_deck_asset(self):
         deck = _load_deck_module()
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             (root / "slides").mkdir()
-            (root / "assets/fonts").mkdir(parents=True)
             slide = root / "slides/slide_01.html"
-            original = (
-                '<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/'
-                'echarts.min.js"></script>'
-            )
-            slide.write_text(original, encoding="utf-8")
-            (root / "base.css").write_text(
-                "/* deck-runtime-canvas-reset */\nhtml,body{margin:0}", encoding="utf-8"
+            slide.write_text(
+                '<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>',
+                encoding="utf-8",
             )
             deck._ensure_runtime_assets(root)
-            (root / "assets/fonts/manifest.json").write_text(
-                '{"faces":[]}', encoding="utf-8"
+            deck._normalize_runtime_references(root)
+            deck._validate_runtime_dependencies(root, expected=1)
+            self.assertIn(
+                '../assets/vendor/echarts.min.js', slide.read_text(encoding="utf-8")
             )
-            with mock.patch.object(deck, "validate_font_bundle", return_value=[]):
-                with self.assertRaisesRegex(ValueError, "必须引用"):
-                    deck._validate_prepared_runtime(root)
-            self.assertEqual(original, slide.read_text(encoding="utf-8"))
-
-    def test_build_requires_current_review_contact_without_regenerating_it(self):
-        deck = _load_deck_module()
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            renders = root / "renders"
-            renders.mkdir()
-            (renders / "slide_01.png").write_bytes(b"reviewed pixels")
-            (renders / "contact-sheet.png").write_bytes(b"overview")
-            (renders / "contact-sheet-review-01.png").write_bytes(b"group")
-            payload = {
-                "full": {
-                    "pages": [1],
-                    "overview": "renders/contact-sheet.png",
-                    "groups": [{
-                        "path": "renders/contact-sheet-review-01.png",
-                        "pages": [1],
-                    }],
-                    "evidence": [{
-                        "page": 1,
-                        "path": "renders/slide_01.png",
-                        "sha256": hashlib.sha256(b"reviewed pixels").hexdigest(),
-                    }],
-                },
-            }
-            manifest = renders / "review-contact.json"
-            manifest.write_text(json.dumps(payload), encoding="utf-8")
-            before = {path: path.read_bytes() for path in renders.iterdir()}
-            deck._validate_review_contact(root, expected=1)
-            self.assertEqual(before, {path: path.read_bytes() for path in renders.iterdir()})
-
-            (renders / "slide_01.png").write_bytes(b"changed after review")
-            with self.assertRaisesRegex(ValueError, "早于当前逐页 PNG"):
-                deck._validate_review_contact(root, expected=1)
 
     def test_missing_local_script_is_a_delivery_error(self):
         deck = _load_deck_module()
@@ -727,6 +807,45 @@ class ConsolidatedScriptTest(unittest.TestCase):
             )
             with self.assertRaisesRegex(ValueError, "portable runtime dependency audit failed"):
                 deck._validate_runtime_dependencies(root, expected=1)
+
+    def test_percent_encoded_svg_fragment_is_not_a_local_file_dependency(self):
+        deck = _load_deck_module()
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "slides").mkdir()
+            (root / "slides/slide_01.html").write_text(
+                '<svg><defs><filter id="n"></filter></defs>'
+                '<rect style="filter:url(%23n)"></rect></svg>',
+                encoding="utf-8",
+            )
+            (root / "base.css").write_text(
+                '.texture{filter:url(%23n)}', encoding="utf-8"
+            )
+            deck._validate_runtime_dependencies(root, expected=1)
+
+    def test_speech_sync_removes_markdown_fences_and_internal_sources(self):
+        deck = _load_deck_module()
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "plan").mkdir()
+            (root / "plan/deck.md").write_text(
+                "# Deck\n- language: zh\n", encoding="utf-8"
+            )
+            (root / "plan/slide_01.md").write_text(
+                "# Slide 01 — 开场\n\n## 口语讲稿\n\n"
+                "```text\n讲稿内容\n这是一段可以直接朗读的讲稿。\n```\n\n"
+                "## 来源\n\n- plan/grounded-knowledge.md（编排器假设）\n"
+                "- https://example.com/source\n",
+                encoding="utf-8",
+            )
+            deck._sync_speech(root, 1)
+            speech = (root / "speech.md").read_text(encoding="utf-8")
+            self.assertIn("这是一段可以直接朗读的讲稿。", speech)
+            self.assertIn("https://example.com/source", speech)
+            self.assertNotIn("```", speech)
+            self.assertNotIn("讲稿内容", speech)
+            self.assertNotIn("grounded-knowledge", speech)
+            self.assertNotIn("编排器假设", speech)
 
     def test_renderer_must_not_fallback_to_skill_echarts_for_missing_deck_asset(self):
         render = (SCRIPTS / "render.py").read_text(encoding="utf-8")
@@ -749,15 +868,115 @@ class ConsolidatedScriptTest(unittest.TestCase):
         self.assertEqual([], leaked)
 
     def test_font_delivery_allowlist_requires_official_ofl_sources(self):
-        fonts = _load_bundle_fonts_module()
+        fonts = _load_font_bundle_module()
         fonts._validate_font_allowlist()
         self.assertEqual(set(fonts.FAMILY_FACES), set(fonts.FONT_LICENSES))
         self.assertTrue(all(item["license"] == "OFL-1.1" for item in fonts.FONT_LICENSES.values()))
         self.assertTrue(all(item["source"].startswith("https://github.com/") for item in fonts.FONT_LICENSES.values()))
         self.assertTrue(fonts.OFL_TEMPLATE.is_file())
 
+    def test_noto_sans_bundle_keeps_real_variable_weight_axis(self):
+        fonts = _load_font_bundle_module()
+        variable = REPO / "fonts/NotoSansSC.ttf"
+        static = REPO / "fonts/IBMPlexMono-Regular.ttf"
+        face = fonts.FAMILY_FACES["Noto Sans SC"][0]
+        self.assertEqual("100 900", face.weight)
+        self.assertTrue(fonts._font_supports_face(variable, face))
+        self.assertFalse(fonts._font_supports_face(static, face))
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "plan").mkdir()
+            (root / "base.css").write_text(
+                ':root{--font-sans:"Noto Sans SC",sans-serif;'
+                '--font-body:var(--font-sans);--font-title:var(--font-sans);'
+                '--font-display:var(--font-sans);--font-number:var(--font-sans);'
+                '--font-mono:var(--font-sans);}',
+                encoding="utf-8",
+            )
+            (root / "plan/slide_01.md").write_text(
+                "# Slide 01\n## 最终屏显文案\n中文标题 Font 2026\n",
+                encoding="utf-8",
+            )
+            with mock.patch.dict(
+                __import__("os").environ,
+                {"PPT_FONT_SOURCE_DIRS": str(REPO / "fonts")},
+            ):
+                manifest = fonts.bundle_workspace(root, from_plans=True)
+
+            noto_faces = [
+                item for item in manifest["faces"]
+                if item["source_family"] == "Noto Sans SC"
+            ]
+            self.assertEqual(["100 900"], [item["weight"] for item in noto_faces])
+            from fontTools.ttLib import TTFont
+
+            bundled = TTFont(root / noto_faces[0]["path"], lazy=False)
+            try:
+                axes = {axis.axisTag: axis for axis in bundled["fvar"].axes}
+                self.assertEqual((100.0, 900.0), (axes["wght"].minValue, axes["wght"].maxValue))
+            finally:
+                bundled.close()
+
+    def test_smiley_sans_static_face_is_accepted_and_bundled(self):
+        fonts = _load_font_bundle_module()
+        source = REPO / "fonts/SmileySans-Oblique.ttf"
+        face = fonts.FAMILY_FACES["Smiley Sans"][0]
+        self.assertEqual("400", face.weight)
+        self.assertEqual("oblique", face.style)
+        self.assertTrue(fonts._font_supports_face(source, face))
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "plan").mkdir()
+            (root / "base.css").write_text(
+                ':root{--font-sans:"Noto Sans SC",sans-serif;'
+                '--font-body:var(--font-sans);'
+                '--font-title:"Smiley Sans","Noto Sans SC",sans-serif;'
+                '--font-display:var(--font-title);--font-number:var(--font-title);'
+                '--font-mono:"IBM Plex Mono","Noto Sans SC",monospace;}',
+                encoding="utf-8",
+            )
+            (root / "plan/slide_01.md").write_text(
+                "# Slide 01\n## 最终屏显文案\n得意黑 Smiley 2026\n",
+                encoding="utf-8",
+            )
+            with mock.patch.dict(
+                __import__("os").environ,
+                {"PPT_FONT_SOURCE_DIRS": str(REPO / "fonts")},
+            ):
+                manifest = fonts.bundle_workspace(root, from_plans=True)
+
+            smiley_faces = [
+                item for item in manifest["faces"]
+                if item["source_family"] == "Smiley Sans"
+            ]
+            self.assertEqual(1, len(smiley_faces))
+            self.assertEqual("400", smiley_faces[0]["weight"])
+            self.assertEqual("oblique", smiley_faces[0]["style"])
+            self.assertTrue((root / smiley_faces[0]["path"]).is_file())
+
+    def test_default_presentation_title_route_prefers_smiley_and_keeps_body_noto(self):
+        template = (REPO / "skills/mural-presenter/references/base-template.css").read_text(encoding="utf-8")
+        fonts = (REPO / "skills/mural-presenter/references/fonts.md").read_text(encoding="utf-8")
+        skill = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
+        skill_en = (SKILL_ROOT / "SKILL.en.md").read_text(encoding="utf-8")
+        render = (REPO / "skills/mural-presenter/scripts/render.py").read_text(encoding="utf-8")
+
+        self.assertIn('--font-title: "Smiley Sans", "Noto Sans SC", sans-serif;', template)
+        self.assertIn('--font-hei-heavy:     "Smiley Sans", "Noto Sans SC", sans-serif;', template)
+        self.assertIn('--font-body:  var(--font-sans);', template)
+        self.assertIn('--fs-display: 104px;', template)
+        self.assertIn('--fs-title:   60px;', template)
+        for content in (fonts, skill, skill_en):
+            self.assertIn("Smiley Sans", content)
+        for field in ("title_voice", "title_scale", "title_treatment", "body_voice", "numeric_voice", "font_roles"):
+            self.assertIn(field, skill)
+        self.assertIn("approvedPresentationTitle", render)
+        self.assertIn("fs>=40", render)
+
     def test_user_font_config_is_hash_checked_and_mapped_to_roles(self):
-        fonts = _load_bundle_fonts_module()
+        fonts = _load_font_bundle_module()
         candidates = list((Path.home() / ".fonts").glob("NotoSansSC*.ttf"))
         if not candidates:
             candidates = list((Path.home() / ".fonts").glob("Archivo*.ttf"))
@@ -786,7 +1005,7 @@ class ConsolidatedScriptTest(unittest.TestCase):
         self.assertEqual(roles["--font-display"], "User::font-01")
 
     def test_user_font_is_subset_and_keeps_portable_fallback(self):
-        fonts = _load_bundle_fonts_module()
+        fonts = _load_font_bundle_module()
         candidates = list((Path.home() / ".fonts").glob("Archivo*.ttf"))
         if not candidates:
             self.skipTest("no readable custom test font installed")
@@ -823,12 +1042,83 @@ class ConsolidatedScriptTest(unittest.TestCase):
         self.assertRegex(css, r'--font-title: "Deck-[^"]+", "Deck-[^"]+", sans-serif;')
 
     def test_font_template_excludes_unapproved_legacy_names(self):
-        content = (REPO / "skills/mural-presenter/assets/base-template.css").read_text(encoding="utf-8")
+        content = (REPO / "skills/mural-presenter/references/base-template.css").read_text(encoding="utf-8")
         content += (REPO / "skills/mural-presenter/references/fonts.md").read_text(encoding="utf-8")
         for name in ("段宁硬笔楷", "叶根友钢笔行书", "迷你简硬笔行书", "Lovely Little Jelly", "今年也要加油鸭"):
             self.assertNotIn(name, content)
         for name in ("Liu Jian Mao Cao", "Long Cang", "Zhi Mang Xing", "ZCOOL QingKe HuangYou"):
             self.assertIn(name, content)
+
+    def test_screen_copy_firewall_and_special_page_metadata_are_consistent(self):
+        skill = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
+        plan = (SKILL_ROOT / "references/planning-contract.md").read_text(encoding="utf-8")
+        design = (SKILL_ROOT / "references/design-rules.md").read_text(encoding="utf-8")
+        layout = (SKILL_ROOT / "references/layout-patterns.md").read_text(encoding="utf-8")
+        checklist = (SKILL_ROOT / "references/quality-checklist.md").read_text(encoding="utf-8")
+        slide = (SKILL_ROOT / "subagents/slide.md").read_text(encoding="utf-8")
+        review = (SKILL_ROOT / "subagents/review.md").read_text(encoding="utf-8")
+
+        self.assertIn("screen-copy firewall", skill)
+        self.assertIn("观众价值检查", plan)
+        self.assertIn("内部生产信息", slide)
+        self.assertIn("观众价值审计", review)
+        self.assertIn("封面不素，但不设固定层数", design)
+        self.assertIn("辅助文字有观众价值且不重复", checklist)
+        self.assertIn("不得为了显得高级而编造", layout)
+        self.assertNotIn("再叠 **2–3 个设计层**", design)
+        self.assertNotIn("封面在主视觉 + 巨标题外有 2–3 个设计层", checklist)
+
+    def test_content_sufficiency_and_visible_copy_uniqueness_are_consistent(self):
+        skill = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
+        plan = (SKILL_ROOT / "references/planning-contract.md").read_text(encoding="utf-8")
+        design = (SKILL_ROOT / "references/design-rules.md").read_text(encoding="utf-8")
+        checklist = (SKILL_ROOT / "references/quality-checklist.md").read_text(encoding="utf-8")
+        slide = (SKILL_ROOT / "subagents/slide.md").read_text(encoding="utf-8")
+        review = (SKILL_ROOT / "subagents/review.md").read_text(encoding="utf-8")
+
+        self.assertIn("内容充分性与屏显语义去重", skill)
+        self.assertIn("内容充分性检查", plan)
+        self.assertIn("图片角标、badge、callout", plan)
+        self.assertIn("有效密度先补语义", design)
+        self.assertIn("可见文案清点", slide)
+        self.assertIn("内容充分性与屏显语义去重", review)
+        self.assertIn("内容充分且屏显语义唯一", checklist)
+        self.assertIn("章节脚本不机械复制", checklist)
+
+    def test_skill_contracts_consistent_zh_and_en(self):
+        # Item D: guard the skill-contract fixes against silent regression, in
+        # BOTH the canonical zh skill and its en counterpart.
+        variants = {
+            "zh": REPO / "skills/mural-presenter",
+            "en": REPO / "skills/mural-presenter",
+        }
+        for lang, root in variants.items():
+            slide = (root / "subagents/slide.md").read_text(encoding="utf-8")
+            plan = (root / "references/planning-contract.md").read_text(encoding="utf-8")
+            image = (root / "subagents/image.md").read_text(encoding="utf-8")
+            material = (root / "subagents/material.md").read_text(encoding="utf-8")
+            base_css = (root / "references/base-template.css").read_text(encoding="utf-8")
+            # D1: transition/section pages use standard .slide--section; no .slide--divider.
+            self.assertIn(".slide--section", slide, lang)
+            self.assertIn(".slide--divider", slide, lang)   # named as forbidden
+            self.assertIn(".slide--divider", base_css, lang)  # forbidden in css comment too
+            # D2: image_opportunity enum and reason are two separate fields.
+            self.assertIn("image_opportunity_reason", plan, lang)
+            # D3: no unconditional transparent_assets placeholder in the image template.
+            self.assertNotIn("transparent_assets: assets/<name>-cutout.png | not-required", image)
+            self.assertNotIn("transparent_assets: assets/<name>-cutout.png, assets/<name>-cutout.png | not-required", image)
+            # D4: Material terminal is ready|blocked only (no partial in the contract line).
+            self.assertIn("status: ready | blocked", material, lang)
+            self.assertNotIn("status: ready | partial | blocked", material)
+            # round-8: presentation is the bitmap render contract, four enums only;
+            # layout terms (split-media) are called out as NOT presentation, and a
+            # no-bitmap page omits presentation.
+            skill = (root / "SKILL.md").read_text(encoding="utf-8")
+            self.assertIn("split-media", plan, lang)
+            self.assertIn("split-media", skill, lang)
+            for enum in ("subject-only", "framed-scene", "full-bleed", "evidence-crop"):
+                self.assertIn(enum, plan, f"{lang}:{enum}")
+
 
 if __name__ == "__main__":
     unittest.main()

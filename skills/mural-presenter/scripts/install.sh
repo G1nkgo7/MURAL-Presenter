@@ -2,14 +2,12 @@
 # ============================================================================
 # mural-presenter · 环境安装脚本(让 skill 自包含:一键装齐运行所需的全部依赖)
 #
-# 装什么（七项）:
-#   1) normalize venv  —— stage_materials.py 内部文本 worker 使用 markitdown/pdfminer/openpyxl
+# 装什么(四块,缺一不可):
+#   1) normalize venv  —— stage_materials.py 内部文本/OCR worker 使用 markitdown/pdfminer/RapidOCR
 #   2) pymupdf(fitz)   —— 扫描 PDF rasterize 成页图(交 vision 兜底);装进渲染环境
 #   3) OFL 字体包      —— 从官方项目获取中文/拉丁开源字体到 ~/.fonts
 #   4) FontTools/Brotli/Pillow —— 裁剪 Deck 自带 WOFF2 + 生成 Review 联系表
-#   5) NumPy/OpenCV —— 生成透明主体素材
-#   6) Playwright Chromium —— render.py 无头渲染 HTML→PNG
-#   7) 附件转换器探测 —— LibreOffice、FFmpeg/ffprobe
+#   5) Playwright Chromium —— render.py 无头渲染 HTML→PNG
 #   (系统 .so 缺失时 render.py 会自动从 ~/pwdeps/lib 补,见 §5 提示)
 #
 # 用法:
@@ -25,6 +23,8 @@
 # ============================================================================
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SUITE_FONTS_DIR="${SUITE_FONTS_DIR:-$HERE/../../../fonts}"
+BUNDLED_FONTS_DIR="${BUNDLED_FONTS_DIR:-$HERE/../../../../fonts}"
 
 NORMALIZE_VENV="${NORMALIZE_VENV:-$HOME/.cache/mural-presenter/venv-normalize}"
 FONTS_DIR="${FONTS_DIR:-$HOME/.fonts}"
@@ -43,6 +43,7 @@ NORMALIZE_PACKAGES=(
   "pillow-heif>=0.22,<2"
   "lxml==6.1.1"
   "mammoth==1.11.0"
+  "rapidocr-onnxruntime>=1.4,<2"
 )
 
 log(){ echo "[install] $*"; }
@@ -52,15 +53,22 @@ install_normalize(){
   if command -v uv >/dev/null 2>&1; then
     uv venv "$NORMALIZE_VENV" >/dev/null 2>&1 || true
     uv pip install --python "$NORMALIZE_VENV/bin/python" "${NORMALIZE_PACKAGES[@]}"
+    # rapidocr-onnxruntime declares the GUI OpenCV wheel.  Headless benchmark
+    # hosts have no libGL, so deliberately install the API-compatible headless
+    # wheel last to own the shared cv2 package files.
+    uv pip install --python "$NORMALIZE_VENV/bin/python" --reinstall \
+      "numpy>=1.24,<2" "opencv-python-headless>=4.8,<4.12"
   else
     "$PYBIN" -m venv "$NORMALIZE_VENV"
     "$NORMALIZE_VENV/bin/python" -m pip install -q --upgrade pip
     "$NORMALIZE_VENV/bin/python" -m pip install -q "${NORMALIZE_PACKAGES[@]}"
+    "$NORMALIZE_VENV/bin/python" -m pip install -q --force-reinstall \
+      "numpy>=1.24,<2" "opencv-python-headless>=4.8,<4.12"
   fi
   # 冒烟:import 三个关键库
   "$NORMALIZE_VENV/bin/python" - <<'PY' && log "  normalize venv OK"
-import markitdown, pdfminer, openpyxl
-print("  imports ok:", markitdown.__name__, pdfminer.__name__, openpyxl.__name__)
+import markitdown, pdfminer, openpyxl, rapidocr_onnxruntime
+print("  imports ok:", markitdown.__name__, pdfminer.__name__, openpyxl.__name__, rapidocr_onnxruntime.__name__)
 PY
 }
 
@@ -77,6 +85,16 @@ install_pymupdf(){
 install_fonts(){
   log "3) OFL 字体包 → $FONTS_DIR"
   mkdir -p "$FONTS_DIR"
+  local packaged_count=0 packaged_dir packaged_font
+  for packaged_dir in "$SUITE_FONTS_DIR" "$BUNDLED_FONTS_DIR"; do
+    [ -d "$packaged_dir" ] || continue
+    for packaged_font in "$packaged_dir"/*.ttf "$packaged_dir"/*.otf; do
+      [ -f "$packaged_font" ] || continue
+      cp -f "$packaged_font" "$FONTS_DIR/"
+      packaged_count=$((packaged_count + 1))
+    done
+  done
+  log "  已安装 $packaged_count 个随包开源字体"
   # 优先复用宿主已有 Noto SC；其余字体按官方 OFL 源补齐。
   local found=0 src f
   for src in "$HOME/.fonts" /usr/share/fonts; do
@@ -155,7 +173,7 @@ install_fonts(){
       return 1
     fi
   elif [ -s "$FONTS_DIR/NotoSansSC.ttf" ] && [ -s "$FONTS_DIR/NotoSerifSC.ttf" ]; then
-    # 极简 worker 常常没有 fontconfig；交付端由 bundle_fonts.py 直接读取字体文件，
+    # 极简 worker 常常没有 fontconfig；交付端由 font_bundle.py 直接读取字体文件，
     # 因此文件存在且可解析即可，不应把 fc-list 缺失误判为字体安装失败。
     "$PYBIN" - "$FONTS_DIR/NotoSansSC.ttf" "$FONTS_DIR/NotoSerifSC.ttf" <<'PY'
 import sys
@@ -206,7 +224,7 @@ install_fonttools(){
     || { log "  ⛔ pyftsubset 不可用，无法交付便携字体"; return 1; }
 }
 
-install_cutout_image(){
+install_image_cutout(){
   log "5) NumPy/OpenCV → 主体透明抠图 ($PYBIN)"
   if command -v uv >/dev/null 2>&1; then
     uv pip install --python "$PYBIN" "numpy>=1.24,<2" "opencv-python-headless>=4.8,<4.11" >/dev/null 2>&1 \
@@ -227,17 +245,17 @@ PY
   "$PYBIN" -c 'import cv2, numpy; print("  OpenCV", cv2.__version__, "NumPy", numpy.__version__)'
 }
 
-TARGETS=("$@"); [ ${#TARGETS[@]} -eq 0 ] && TARGETS=(normalize pymupdf fonts fonttools cutout-image chromium material-tools)
+TARGETS=("$@"); [ ${#TARGETS[@]} -eq 0 ] && TARGETS=(normalize pymupdf fonts fonttools image-cutout chromium material-tools)
 for t in "${TARGETS[@]}"; do
   case "$t" in
     normalize) install_normalize ;;
     pymupdf)   install_pymupdf ;;
     fonts)     install_fonts ;;
     fonttools) install_fonttools ;;
-    cutout-image) install_cutout_image ;;
+    image-cutout) install_image_cutout ;;
     chromium)  install_chromium ;;
     material-tools) check_material_tools ;;
-    *) log "未知目标: $t (可选 normalize|pymupdf|fonts|fonttools|cutout-image|chromium|material-tools)";;
+    *) log "未知目标: $t (可选 normalize|pymupdf|fonts|fonttools|image-cutout|chromium|material-tools)";;
   esac
 done
 

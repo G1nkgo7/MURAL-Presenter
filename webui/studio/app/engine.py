@@ -115,6 +115,21 @@ MURAL_V01_HARNESS_ROOT = Path(
 MURAL_V01_HARNESS_ENTRY = os.environ.get(
     "PPTAGENT_MURAL_V01_HARNESS_ENTRY", "infer.py"
 )
+MURAL_V02_SKILLS_ROOT = Path(
+    os.environ.get(
+        "PPTAGENT_MURAL_V02_SKILLS_ROOT",
+        _MURAL_REPOSITORY_ROOT / "skills" / "mural-presenter-v0.2",
+    )
+)
+MURAL_V02_HARNESS_ROOT = Path(
+    os.environ.get(
+        "PPTAGENT_MURAL_V02_HARNESS_ROOT",
+        _MURAL_REPOSITORY_ROOT / "harnesses" / "mural-presenter-v0.2",
+    )
+)
+MURAL_V02_HARNESS_ENTRY = os.environ.get(
+    "PPTAGENT_MURAL_V02_HARNESS_ENTRY", "infer.py"
+)
 LONG_HORIZON_PRESENTER_SKILL_ROOT = Path(
     os.environ.get(
         "PPTAGENT_LONG_HORIZON_PRESENTER_SKILL_ROOT",
@@ -799,6 +814,115 @@ def _mural_v01_skill(
     }
 
 
+def _mural_v02_skill(
+    skills_root: Path = MURAL_V02_SKILLS_ROOT,
+    harness_root: Path = MURAL_V02_HARNESS_ROOT,
+) -> dict:
+    """Register the bilingual, single-page-parallel v0.2 pair."""
+    names = {
+        "zh": "mural-presenter-v0-2-zh",
+        "en": "mural-presenter-v0-2-en",
+    }
+    required_per_edition = (
+        "SKILL.md",
+        "agents/openai.yaml",
+        "assets/base.css",
+        "references/charts-and-diagrams.md",
+        "references/fonts-and-type.md",
+        "references/html-contract.md",
+        "references/materials-and-images.md",
+        "references/page-patterns.md",
+        "references/plan-contract.md",
+        "roles/image.md",
+        "roles/material.md",
+        "roles/orchestrator.md",
+        "roles/research.md",
+        "roles/review.md",
+        "roles/slide.md",
+        "scripts/deck.py",
+        "scripts/image_background.py",
+        "scripts/render_deck.py",
+        "scripts/workspace_policy.py",
+    )
+    missing_skill = [
+        f"{name}/{relative}"
+        for name in names.values()
+        for relative in required_per_edition
+        if not (skills_root / name / relative).is_file()
+    ]
+    harness_required = (
+        MURAL_V02_HARNESS_ENTRY,
+        "core/__init__.py",
+        "core/agent_loop.py",
+        "core/config.py",
+        "core/language.py",
+        "core/model_call.py",
+        "core/render_broker.py",
+        "core/run_batch.py",
+        "core/tools.py",
+    )
+    missing_harness = [
+        relative for relative in harness_required
+        if not (harness_root / relative).is_file()
+    ]
+    reasons = []
+    if missing_skill:
+        reasons.append("MURAL Presenter v0.2 Skill 缺少：" + ", ".join(missing_skill))
+    if missing_harness:
+        reasons.append("MURAL Presenter v0.2 Harness 缺少：" + ", ".join(missing_harness))
+    digest = hashlib.sha256()
+    if not missing_skill:
+        _hash_runtime_tree(digest, skills_root, prefix="skills/")
+    if not missing_harness:
+        _hash_runtime_tree(digest, harness_root, prefix="harness/")
+    ready = not missing_skill and not missing_harness
+    return {
+        "label": "MURAL Presenter v0.2 · Slide Parallel",
+        "path": str(skills_root),
+        "instruction_paths": {
+            language: str(skills_root / name)
+            for language, name in names.items()
+        },
+        "skills_root": str(skills_root),
+        "name": "auto",
+        "language": "auto",
+        "supported_languages": ["zh", "en"],
+        "agent_language_routing": "first-skill-read-lock",
+        "deck_language": "auto",
+        "force_skill_language": "",
+        "mode": "mural-presenter-v0.2-bilingual",
+        "status": "candidate" if ready else "unavailable",
+        "ready": ready,
+        "unavailable_reason": "；".join(reasons),
+        "required_files": [
+            f"{name}/{relative}"
+            for name in names.values()
+            for relative in required_per_edition
+        ],
+        "source_revision": digest.hexdigest()[:12] if ready else "",
+        "pipeline": "mural-presenter-v0.2-harness",
+        "harness_path": str(harness_root),
+        "harness_entry": MURAL_V02_HARNESS_ENTRY,
+        "harness_required_files": list(harness_required),
+        "pairing": "mural-presenter-v0.2-single-slide",
+        "caps": ["attachments", "revision", "static_html"],
+        "runtime_env": {
+            "CLEAN_MODEL_SELECT_SKILL": "1",
+            "CLEAN_SKILL_NAME": "mural-presenter-v0-2",
+            "CLEAN_SKILL_NAME_ZH": names["zh"],
+            "CLEAN_SKILL_NAME_EN": names["en"],
+            "CLEAN_CHILD_CONCURRENCY": "4",
+            "CLEAN_CHILD_POOL_MAX_WORKERS": "4",
+            "CLEAN_REMOTE_TOOL_CONCURRENCY": "4",
+            "CLEAN_MAX_TURNS": "240",
+            "CLEAN_CHILD_MAX_TURNS": "80",
+            "CLEAN_MAX_TOKENS": "40960",
+            "CLEAN_MODEL_TIMEOUT": "600",
+            "CLEAN_CHILD_WALL_TIMEOUT": "2400",
+        },
+    }
+
+
 def _mural_next_skill(
     skill_root: Path = MURAL_NEXT_SKILL_ROOT,
     harness_root: Path = MURAL_NEXT_HARNESS_ROOT,
@@ -960,6 +1084,7 @@ SKILLS = {
     "mural-presenter": _mural_presenter_skill(),
     "mural-presenter-creative": _mural_presenter_creative_skill(),
     "mural-presenter-v0.1": _mural_v01_skill(),
+    "mural-presenter-v0.2": _mural_v02_skill(),
 }
 if ENABLE_EXPERIMENTAL_SKILLS:
     SKILLS["mural-next"] = _mural_next_skill()
@@ -1028,6 +1153,7 @@ def refresh_external_skills(*, force: bool = False) -> dict:
         mural_presenter = _mural_presenter_skill()
         mural_presenter_creative = _mural_presenter_creative_skill()
         mural_v01 = _mural_v01_skill()
+        mural_v02 = _mural_v02_skill()
         mural_next = _mural_next_skill() if ENABLE_EXPERIMENTAL_SKILLS else None
         SKILLS["long-horizon"] = refreshed
         SKILLS["long-horizon-grouped"] = grouped
@@ -1038,6 +1164,7 @@ def refresh_external_skills(*, force: bool = False) -> dict:
         SKILLS["mural-presenter"] = mural_presenter
         SKILLS["mural-presenter-creative"] = mural_presenter_creative
         SKILLS["mural-presenter-v0.1"] = mural_v01
+        SKILLS["mural-presenter-v0.2"] = mural_v02
         if mural_next is not None:
             SKILLS["mural-next"] = mural_next
         if "PIPELINES" in globals():
@@ -1053,6 +1180,9 @@ def refresh_external_skills(*, force: bool = False) -> dict:
             )
             PIPELINES["mural-presenter-v0.1-harness"] = _mural_v01_pipeline(
                 mural_v01
+            )
+            PIPELINES["mural-presenter-v0.2-harness"] = _mural_v02_pipeline(
+                mural_v02
             )
             if mural_next is not None:
                 PIPELINES["mural-next-harness"] = _mural_next_pipeline(mural_next)
@@ -1140,6 +1270,21 @@ def _mural_v01_pipeline(skill: dict | None = None) -> dict:
     }
 
 
+def _mural_v02_pipeline(skill: dict | None = None) -> dict:
+    skill = skill or SKILLS.get("mural-presenter-v0.2") or _mural_v02_skill()
+    return {
+        "label": "MURAL Presenter v0.2 · Slide Parallel",
+        "path": str(MURAL_V02_HARNESS_ROOT),
+        "entry": MURAL_V02_HARNESS_ENTRY,
+        "supports": ["anthropic", "openai"],
+        "skill_mode": "clean-bilingual-single-slide",
+        "caps": ["attachments", "revision", "static_html"],
+        "pairing": "mural-presenter-v0.2-single-slide",
+        "ready": bool(skill.get("ready")),
+        "unavailable_reason": skill.get("unavailable_reason", ""),
+    }
+
+
 def _mural_next_pipeline(skill: dict | None = None) -> dict:
     skill = skill or SKILLS.get("mural-next") or _mural_next_skill()
     return {
@@ -1193,6 +1338,7 @@ PIPELINES = {
     "long-horizon-presenter-harness": _long_horizon_presenter_pipeline(),
     "mural-presenter-harness": _mural_presenter_pipeline(),
     "mural-presenter-v0.1-harness": _mural_v01_pipeline(),
+    "mural-presenter-v0.2-harness": _mural_v02_pipeline(),
 }
 if ENABLE_EXPERIMENTAL_SKILLS:
     PIPELINES["mural-next-harness"] = _mural_next_pipeline()
@@ -1663,6 +1809,7 @@ def build_job(sample_id: str, seed: dict, run_dir, dry: bool = False, model_key:
         "mural-presenter",
         "mural-presenter-creative",
         "mural-presenter-v0.1",
+        "mural-presenter-v0.2",
         "mural-next",
     }:
         # A generation job must capture the latest Skill even when the homepage

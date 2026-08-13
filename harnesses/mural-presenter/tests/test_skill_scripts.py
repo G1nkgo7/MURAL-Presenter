@@ -321,19 +321,39 @@ class ConsolidatedScriptTest(unittest.TestCase):
         self.assertIn("讲稿已经解释不能成为删减理由", slide)
         self.assertIn("observed_carrier", review)
 
-    def test_controlled_svg_archetypes_are_allowed_without_disabling_lint(self):
+    def test_large_svg_is_available_without_disabling_quality_lint(self):
         skill = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
         layout = (SKILL_ROOT / "references/layout-patterns.md").read_text(encoding="utf-8")
         design = (SKILL_ROOT / "references/design-rules.md").read_text(encoding="utf-8")
         renderer = (SKILL_ROOT / "scripts/render.py").read_text(encoding="utf-8")
 
-        self.assertIn("受控 SVG", skill)
+        self.assertIn("不禁用大型 SVG", skill)
         for archetype in ("three-layer", "radial", "funnel", "cycle", "pyramid"):
             self.assertIn(f"`{archetype}`", layout)
-        self.assertIn('class="svg-diagram svg-allowed"', layout)
-        self.assertIn("禁止自由发挥大型 SVG", design)
-        self.assertIn("CONTROLLED_SVG", renderer)
-        self.assertIn("tooLargeForIcon && !CONTROLLED_SVG.test(c)", renderer)
+        self.assertIn("不是 SVG 白名单", layout)
+        self.assertIn("SVG 可直接承担大型静态结构主视觉", design)
+        self.assertNotIn("SVG-LARGE", renderer)
+        self.assertNotIn("CONTROLLED_SVG", renderer)
+        self.assertIn("SVG-SMALL", renderer)
+        self.assertIn("SVG-LABEL-OVERLAP", renderer)
+
+    def test_paper_figure_contract_is_resolution_preserving_and_subject_only(self):
+        material = (SKILL_ROOT / "subagents/material.md").read_text(encoding="utf-8")
+        image = (SKILL_ROOT / "subagents/image.md").read_text(encoding="utf-8")
+        review = (SKILL_ROOT / "subagents/review.md").read_text(encoding="utf-8")
+        deck = (SKILL_ROOT / "scripts/deck.py").read_text(encoding="utf-8")
+        staging = (SKILL_ROOT / "scripts/stage_materials.py").read_text(encoding="utf-8")
+
+        self.assertIn("visual_subject_box", material)
+        self.assertIn("--source-pdf", image)
+        self.assertIn("source_pdf_clip", review)
+        self.assertIn("--min-long-edge", deck)
+        self.assertIn("--max-body-text-fraction", deck)
+        self.assertIn('"body_text_fraction"', deck)
+        self.assertIn("_validate_figure_crop_usage", deck)
+        self.assertIn("derotation_matrix", deck)
+        self.assertIn("ocr_scaled_to_page_raster", deck)
+        self.assertIn('"image_size": image_size', staging)
 
     def test_data_fidelity_checks_source_structure_and_final_chart(self):
         material = (SKILL_ROOT / "subagents/material.md").read_text(encoding="utf-8")
@@ -568,6 +588,42 @@ class ConsolidatedScriptTest(unittest.TestCase):
             }), encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "lack a >=20 character justification"):
                 deck._validate_referenced_assets(root)
+
+    def test_referenced_paper_figure_is_rechecked_at_delivery(self):
+        deck = _load_deck_module()
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "assets").mkdir()
+            (root / "slides").mkdir()
+            (root / "materials/_raw").mkdir(parents=True)
+            (root / "assets/figure.png").write_bytes(b"figure pixels")
+            (root / "materials/_raw/paper.pdf").write_bytes(b"pdf")
+            (root / "slides/slide_01.html").write_text(
+                '<img src="assets/figure.png">', encoding="utf-8"
+            )
+            entry = {
+                "path": "assets/figure.png",
+                "origin": "derived",
+                "material_asset_type": "figure_crop",
+                "derivative_kind": "material_figure_crop",
+                "source_pdf": "materials/_raw/paper.pdf",
+                "render_source": "page_raster",
+                "pixel_size": [1800, 900],
+                "body_text_fraction": 0.02,
+                "page_fraction": 0.40,
+                "status": "ready",
+            }
+            (root / "assets/catalog.json").write_text(json.dumps({
+                "schema_version": 2, "assets": [entry],
+            }), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "render_source"):
+                deck._validate_referenced_assets(root)
+
+            entry["render_source"] = "source_pdf_clip"
+            (root / "assets/catalog.json").write_text(json.dumps({
+                "schema_version": 2, "assets": [entry],
+            }), encoding="utf-8")
+            deck._validate_referenced_assets(root)
 
     def test_bitmap_exception_with_attachment_visual_is_a_delivery_warning(self):
         deck = _load_deck_module()

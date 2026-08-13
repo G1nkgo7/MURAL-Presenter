@@ -33,7 +33,7 @@
 
 1. 看 overview、目标页 PNG 和用户原始要求，一次写完本次修改账本。
 2. 读取目标页计划与 HTML，先备份，再集中修改；同步受影响的逐页计划与讲稿。
-3. 大型示意图需要重做时，静态 ≤7 节点且命中 `layout-patterns.md` §9 配方可使用受控 `svg-diagram svg-allowed`；其他情况用 Canvas 或图片 + HTML 标签，不自由发明大型 SVG。
+3. 大型示意图需要重做时，静态结构/机制/关系可直接使用 `svg-diagram`，不受固定 archetype 白名单限制；自动布局、动态计算和大量长标签用 Canvas + HTML，真实主体/空间隐喻优先图片 + HTML。SVG 同样要复验体量、方向、标签和像素。
 4. 若发现必须改变 Style Lock 或跨页设计系统，停止并返回 `blocked`。
 5. 屏显文案或字体发生变化时运行：
 
@@ -62,7 +62,7 @@
    - 数据页同时核对最终实现和最终像素，而不只核对计划文案：检查 ECharts 的类别、series、图例、标签和值是否完整映射，Vision 必须复述它实际看到的柱/点/行。计划或 JS 有 7 项、像素只有 4 项，或值挂到错误类别下，都属于内容保真硬伤。
    - 把结果写入 `_trace/content-fidelity.md`，包含页码、屏显 claim、证据位置和 verdict；未覆盖、误写或无法追溯即为硬伤。
    - 保真核验只判断事实与引用，不把附件原版式、字号或信息密度当成视觉标准；计划中明确标为概念/氛围/愿景的表达性图片不承担事实证明，不得因附件没有同款图片而删除。
-   - 对照 `attachment_visual_map`：must-show 图片必须在目标页实际引用已登记的 material/derived asset，并在最终像素中可辨认；“已读懂后重画”“借用了附件配色”或讲稿提及不能代替上屏。reuse/reference-only/omit 按计划理由核验，不要求机械展示所有附件。
+   - 对照 `attachment_visual_map`：must-show 图片必须在目标页实际引用已登记的 material/derived asset，并在最终像素中可辨认；reuse/reference-only/omit 按信息价值、清晰度和页面职责核验，不要求机械展示所有附件。论文 Figure 还要核对 catalog 的 `render_source: source_pdf_clip / pixel_size / body_text_fraction`，并确认最终裁图只有视觉主体和必要图内标签，没有页眉、页码、大段正文或长图注。
    - 对照 `grounded-knowledge.md#Attachment priority ledger`：每个 `screen_priority: must_present` 必须映射到逐页 `attachment_priority_ids`，并在最终像素中以屏显文案、图表、Figure 或可见图解直接呈现。讲稿存在、计划写到或内部 ID 出现都不算履约；把 `priority_id / source_locator / target_page / observed_carrier / verdict` 写入 `_trace/content-fidelity.md`。
    - 页面声称展示论文 `Figure/Fig./图 N` 时，核对实际引用资产的 catalog：必须是 `material_figure_crop`，并在像素中完整保留该 Figure 的面板、坐标轴、图例和图内标签；若仍看得到无关摘要/正文、论文页眉页脚、页码或大面积整页边距，属于素材粒度错误，不能以“保持论文原貌”放行。只有计划明确为 `page-facsimile` 时才允许展示整页，且不得把整页误称为 Figure。
    无附件但使用了 Research 时，同样把具体数字、具名产品/人物/案例和外部结论逐页对照 `grounded-knowledge.md`，并把 `content_fidelity` 记为 `pass` 或 `fail`。生成图若承担真实产品或品牌识别，必须在页面明确标为概念示意，否则属于事实呈现硬伤。只有既无附件、又无 Research 和高风险外部事实时才记 `not-applicable`；Review 不自行新增研究。

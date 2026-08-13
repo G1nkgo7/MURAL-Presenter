@@ -533,7 +533,7 @@ _COLLISION_JS = r"""
 
 
 # 布局护栏:补 OVERLAP 只看文字↔文字的盲区,把常见的「下方遮盖 / 装饰压字 /
-# 大型 SVG 媒介策略 / 旧 SVG 过小或标签互撞 / 绕开标准骨架变成可见 warning。report-only。
+# SVG 概念图体量与标签互撞 / 绕开标准骨架变成可见 warning。report-only。
 _LAYOUT_GUARD_JS = r"""
 (() => {
   const root = document.querySelector('.slide') || document.body;
@@ -541,8 +541,7 @@ _LAYOUT_GUARD_JS = r"""
   const DECOR = /decor|deco|doodle|blob|ornament|watermark|sticker|shape|star|sparkle|badge|stamp|seal|aura|glow|texture|pattern/i;
   const OK = /overlap-ok|allow-overlap|scrim|text-plate|overlay|bleed|backdrop/i;
   const SKIP_SVG = /icon|logo|mark|brand|page-no|pageno|qr|spark|decor|deco|watermark|ornament|bleed|vector-asset/i;
-  const CONTROLLED_SVG = /svg-diagram|svg-allowed/i;
-  const out = {decor: [], footer: [], svgLarge: [], svgSmall: [], svgLabel: [], abs: [], customBody: [],
+  const out = {decor: [], footer: [], svgSmall: [], svgLabel: [], abs: [], customBody: [],
                footerPushed: null, widow: [], imgLonely: [], coverOOB: []};
 
   function cls(el){ return ('' + ((el.className && (el.className.baseVal ?? el.className)) || '')).trim(); }
@@ -745,7 +744,7 @@ _LAYOUT_GUARD_JS = r"""
     }
   }
 
-  // 新页面默认不用大型手写 SVG；旧 SVG 继续检查体量与标签互撞。
+  // SVG 可作为静态概念图主媒介；只检查它是否有足够体量、标签是否互撞。
   const bodyRect = (directBody || root).getBoundingClientRect();
   for(const svg of root.querySelectorAll('svg')){
     if(!visible(svg) || declaredOk(svg) || isDecor(svg)) continue;
@@ -758,10 +757,6 @@ _LAYOUT_GUARD_JS = r"""
     const r = svg.getBoundingClientRect();
     const area = r.width * r.height;
     const bodyArea = Math.max(1, bodyRect.width * bodyRect.height);
-    const tooLargeForIcon = r.width > 160 || r.height > 160 || area > 0.06 * bodyArea;
-    if(tooLargeForIcon && !CONTROLLED_SVG.test(c)){
-      out.svgLarge.push({cls: c.slice(0, 32), size: `${Math.round(r.width)}×${Math.round(r.height)}`});
-    }
     const tooSmall = r.width < 0.52 * bodyRect.width || r.height < 0.42 * bodyRect.height || area < 0.28 * bodyArea;
     if(tooSmall){
       out.svgSmall.push({cls: c.slice(0, 32), size: `${Math.round(r.width)}×${Math.round(r.height)}`,
@@ -783,7 +778,6 @@ _LAYOUT_GUARD_JS = r"""
     }
   }
   out.abs = out.abs.slice(0, 6);
-  out.svgLarge = out.svgLarge.slice(0, 6);
   out.svgSmall = out.svgSmall.slice(0, 6);
   out.svgLabel = out.svgLabel.slice(0, 6);
   out.customBody = out.customBody.slice(0, 6);
@@ -1211,7 +1205,7 @@ def _batch_warning_summary(report):
     counts = {key: len(report.get(key) or []) for key in keys}
     layout = report.get("layout") or {}
     counts.update({key: len(layout.get(key) or [])
-                   for key in ("customBody", "abs", "decor", "footer", "svgLarge")})
+                   for key in ("customBody", "abs", "decor", "footer")})
     counts["contrast"] = len((report.get("contrast") or {}).get("low") or [])
     counts["onimg"] = len((report.get("contrast") or {}).get("onimg") or [])
     counts["cjkTypography"] = len(report.get("cjkTypography") or [])
@@ -1701,22 +1695,17 @@ def main():
                             if e.get(k, 0) > 2:
                                 _sides.append("%s越%spx" % (lbl, e[k]))
                         print("   · %s %s" % (e.get("sel"), " ".join(_sides)))
-                large_svg = lg.get("svgLarge") or []
-                if large_svg:
-                    print("⚠ SVG-LARGE: %d 个 SVG 超出 icon/标记尺度且未声明受控 archetype——静态 ≤7 节点的三层/径向/漏斗/循环/金字塔图按 layout-patterns §9 使用 `svg-diagram svg-allowed`；其他大型图改用 Canvas + HTML 或图片 + HTML；准确矢量资产用 `vector-asset`:" % len(large_svg))
-                    for e in large_svg:
-                        print("   · svg class=\"%s\" 大小 %s" % (e.get("cls"), e.get("size")))
                 small = lg.get("svgSmall") or []
                 if small:
-                    print("⚠ SVG-SMALL: %d 个旧式大型 SVG 相对 `.slide-body` 过小——若是概念图,"
-                          "优先迁移为 Canvas/图片 + HTML 标签并让主视觉吃满正文区;若必须保留矢量,放大图框:" % len(small))
+                    print("⚠ SVG-SMALL: %d 个 SVG 概念图相对 `.slide-body` 过小——"
+                          "放大图框、调整 viewBox/布局，让图解成为正文区主视觉:" % len(small))
                     for e in small:
                         print("   · svg class=\"%s\" 大小 %s, body %s"
                               % (e.get("cls"), e.get("size"), e.get("body")))
                 slabel = lg.get("svgLabel") or []
                 if slabel:
-                    print("⚠ SVG-LABEL-OVERLAP: %d 处旧 SVG 标签互相遮盖——优先把准确文字迁到 HTML 层;"
-                          "必须保留时重排标签、扩大节点间距:" % len(slabel))
+                    print("⚠ SVG-LABEL-OVERLAP: %d 处 SVG 标签互相遮盖——"
+                          "重排标签、扩大节点间距或用 leader line 引出:" % len(slabel))
                     for e in slabel:
                         print("   · 「%s」撞「%s」约 %s%%"
                               % (e.get("a"), e.get("b"), e.get("pct")))

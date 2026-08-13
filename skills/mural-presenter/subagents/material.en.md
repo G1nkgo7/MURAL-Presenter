@@ -55,8 +55,8 @@ priority_ledger: complete
 ## Source structure and user constraints
 ## Reusable visual evidence
 - <path> | <actual content/use> | must-show / reusable / reference-only / unreadable
-## Paper Figure locations
-- <Figure 1> | source_page: <N> | page_visual: <page PNG> | crop_box_normalized: <x0,y0,x1,y1> | caption: <text> | panels: <A/B/... or none>
+## Paper Figure locations (main-result, method-critical, or potentially used Figures only)
+- <Figure 1> | source_pdf: <original PDF> | source_page: <N> | page_visual: <page PNG for location only> | visual_subject_box: <x0,y0,x1,y1 excluding body text/long caption> | ocr_json: <scanned-page OCR JSON or none> | caption: <text> | panels: <A/B/... or none> | reuse_value: must-show / candidate / reference-only / omit
 ## Original visual language
 ## Inferences (explicitly labeled)
 ## Missing, conflicting, or uncertain items
@@ -65,10 +65,10 @@ priority_ledger: complete
 ## 4. Figure/OCR hard rules
 
 - Extract, never invent or round values, names, dates, or units.
-- A named `Figure/Fig.` must be localized to its true page boundary. Mark full PDF pages `reference-only`; preserve figure panels, labels, axes, and necessary legend, while excluding page headers, body prose, page numbers, and margins.
-- The only compliant display path for a paper figure or page-internal image is a `deck.py material-figure` derivative with source page and normalized crop box. Do not register a whole page as a normal material image.
+- Screen paper Figures selectively: prioritize main-result/method-overview/user-named Figures, not every Figure in the paper. Preserve panels, labels, axes, and necessary legends while excluding headers, body prose, page numbers, and long captions from `visual_subject_box`.
+- The only compliant display path for a paper Figure or page-internal image is `deck.py material-figure --source-pdf <original> --source-page <N>`, using the page PNG only to select the normalized subject box. Pass `--ocr-json` for scanned pages. If the gate rejects a page-like, body-text-heavy, or under-resolution crop, tighten/reselect it; do not lower the gate or register a whole page as a normal image.
 - `page-facsimile` is allowed only when the original page appearance is itself evidence, with a specific `--facsimile-justification` of at least 20 characters; deck-wide limits still apply.
-- When the attachment image itself is the unique product, person, place, work, overview process, comparison, or evidence requested by the user, mark it `must-show`.
+- Attachment visuals are candidates, not a use-all quota. Mark user-named or uniquely identifying/result-bearing visuals `must-show`; mark low-resolution, text-heavy, redundant, or projection-weak visuals candidate/reference-only/omit while preserving their grounded facts and allowing a better image, SVG/Canvas explanation, or ECharts downstream.
 - Mark every main conclusion, decisive number/relationship, user-named item, and decision-critical evidence as `must_present`. Do not downgrade it because speech can explain it. Reserve `speech_only` for context, examples, transitions, and elaboration.
 - One failed attachment makes the shard `blocked`, while successful siblings are still summarized.
 

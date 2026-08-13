@@ -62,8 +62,8 @@ class AttachmentContractTest(unittest.TestCase):
             root = Path(tmp)
             page = root / "materials/_work/material_01/_raw/paper.pdf_pages/p002.png"
             page.parent.mkdir(parents=True)
-            image = Image.new("RGB", (1000, 1400), "white")
-            ImageDraw.Draw(image).rectangle((100, 350, 900, 850), fill="#c85b3d")
+            image = Image.new("RGB", (2000, 2800), "white")
+            ImageDraw.Draw(image).rectangle((200, 700, 1800, 1700), fill="#c85b3d")
             image.save(page)
 
             run = subprocess.run(
@@ -80,13 +80,15 @@ class AttachmentContractTest(unittest.TestCase):
             output = root / "assets/paper-figure-01.png"
             self.assertTrue(output.is_file())
             with Image.open(output) as cropped:
-                self.assertEqual(cropped.size, (800, 500))
+                self.assertEqual(cropped.size, (1600, 1000))
             catalog = json.loads((root / "assets/catalog.json").read_text(encoding="utf-8"))
             entry = catalog["assets"][0]
             self.assertEqual(entry["derivative_kind"], "material_figure_crop")
             self.assertEqual(entry["material_asset_type"], "figure_crop")
             self.assertEqual(entry["figure_id"], "Figure 1")
             self.assertEqual(entry["source_page"], 2)
+            self.assertFalse(entry["delivery_eligible"])
+            self.assertIn("inspection-only", run.stderr)
 
     def test_named_paper_figure_rejects_near_full_page_crop(self):
         from PIL import Image
@@ -97,7 +99,7 @@ class AttachmentContractTest(unittest.TestCase):
             root = Path(tmp)
             page = root / "materials/_work/material_01/_raw/paper.pdf_pages/p001.png"
             page.parent.mkdir(parents=True)
-            Image.new("RGB", (1000, 1400), "white").save(page)
+            Image.new("RGB", (2000, 2800), "white").save(page)
             run = subprocess.run(
                 [
                     sys.executable, str(script), "material-figure", str(root),
@@ -109,8 +111,228 @@ class AttachmentContractTest(unittest.TestCase):
                 capture_output=True, text=True, check=False,
             )
             self.assertNotEqual(run.returncode, 0)
-            self.assertIn("almost the whole paper page", run.stderr)
+            self.assertIn("covers too much of the paper page", run.stderr)
             self.assertFalse((root / "assets/not-a-figure.png").exists())
+
+    def test_named_paper_figure_rerenders_from_source_pdf_at_delivery_resolution(self):
+        import fitz
+        from PIL import Image
+
+        skill_root = Path(__file__).resolve().parents[3] / "skills/mural-presenter"
+        script = skill_root / "scripts/deck.py"
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            raw = root / "materials/_work/material_01/_raw"
+            raw.mkdir(parents=True)
+            pdf = raw / "paper.pdf"
+            document = fitz.open()
+            pdf_page = document.new_page(width=600, height=800)
+            pdf_page.draw_rect(fitz.Rect(80, 200, 520, 500), color=(0.1, 0.2, 0.8),
+                               fill=(0.8, 0.9, 1.0), width=3)
+            document.save(pdf)
+            document.close()
+
+            page_visual = raw / "paper.pdf_pages/p001.png"
+            page_visual.parent.mkdir(parents=True)
+            document = fitz.open(pdf)
+            document[0].get_pixmap(matrix=fitz.Matrix(2, 2)).save(page_visual)
+            document.close()
+
+            run = subprocess.run(
+                [
+                    sys.executable, str(script), "material-figure", str(root),
+                    "--source", page_visual.relative_to(root).as_posix(),
+                    "--source-pdf", pdf.relative_to(root).as_posix(),
+                    "--path", "assets/paper-main-figure.png",
+                    "--figure-id", "Figure 1", "--source-page", "1",
+                    "--box", "0.133333,0.25,0.866667,0.625",
+                ],
+                capture_output=True, text=True, check=False,
+            )
+            self.assertEqual(run.returncode, 0, run.stderr)
+            output = root / "assets/paper-main-figure.png"
+            with Image.open(output) as cropped:
+                self.assertGreaterEqual(max(cropped.size), 1400)
+                self.assertGreaterEqual(min(cropped.size), 600)
+            catalog = json.loads((root / "assets/catalog.json").read_text(encoding="utf-8"))
+            entry = catalog["assets"][0]
+            self.assertEqual(entry["render_source"], "source_pdf_clip")
+            self.assertTrue(entry["delivery_eligible"])
+            self.assertEqual(entry["source_pdf"], pdf.relative_to(root).as_posix())
+            self.assertGreaterEqual(entry["render_dpi"], 300)
+            with Image.open(output) as cropped:
+                self.assertEqual(entry["pixel_size"], list(cropped.size))
+
+    def test_named_paper_figure_rejects_body_text_heavy_pdf_crop(self):
+        import fitz
+
+        skill_root = Path(__file__).resolve().parents[3] / "skills/mural-presenter"
+        script = skill_root / "scripts/deck.py"
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            raw = root / "materials/_work/material_01/_raw"
+            raw.mkdir(parents=True)
+            pdf = raw / "paper.pdf"
+            document = fitz.open()
+            pdf_page = document.new_page(width=600, height=800)
+            body = ("This paragraph explains experimental settings and related work in detail. " * 18)
+            pdf_page.insert_textbox(fitz.Rect(60, 150, 540, 620), body, fontsize=11, lineheight=1.35)
+            document.save(pdf)
+            document.close()
+            page_visual = raw / "paper.pdf_pages/p001.png"
+            page_visual.parent.mkdir(parents=True)
+            document = fitz.open(pdf)
+            document[0].get_pixmap(matrix=fitz.Matrix(2, 2)).save(page_visual)
+            document.close()
+
+            run = subprocess.run(
+                [
+                    sys.executable, str(script), "material-figure", str(root),
+                    "--source", page_visual.relative_to(root).as_posix(),
+                    "--source-pdf", pdf.relative_to(root).as_posix(),
+                    "--path", "assets/body-text.png", "--figure-id", "Figure 1",
+                    "--source-page", "1", "--box", "0.1,0.18,0.9,0.8",
+                ],
+                capture_output=True, text=True, check=False,
+            )
+            self.assertNotEqual(run.returncode, 0)
+            self.assertIn("too much paragraph/caption text", run.stderr)
+            self.assertFalse((root / "assets/body-text.png").exists())
+
+    def test_named_paper_figure_maps_display_box_on_rotated_pdf(self):
+        import fitz
+        from PIL import Image
+
+        skill_root = Path(__file__).resolve().parents[3] / "skills/mural-presenter"
+        script = skill_root / "scripts/deck.py"
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            raw = root / "materials/_work/material_01/_raw"
+            raw.mkdir(parents=True)
+            pdf = raw / "rotated-paper.pdf"
+            document = fitz.open()
+            pdf_page = document.new_page(width=600, height=800)
+            subject = fitz.Rect(100, 200, 500, 500)
+            pdf_page.draw_rect(subject, color=(0, 0, 1), fill=(0.05, 0.2, 0.95))
+            pdf_page.set_rotation(90)
+            document.save(pdf)
+            document.close()
+
+            page_visual = raw / "rotated-paper.pdf_pages/p001.png"
+            page_visual.parent.mkdir(parents=True)
+            document = fitz.open(pdf)
+            page = document[0]
+            display_subject = subject * page.rotation_matrix
+            display_page = page.rect
+            box = ",".join(str(value) for value in (
+                display_subject.x0 / display_page.width,
+                display_subject.y0 / display_page.height,
+                display_subject.x1 / display_page.width,
+                display_subject.y1 / display_page.height,
+            ))
+            page.get_pixmap(matrix=fitz.Matrix(2, 2)).save(page_visual)
+            document.close()
+
+            run = subprocess.run(
+                [
+                    sys.executable, str(script), "material-figure", str(root),
+                    "--source", page_visual.relative_to(root).as_posix(),
+                    "--source-pdf", pdf.relative_to(root).as_posix(),
+                    "--path", "assets/rotated-main-figure.png",
+                    "--figure-id", "Figure 1", "--source-page", "1", "--box", box,
+                ],
+                capture_output=True, text=True, check=False,
+            )
+            self.assertEqual(run.returncode, 0, run.stderr)
+            with Image.open(root / "assets/rotated-main-figure.png") as cropped:
+                self.assertGreaterEqual(max(cropped.size), 1400)
+                self.assertLess(cropped.width, cropped.height)
+                self.assertAlmostEqual(cropped.width / cropped.height, 0.75, delta=0.03)
+                center = cropped.convert("RGB").getpixel((cropped.width // 2, cropped.height // 2))
+                self.assertGreater(center[2], 180)
+                self.assertLess(center[0], 80)
+
+    def test_named_paper_figure_rejects_low_resolution_page_raster(self):
+        from PIL import Image
+
+        skill_root = Path(__file__).resolve().parents[3] / "skills/mural-presenter"
+        script = skill_root / "scripts/deck.py"
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            page = root / "materials/_work/material_01/_raw/paper.pdf_pages/p001.png"
+            page.parent.mkdir(parents=True)
+            Image.new("RGB", (900, 1200), "white").save(page)
+            run = subprocess.run(
+                [
+                    sys.executable, str(script), "material-figure", str(root),
+                    "--source", page.relative_to(root).as_posix(),
+                    "--path", "assets/low-resolution.png", "--figure-id", "Figure 1",
+                    "--source-page", "1", "--box", "0.1,0.2,0.9,0.65",
+                    "--min-long-edge", "1", "--min-short-edge", "1",
+                ],
+                capture_output=True, text=True, check=False,
+            )
+            self.assertNotEqual(run.returncode, 0)
+            self.assertIn("resolution is insufficient", run.stderr)
+            self.assertFalse((root / "assets/low-resolution.png").exists())
+
+    def test_named_paper_figure_cannot_relax_page_fraction_gate(self):
+        from PIL import Image
+
+        skill_root = Path(__file__).resolve().parents[3] / "skills/mural-presenter"
+        script = skill_root / "scripts/deck.py"
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            page = root / "materials/_work/material_01/_raw/paper.pdf_pages/p001.png"
+            page.parent.mkdir(parents=True)
+            Image.new("RGB", (2000, 2800), "white").save(page)
+            run = subprocess.run(
+                [
+                    sys.executable, str(script), "material-figure", str(root),
+                    "--source", page.relative_to(root).as_posix(),
+                    "--path", "assets/too-large.png", "--figure-id", "Figure 1",
+                    "--source-page", "1", "--box", "0.04,0.04,0.96,0.96",
+                    "--max-page-fraction", "0.95",
+                ],
+                capture_output=True, text=True, check=False,
+            )
+            self.assertNotEqual(run.returncode, 0)
+            self.assertIn("covers too much of the paper page", run.stderr)
+
+    def test_named_paper_figure_rejects_ocr_paragraph_made_of_short_lines(self):
+        from PIL import Image
+
+        skill_root = Path(__file__).resolve().parents[3] / "skills/mural-presenter"
+        script = skill_root / "scripts/deck.py"
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            page = root / "materials/_work/material_01/_raw/paper.pdf_pages/p001.png"
+            page.parent.mkdir(parents=True)
+            Image.new("RGB", (2000, 2800), "white").save(page)
+            ocr = root / "materials/_work/material_01/_ocr/paper.pdf/page_001.json"
+            ocr.parent.mkdir(parents=True)
+            blocks = []
+            for row in range(12):
+                # OCR coordinates are recorded at half the current page-raster scale.
+                top = 310 + row * 32.5
+                blocks.append({
+                    "text": f"Short OCR line {row} with experimental explanation and supporting details.",
+                    "box": [[125, top], [875, top], [875, top + 24], [125, top + 24]],
+                })
+            ocr.write_text(json.dumps({"image_size": [1000, 1400], "blocks": blocks}), encoding="utf-8")
+            run = subprocess.run(
+                [
+                    sys.executable, str(script), "material-figure", str(root),
+                    "--source", page.relative_to(root).as_posix(),
+                    "--ocr-json", ocr.relative_to(root).as_posix(),
+                    "--path", "assets/ocr-paragraph.png", "--figure-id", "Figure 2",
+                    "--source-page", "1", "--box", "0.1,0.2,0.9,0.55",
+                ],
+                capture_output=True, text=True, check=False,
+            )
+            self.assertNotEqual(run.returncode, 0)
+            self.assertIn("large aggregate text region", run.stderr)
+            self.assertFalse((root / "assets/ocr-paragraph.png").exists())
 
     def test_pdf_page_visual_cannot_be_registered_as_a_generic_material_image(self):
         from PIL import Image

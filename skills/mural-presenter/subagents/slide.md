@@ -29,7 +29,7 @@ PPT 页面和讲稿都是**给观众看/听的成品**，只放观众需要的�
 - `base.css`；
 - 每页 `Reference route` 命中的章节；
 
-不扫描全部 reference，不读取组外页面。任何选中的文件或章节若出现续读 offset 或截断提示，必须续读到结束。逐页计划标记附件图片为 `must-show` 时必须实际引用计划给出的 material/derived asset；不能只提取其中信息后用 CSS、SVG 或重绘图替代原图。
+不扫描全部 reference，不读取组外页面。任何选中的文件或章节若出现续读 offset 或截断提示，必须续读到结束。逐页计划标记附件图片为 `must-show` 时必须实际引用计划给出的 material/derived asset；不能只提取其中信息后用 CSS、SVG 或重绘图替代原图。未标 must-show 的附件图不要求机械使用；优先采用计划已选择的最佳真实/生成图或解释媒介。论文 `figure-crop` 只能引用 catalog 中通过 `source_pdf_clip / pixel_size / body_text_fraction` 门的 ready asset。
 
 逐页计划把素材声明为论文 `figure-crop` 时，只能引用 catalog 中 `derivative_kind: material_figure_crop` 的正式资产。不得把整页论文 PNG 缩进图片框，再用 `object-fit/object-position/overflow:hidden` 假装已裁出 Figure；需要页面原貌时必须由计划明确声明 `page-facsimile`，且页面文案不能把它误标为 Figure 本体。
 
@@ -91,9 +91,9 @@ PPT 页面和讲稿都是**给观众看/听的成品**，只放观众需要的�
 - 真实主体 → 本地真实图片；
 - 氛围、隐喻、故事画面 → 生成图或位图；
 - 数据 → ECharts；
-- 静态 ≤7 节点且命中三层/径向/漏斗/循环/金字塔 → `layout-patterns.md` §9 受控 SVG；
-- 高节点/动态流程、架构、机制、关系 → Canvas 几何 + HTML 标签；空间隐喻 → 图片 + HTML 标注；
-- 其他 SVG → icon、logo、箭头、标记、小装饰或准确矢量资产。
+- 静态结构、机制、关系、流程、层级 → `layout-patterns.md` §9 的大型 `svg-diagram`；五种配方是起点，不是白名单；
+- 自动布局、动态计算或大量长标签 → Canvas 几何 + HTML 标签；空间隐喻 → 图片 + HTML 标注；
+- 真实人物、产品、论文 Figure、实验影像、作品或场景 → 图片优先，不以 SVG 重画；icon、logo、箭头和标记仍可用小 SVG。
 
 数据页在动手前读取 `references/design-rules.md` §4，并使用 Deck 已准备的 `../assets/vendor/echarts.min.js`。不得猜测不存在的本地路径，也不得用服务端渲染兜底代替可携带交付。
 
@@ -103,7 +103,7 @@ PPT 页面和讲稿都是**给观众看/听的成品**，只放观众需要的�
 
 计划要求主体透明时，只能引用 Image 已验收并回填的 `*-cutout.png`。不得在 Slide 阶段自行抠图，也不得用 CSS `mask`、`mix-blend-mode`、`multiply`、白底遮盖或同色背景伪装透明；透明资产缺失时返回 `blocked`，不要把普通 RGB 图塞进透明元素槽位。
 
-Canvas 必须显式设置内部/CSS 尺寸并按 DPR 缩放，从 token 取色，几何与 HTML 标签共享坐标，等待字体就绪后一次绘制最终态。受控 SVG 必须直接复用 `layout-patterns.md` §9 的 `viewBox`、坐标配方、绘制顺序和 `svg-diagram svg-allowed` 声明；不命中五类配方时不得自由发明大型 SVG。
+Canvas 必须显式设置内部/CSS 尺寸并按 DPR 缩放，从 token 取色，几何与 HTML 标签共享坐标，等待字体就绪后一次绘制最终态。SVG 使用 `svg-diagram`、贴合内容的 `viewBox`、token、明确方向和“先线/面、后节点、最后文字”的绘制顺序；可复用 §9 配方，也可按 case 设计新结构，最终以 `SVG-SMALL`、`SVG-LABEL-OVERLAP` 与新鲜像素复验，不以 archetype 判合法性。
 
 ## 6. 质量门
 

@@ -27,7 +27,7 @@ Read in full:
 - `base.css`;
 - only the reference sections routed by those plans.
 
-Do not scan all references or read pages outside the group. A `must-show` attachment must actually appear through its frozen asset path. A paper `figure-crop` may use only a ready catalog asset with `derivative_kind: material_figure_crop`; do not place a full page in a clipped box. `page-facsimile` requires explicit planning and must not be labeled as the Figure itself.
+Do not scan all references or read pages outside the group. A `must-show` attachment must actually appear through its frozen asset path; other attachment visuals are selective rather than a use-all quota. A paper `figure-crop` may use only a ready catalog asset with `derivative_kind: material_figure_crop`, `render_source: source_pdf_clip`, delivery pixel size, and an accepted body-text fraction; do not place a full page in a clipped box. `page-facsimile` requires explicit planning and must not be labeled as the Figure itself.
 
 You have no web, search, or image-generation authority. Use only ready `assets/catalog.json` files whose stable `asset_id` and path are frozen into your page plans. A missing asset or crop contract returns `blocked`; do not replace it with an SVG, colored box, placeholder, or guessed path.
 
@@ -54,7 +54,7 @@ Write only assigned `slides/slide_NN.html` and canonical `renders/slide_NN.png`.
 
 - Normal pages use `.slide-title`, `.slide-body`, `.slide-footer`; covers use `.slide--cover`; closings use `.slide--cover.slide--closing`; section pages use `.slide.slide--cover.slide--section`; full-bleed content uses `.slide--bleed`. Never invent `.slide--divider` or `.slide--transition`.
 - Cover, divider, and closing pages use full-canvas special composition. A closing normally has one conclusion, at most one short support line, and one visual anchor—not three takeaway cards.
-- Real subject → real image; atmosphere/story → generated bitmap; data → ECharts; static ≤7-node three-layer/radial/funnel/cycle/pyramid → controlled `svg-diagram svg-allowed`; higher-node/dynamic mechanism → Canvas plus HTML; other SVG → small support or accurate vector assets.
+- Real subject/paper Figure/experimental image → image; atmosphere/story → generated bitmap; data → ECharts; static structures/mechanisms/relationships → large `svg-diagram` without an archetype whitelist; auto-layout/dynamic/long-label mechanisms → Canvas plus HTML; icons/logos/marks → small SVG.
 - A planned bitmap is a compositional layer, not a token thumbnail. Use meaningful hero, split, crop, evidence, or image-group treatment.
 - `subject-only`/cutout uses `contain`. `framed-scene`/`full-bleed` uses `cover` only when the crop contract permits, with explicit `object-position`.
 - Preserve semantically meaningful source color. No blanket grayscale/duotone without a specific user or Style Lock reason that preserves identity/evidence.

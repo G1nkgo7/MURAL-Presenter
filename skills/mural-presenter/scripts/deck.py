@@ -6,6 +6,7 @@
     python deck.py prepare ROOT --expected N
     python deck.py asset-register ROOT --path assets/file.png --origin material
     python deck.py material-figure ROOT --source materials/_work/material_01/_raw/paper.pdf_pages/p002.png \
+      --source-pdf materials/_work/material_01/_raw/paper.pdf \
       --path assets/paper-figure-01.png --figure-id "Figure 1" --source-page 2 \
       --box 0.12,0.34,0.88,0.72
     python deck.py asset-assign ROOT --path assets/file.png --asset-id cover-hero --group-id hero
@@ -582,12 +583,20 @@ def _register_asset(
 def _material_figure_crop(
     root: Path,
     source_relative: str,
+    source_pdf_relative: str | None,
+    ocr_json_relative: str | None,
     output_relative: str,
     crop_box: str,
     figure_id: str,
     source_page: int | None,
     caption_mode: str,
     padding: int,
+    dpi: int,
+    min_long_edge: int,
+    min_short_edge: int,
+    max_long_edge: int,
+    max_page_fraction: float,
+    max_body_text_fraction: float,
 ) -> None:
     """Crop one named paper figure from a rendered material page and register provenance.
 
@@ -620,6 +629,20 @@ def _material_figure_crop(
     if x1 <= x0 or y1 <= y0:
         raise ValueError("--box requires x1>x0 and y1>y0")
     padding = max(0, int(padding))
+    # These CLI controls may tighten the delivery contract, never relax it. The
+    # model must not be able to bypass the deterministic gate with permissive flags.
+    dpi = max(300, int(dpi))
+    min_long_edge = max(1400, int(min_long_edge))
+    min_short_edge = max(600, int(min_short_edge))
+    max_long_edge = min(4096, max(min_long_edge, int(max_long_edge)))
+    max_page_fraction = min(0.78, float(max_page_fraction))
+    max_body_text_fraction = min(0.18, float(max_body_text_fraction))
+    if min_long_edge > 4096 or min_short_edge > 4096:
+        raise ValueError("minimum Figure edges cannot exceed the 4096px delivery cap")
+    if not 0.05 <= max_page_fraction:
+        raise ValueError("--max-page-fraction must be at least 0.05")
+    if not 0.0 <= max_body_text_fraction:
+        raise ValueError("--max-body-text-fraction cannot be negative")
     figure_id = figure_id.strip()
     if not figure_id:
         raise ValueError("--figure-id must be non-empty")
@@ -635,12 +658,190 @@ def _material_figure_crop(
         if crop_width < 64 or crop_height < 64:
             raise ValueError("figure crop is too small; inspect the page and provide a valid bounding box")
         page_fraction = (crop_width * crop_height) / float(width * height)
-        if page_fraction >= 0.92:
+        if page_fraction >= max_page_fraction:
             raise ValueError(
-                "figure crop still covers almost the whole paper page; provide a tighter Figure box. "
+                "figure crop covers too much of the paper page; provide a tighter visual-subject box. "
                 "Use a separately declared page facsimile only when the page itself is the intended evidence."
             )
-        cropped = page_image.crop((left, top, right, bottom)).convert("RGBA")
+        padded_normalized = [left / width, top / height, right / width, bottom / height]
+        raster_crop = page_image.crop((left, top, right, bottom)).convert("RGBA")
+
+    def _intersection_fraction(blocks, box, body_only=False):
+        bx0, by0, bx1, by1 = box
+        crop_area = max(1.0, (bx1 - bx0) * (by1 - by0))
+        total = 0.0
+        chars = 0
+        for item in blocks:
+            ix0, iy0, ix1, iy1 = item["box"]
+            overlap_w = max(0.0, min(bx1, ix1) - max(bx0, ix0))
+            overlap_h = max(0.0, min(by1, iy1) - max(by0, iy0))
+            if overlap_w <= 0 or overlap_h <= 0:
+                continue
+            compact = re.sub(r"\s+", "", item.get("text") or "")
+            line_count = max(1, (item.get("text") or "").count("\n") + 1)
+            body_like = len(compact) >= 80 or line_count >= 3
+            if body_only and not body_like:
+                continue
+            total += overlap_w * overlap_h
+            chars += len(compact)
+        return min(1.0, total / crop_area), chars
+
+    pdf_text_blocks = []
+    ocr_text_blocks = []
+    text_gate_sources = []
+    pdf_source = None
+    pdf_page = None
+    cropped = None
+    render_source = "page_raster"
+    render_dpi = None
+    source_rotation = 0
+    if source_pdf_relative:
+        pdf_value = Path(source_pdf_relative)
+        if pdf_value.is_absolute() or not pdf_value.as_posix().startswith("materials/"):
+            raise ValueError("--source-pdf must be workspace-relative under materials/")
+        pdf_source = (root / pdf_value).resolve()
+        if root.resolve() not in pdf_source.parents or not pdf_source.is_file():
+            raise ValueError(f"source PDF does not exist: {source_pdf_relative}")
+        if not source_page or source_page < 1:
+            raise ValueError("--source-page is required with --source-pdf")
+        try:
+            import fitz
+        except Exception as exc:
+            raise ValueError(f"PyMuPDF is required for high-resolution PDF Figure crops: {exc}") from exc
+        pdf_document = fitz.open(pdf_source)
+        try:
+            if source_page > pdf_document.page_count:
+                raise ValueError(
+                    f"--source-page {source_page} exceeds PDF page count {pdf_document.page_count}"
+                )
+            pdf_page = pdf_document[source_page - 1]
+            source_rotation = int(pdf_page.rotation or 0) % 360
+            # Agent boxes are selected on the displayed page raster, which includes
+            # /Rotate. PyMuPDF text/clip coordinates are unrotated, so map the
+            # displayed rectangle back through derotation_matrix before both text
+            # extraction and get_pixmap.
+            display_rect = pdf_page.rect
+            px0, py0, px1, py1 = padded_normalized
+            display_clip = fitz.Rect(
+                display_rect.x0 + px0 * display_rect.width,
+                display_rect.y0 + py0 * display_rect.height,
+                display_rect.x0 + px1 * display_rect.width,
+                display_rect.y0 + py1 * display_rect.height,
+            )
+            pdf_clip = display_clip * pdf_page.derotation_matrix
+            for raw in pdf_page.get_text("blocks", clip=pdf_clip) or []:
+                if len(raw) < 5 or (len(raw) >= 7 and raw[6] != 0):
+                    continue
+                value = str(raw[4] or "").strip()
+                if value:
+                    pdf_text_blocks.append({
+                        "box": [float(raw[0]), float(raw[1]), float(raw[2]), float(raw[3])],
+                        "text": value,
+                    })
+            if pdf_text_blocks:
+                text_gate_sources.append("pdf_text_layer")
+            base_scale = dpi / 72.0
+            required_scale = max(
+                base_scale,
+                min_long_edge / max(pdf_clip.width, pdf_clip.height),
+                min_short_edge / max(1.0, min(pdf_clip.width, pdf_clip.height)),
+            )
+            if max(pdf_clip.width, pdf_clip.height) * required_scale > max_long_edge:
+                required_scale = max_long_edge / max(pdf_clip.width, pdf_clip.height)
+            pixmap = pdf_page.get_pixmap(
+                matrix=fitz.Matrix(required_scale, required_scale),
+                clip=pdf_clip,
+                alpha=True,
+            )
+            mode = "RGBA" if pixmap.n == 4 else "RGB"
+            cropped = Image.frombytes(
+                mode, (pixmap.width, pixmap.height), pixmap.samples
+            ).convert("RGBA")
+            if source_rotation:
+                cropped = cropped.rotate(-source_rotation, expand=True)
+            render_source = "source_pdf_clip"
+            render_dpi = round(required_scale * 72, 2)
+        finally:
+            pdf_document.close()
+
+    if ocr_json_relative:
+        ocr_value = Path(ocr_json_relative)
+        if ocr_value.is_absolute() or not ocr_value.as_posix().startswith("materials/"):
+            raise ValueError("--ocr-json must be workspace-relative under materials/")
+        ocr_path = (root / ocr_value).resolve()
+        if root.resolve() not in ocr_path.parents or not ocr_path.is_file():
+            raise ValueError(f"OCR JSON does not exist: {ocr_json_relative}")
+        payload = json.loads(ocr_path.read_text(encoding="utf-8"))
+        ocr_size = payload.get("image_size")
+        if (
+            isinstance(ocr_size, list) and len(ocr_size) == 2
+            and float(ocr_size[0]) > 0 and float(ocr_size[1]) > 0
+        ):
+            ocr_scale_x = width / float(ocr_size[0])
+            ocr_scale_y = height / float(ocr_size[1])
+            ocr_gate_source = "ocr_scaled_to_page_raster"
+        else:
+            # Backward-compatible legacy OCR files were produced from this exact
+            # page PNG but did not persist dimensions.
+            ocr_scale_x = ocr_scale_y = 1.0
+            ocr_gate_source = "ocr_legacy_assumed_page_raster"
+        for raw in payload.get("blocks") or []:
+            points = raw.get("box") or []
+            if len(points) < 4:
+                continue
+            xs = [float(point[0]) * ocr_scale_x for point in points]
+            ys = [float(point[1]) * ocr_scale_y for point in points]
+            ocr_text_blocks.append({"box": [min(xs), min(ys), max(xs), max(ys)],
+                                    "text": str(raw.get("text") or "")})
+        if payload.get("blocks"):
+            text_gate_sources.append(ocr_gate_source)
+
+    if pdf_page is not None and pdf_text_blocks:
+        gate_box = [pdf_clip.x0, pdf_clip.y0, pdf_clip.x1, pdf_clip.y1]
+        all_text_fraction, text_chars = _intersection_fraction(pdf_text_blocks, gate_box)
+        body_text_fraction, body_text_chars = _intersection_fraction(pdf_text_blocks, gate_box, body_only=True)
+    else:
+        gate_box = [left, top, right, bottom]
+        all_text_fraction, text_chars = _intersection_fraction(ocr_text_blocks, gate_box)
+        body_text_fraction, body_text_chars = _intersection_fraction(ocr_text_blocks, gate_box, body_only=True)
+
+    # `caption-mode included` records a deliberate short-caption choice; it does
+    # not weaken the no-paragraph contract or permit a long caption block.
+    allowed_body_fraction = max_body_text_fraction
+    if body_text_fraction > allowed_body_fraction:
+        raise ValueError(
+            "figure crop contains too much paragraph/caption text "
+            f"({body_text_fraction:.3f}>{allowed_body_fraction:.3f}); tighten the box to the visual subject "
+            "and recreate concise captions in HTML"
+        )
+    # OCR engines commonly emit one short block per text line, so no individual
+    # block looks paragraph-like. Catch the aggregate case without penalizing
+    # ordinary chart labels: it must be both text-area-heavy and character-heavy.
+    aggregate_text_limit = max(0.35, allowed_body_fraction * 1.75)
+    if all_text_fraction > aggregate_text_limit and text_chars >= 240:
+        raise ValueError(
+            "figure crop contains a large aggregate text region "
+            f"({all_text_fraction:.3f}>{aggregate_text_limit:.3f}, {text_chars} chars); "
+            "tighten the box to the visual subject and recreate explanatory prose in HTML"
+        )
+
+    if cropped is None:
+        cropped = raster_crop
+        print(
+            "material-figure: page-raster crop is inspection-only and cannot be delivered; "
+            "rerun with --source-pdf and --source-page",
+            file=sys.stderr,
+        )
+
+    output_width, output_height = cropped.size
+    long_edge = max(output_width, output_height)
+    short_edge = min(output_width, output_height)
+    if long_edge < min_long_edge or short_edge < min_short_edge:
+        raise ValueError(
+            "figure crop resolution is insufficient "
+            f"({output_width}x{output_height}; require long>={min_long_edge}, short>={min_short_edge}). "
+            "Pass --source-pdf with --source-page to render the Figure directly from the original PDF."
+        )
 
     output.parent.mkdir(parents=True, exist_ok=True)
     _save_image_atomic(output, cropped)
@@ -650,6 +851,8 @@ def _material_figure_crop(
         "origin": "derived",
         "source_path": source_value.as_posix(),
         "parent_asset": source_value.as_posix(),
+        "source_pdf": Path(source_pdf_relative).as_posix() if source_pdf_relative else None,
+        "ocr_json": Path(ocr_json_relative).as_posix() if ocr_json_relative else None,
         "derivative_kind": "material_figure_crop",
         "material_asset_type": "figure_crop",
         "figure_id": figure_id,
@@ -658,6 +861,16 @@ def _material_figure_crop(
         "crop_box_pixels": [left, top, right, bottom],
         "page_fraction": round(page_fraction, 6),
         "caption_mode": caption_mode,
+        "render_source": render_source,
+        "delivery_eligible": render_source == "source_pdf_clip",
+        "render_dpi": render_dpi,
+        "source_rotation": source_rotation,
+        "pixel_size": [output_width, output_height],
+        "text_gate_sources": text_gate_sources,
+        "all_text_fraction": round(all_text_fraction, 6),
+        "body_text_fraction": round(body_text_fraction, 6),
+        "text_chars": text_chars,
+        "body_text_chars": body_text_chars,
         "status": "unassigned",
     }
     catalog["assets"] = [
@@ -671,8 +884,11 @@ def _material_figure_crop(
         "figure_id": figure_id,
         "source": source_value.as_posix(),
         "source_page": source_page,
-        "size": [crop_width, crop_height],
+        "size": [output_width, output_height],
         "page_fraction": round(page_fraction, 6),
+        "render_source": render_source,
+        "delivery_eligible": render_source == "source_pdf_clip",
+        "body_text_fraction": round(body_text_fraction, 6),
     }, ensure_ascii=False))
 
 
@@ -893,6 +1109,57 @@ def _validate_facsimile_usage(referenced: set[str], recorded: dict[str, dict]) -
         )
 
 
+def _validate_figure_crop_usage(root: Path, referenced: set[str], recorded: dict[str, dict]) -> None:
+    """Recheck paper Figure provenance and quality at delivery, not only at crop time."""
+    failures = []
+    for path in sorted(referenced):
+        entry = recorded.get(path) or {}
+        if entry.get("material_asset_type") != "figure_crop":
+            continue
+        reasons = []
+        if entry.get("derivative_kind") != "material_figure_crop":
+            reasons.append("derivative_kind")
+        if entry.get("render_source") != "source_pdf_clip":
+            reasons.append("render_source")
+        pixels = entry.get("pixel_size")
+        if (
+            not isinstance(pixels, list) or len(pixels) != 2
+            or min(int(value) for value in pixels) < 600
+            or max(int(value) for value in pixels) < 1400
+        ):
+            reasons.append("pixel_size")
+        try:
+            body_fraction = float(entry.get("body_text_fraction"))
+        except (TypeError, ValueError):
+            body_fraction = 1.0
+        if body_fraction > 0.18:
+            reasons.append("body_text_fraction")
+        try:
+            page_fraction = float(entry.get("page_fraction"))
+        except (TypeError, ValueError):
+            page_fraction = 1.0
+        if page_fraction >= 0.78:
+            reasons.append("page_fraction")
+        source_pdf = Path(str(entry.get("source_pdf") or ""))
+        pdf_path = (root / source_pdf).resolve()
+        if (
+            not source_pdf.as_posix().startswith("materials/")
+            or root.resolve() not in pdf_path.parents
+            or not pdf_path.is_file()
+        ):
+            reasons.append("source_pdf")
+        if entry.get("status") != "ready":
+            reasons.append("status")
+        if reasons:
+            failures.append(f"{path} ({', '.join(reasons)})")
+    if failures:
+        raise ValueError(
+            "referenced paper Figure crops fail the delivery contract: "
+            + "; ".join(failures)
+            + ". Recreate with material-figure from the original PDF and complete asset-review."
+        )
+
+
 def _attachment_visual_entries(root: Path) -> list[dict]:
     entries = []
     for path in (root / "materials").glob("**/catalog.json"):
@@ -977,6 +1244,7 @@ def _validate_referenced_assets(root: Path) -> None:
     if absent:
         raise ValueError("referenced raster assets are missing: " + ", ".join(absent))
     _validate_facsimile_usage(referenced, recorded)
+    _validate_figure_crop_usage(root, referenced, recorded)
 
 
 def _sha256_path(path: Path) -> str:
@@ -1347,6 +1615,14 @@ def main(argv=None):
             command.add_argument("--group-id", required=True)
         if name == "material-figure":
             command.add_argument("--source", required=True)
+            command.add_argument(
+                "--source-pdf",
+                help="original workspace-relative PDF; preferred for high-resolution Figure rendering",
+            )
+            command.add_argument(
+                "--ocr-json",
+                help="optional page OCR JSON used to reject body-text-heavy crops on scanned PDFs",
+            )
             command.add_argument("--path", required=True)
             command.add_argument("--box", required=True,
                                  help="normalized x0,y0,x1,y1 Figure bounds on the page image")
@@ -1355,6 +1631,12 @@ def main(argv=None):
             command.add_argument("--caption-mode", choices=("excluded", "included", "separate"),
                                  default="excluded")
             command.add_argument("--padding", type=int, default=0)
+            command.add_argument("--dpi", type=int, default=300)
+            command.add_argument("--min-long-edge", type=int, default=1400)
+            command.add_argument("--min-short-edge", type=int, default=600)
+            command.add_argument("--max-long-edge", type=int, default=4096)
+            command.add_argument("--max-page-fraction", type=float, default=0.78)
+            command.add_argument("--max-body-text-fraction", type=float, default=0.18)
         if name == "asset-contact":
             command.add_argument("--group-id", required=True)
         if name == "asset-review":
@@ -1383,8 +1665,11 @@ def main(argv=None):
             _assign_asset(root, args.path, args.asset_id, args.group_id)
         elif args.command == "material-figure":
             _material_figure_crop(
-                root, args.source, args.path, args.box, args.figure_id,
-                args.source_page, args.caption_mode, args.padding,
+                root, args.source, args.source_pdf, args.ocr_json, args.path,
+                args.box, args.figure_id, args.source_page, args.caption_mode,
+                args.padding, args.dpi, args.min_long_edge, args.min_short_edge,
+                args.max_long_edge, args.max_page_fraction,
+                args.max_body_text_fraction,
             )
         elif args.command == "asset-contact":
             _build_asset_contact(root, args.group_id)

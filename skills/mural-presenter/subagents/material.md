@@ -69,8 +69,8 @@ goal 会给出：`assignment_id`、deck 主题、确切附件路径、独立工�
    ## 材料结构与用户约束
    ## 可复用视觉证据
    - <页图/内嵌图路径> | <真实内容与用途> | must-show / reusable / reference-only / unreadable
-   ## 论文 Figure 定位（存在命名 Figure 时）
-   - <Figure 1> | source_page: <页码> | page_visual: <整页 PNG> | crop_box_normalized: <x0,y0,x1,y1> | caption: <原始图注或摘要> | panels: <A/B/... 或 none>
+   ## 论文 Figure 定位（只列主结果、方法关键图或计划可能使用的命名 Figure）
+   - <Figure 1> | source_pdf: <原 PDF> | source_page: <页码> | page_visual: <整页 PNG，仅定位> | visual_subject_box: <x0,y0,x1,y1，不含正文/长图注> | ocr_json: <扫描页 OCR JSON 或 none> | caption: <原始图注或摘要> | panels: <A/B/... 或 none> | reuse_value: must-show / candidate / reference-only / omit
    ## 原材料视觉语言
    - <版式、色彩、图表或图像处理的客观描述；只描述，不决定新 deck 必须沿用>
    ## 推断（必须显式标注）
@@ -84,10 +84,10 @@ goal 会给出：`assignment_id`、deck 主题、确切附件路径、独立工�
 - 材料与用户 brief 冲突时两边都保留并标明冲突。
 - 图片必须真看；解析失败必须如实记录。
 - 同一未变化页面最多用于完整阅读与一次确认；需要核对局部时生成明确裁图再看，不反复查看同一整页，也不要求父级读取本角色的完整轨迹。
-- 论文中的 `Figure/Fig./图 N` 必须先定位到页内边界。整页 PDF 光栅图只标 `reference-only`；除非用户明确要求展示论文页面原貌，不得把含页眉、正文、页码和大面积页边距的整页标成该 Figure 的 `must-show/reusable`。Figure 定位应保留完整面板、图内标签与必要图例；长篇正文和论文页眉页脚不属于 Figure。无法可靠判断边界时标 `unreadable` 或请求后续 Image 复核，不猜坐标。
-- 需要把论文图、产品图或页内照片上屏时，唯一合规路径是使用 `deck.py material-figure` 从 `page_context` 生成带 `crop_box` 和来源页的派生资产；禁止直接用 `asset-register --origin material` 把整页 PNG 登记成普通图片。只有页面原貌本身就是证据时才可登记 `page-facsimile`，并必须提供不少于 20 个字符的 `--facsimile-justification`；全册整页翻拍数量仍受交付门限制。
+- 论文中的 `Figure/Fig./图 N` 先按 deck 论点筛选：优先定位摘要/结论反复引用的主结果图、方法总览与用户点名图，不要求枚举或展示论文全部 Figure。整页 PDF 光栅图只标 `reference-only`；Figure 的 `visual_subject_box` 保留完整面板、坐标轴、图内标签与必要图例，但默认排除长图注、正文、页眉页脚和页码。无法可靠判断主体边界时标 `unreadable` 或请求 Image 复核，不用“大框先裁下来”逃避定位。
+- 需要把论文图或页内照片上屏时，唯一合规路径是使用 `deck.py material-figure --source-pdf <原 PDF> --source-page <N>` 直接从原 PDF 高分辨率重渲；整页 PNG 只负责选框。扫描 PDF 同时提供该页 `--ocr-json`，让脚本拒绝正文占比过高的裁区。命令拒绝 page-like、低分辨率和大段文字裁图后，回到页图收紧 `visual_subject_box`，不能降低质量门或改走整页截图。只有页面原貌本身就是证据时才可登记 `page-facsimile`。
 - 若工具明确提示已进入停滞收口，立即停止继续读取或看图；用现有证据写正式分片摘要，并按实际覆盖返回 `partial` 或 `blocked` 合同，不能无文本退出。
-- 当用户明确围绕某张附件图制作、图片本身就是产品/人物/地点/作品/流程总图/前后对比或不可替代的证据时，标为 `must-show`；不要因为后续可以重绘、概括或借用配色，就把原图降成只读参考。复杂流程图可以“原图总览一次 + 后续分步重绘”，两者并不冲突。
+- 附件图是候选证据，不是必须全用的配额。用户点名，或图片本身是不可替代的产品/人物/地点/作品/主结果 Figure/流程总图/前后对比时标为 `must-show`；其他图按清晰度、信息增量和投影可读性标 candidate / reference-only / omit。低清、文字密集、重复或不适合演讲的图可以不展示，后续另取更合适图片或用 SVG/Canvas/ECharts 表达；但附件事实不能因此丢失。
 - 每项主结论、关键数字/关系、用户点名内容和决策所需证据必须进入 priority ledger 并标 `must_present`；不能因为讲稿可以解释而降为 `speech_only`。`speech_only` 只用于背景、例证、口头过渡与细节展开。
 - 附件事实是证据边界，附件排版不是默认模板。除非用户明确要求复刻或延续品牌视觉，只客观记录其设计语言，不把原文档的信息密度、小字号、表格结构或低质量版式升级成新 deck 的视觉约束。
 - 单个附件失败时继续处理同组其他附件，但本分片最终返回 blocked；不得用部分成功掩盖 coverage 缺口。

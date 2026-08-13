@@ -25,7 +25,7 @@
 - `image_opportunity_map`：哪些页面需要真实证据、人物/场景识别、产品展示或情绪主画面，哪些页面更适合图表/Canvas/排印，以及判断理由；
 - 有附件时的 `material_visual_mode` 与 reuse map：区分事实来源、可直接复用的图片/图表、可参考的视觉语言和需要重新设计的文档结构；
 - 有附件时的 `attachment_priority_map`：逐项复制 `grounded-knowledge.md` 中的 `priority_id / screen_priority / source_locator / fidelity_form`，并为每个 `must_present` 写实际上屏页与可见载体；讲稿不得作为上屏页或可见载体；
-- 有图片附件时的 `attachment_visual_map`：每张图写 `source_path`、`decision`（must-show / reuse / reference-only / omit）、`material_asset_type`（attachment-image / figure-crop / page-facsimile）、实际 `asset_path`、计划上屏页、处理方式与理由。论文命名 Figure 使用 `figure-crop`，并保留 `figure_id / source_page / crop_box`；整页论文页面仅在页面原貌本身就是证据时使用 `page-facsimile`。该判断独立于外部/生成图片的 `image_opportunity`；后者为 `none` 不能自动排除用户附件；
+- 有图片附件时的 `attachment_visual_map`：只列用户点名、不可替代证据和经过筛选的候选视觉；每项写 `source_path`、`decision`（must-show / reuse / reference-only / omit）、信息增量、投影可读性、`material_asset_type`、实际 `asset_path`、计划上屏页与理由。附件视觉是候选而非全用配额；低清、文字密集、重复或不适合页面职责的图可以 omit，并另取更合适图片或用 SVG/Canvas/ECharts 表达。论文 Figure 使用 `figure-crop`，并保留 `figure_id / source_pdf / source_page / visual_subject_box / render_source / pixel_size / body_text_fraction`；整页论文页面仅在页面原貌本身就是证据时使用 `page-facsimile`。`must_present` 内容不自动等于附件原图 `must-show`；事实可以由屏显文案、图表或图解履约；
 - `background_system`：先说明本场景为何偏克制秩序或氛围表达，再定义 `base_canvas_family`（普通内容页共同的明暗/色温/材质家族）、局部色场/环境光、主题肌理、图片背景、允许整页使用的变体及其叙事用途，并写清整页变体的 `enter_from / exit_to`。表达型场景不能无理由把“整册同一纯色底”当作安全默认；需要下载或生成的背景进入 Image 素材计划；
 - `visual_state_range`：在基础画布家族内允许变化的明度、色场、图片占比、信息密度、构图方向与章节状态；给出适用页面与前后承接，避免把统一误解为全册同一底色或同一几何；
 - `motif_role`：列出母题作为 `primary / secondary / absent` 的页面范围及语义用途；同一个装饰母题不能同时承担封面、全部过渡页和多数内容页的主视觉；
@@ -119,7 +119,7 @@
 - 观众价值检查：每个可见文本节点分别说明它向听众增加了什么信息，并横向比较标题、kicker / subtitle、图片角标、badge、callout、图例与页脚；若只是复述主题、状态、页型、页码、制作状态或内部规划字段，删除或改写。同一状态词（如“整理前 / 整理后”“现状 / 目标”“问题 / 方案”）通常只保留一个主载体，其余区域补充对象、原因或结果
 
 ## 视觉实现
-- medium：photo | generated image | controlled SVG diagram | canvas+HTML labels | ECharts | typography | small SVG icon；同时点明本页的**主要视觉载体**。受控 SVG 只用于 §9 已定义的静态结构 archetype 并使用 `svg-diagram svg-allowed`；`small SVG icon`、边框、空面板和装饰线只能辅助，不能冒充主要视觉；选择 typography 时说明文字如何通过尺度、层级和构图独立成立
+- medium：photo | generated image | SVG diagram | canvas+HTML labels | ECharts | typography | small SVG icon；同时点明本页的**主要视觉载体**。静态结构/机制/关系可用 `svg-diagram`，不受五类 archetype 白名单限制；真实主体、论文 Figure、实验影像或场景有可用图片时优先配图，不用 SVG 重画；`small SVG icon`、边框、空面板和装饰线只能辅助，不能冒充主要视觉
 - image_opportunity：**只写一个机器可读枚举**，不带任何解释：`real_required` / `generated_ok` / `none` / `chart_only` / `canvas_only` / `typography_only`（`none` 及 `*_only` 判定为无位图）。启动 gate 与交付验收只解析这一行的枚举；理由另写在下一行的 `image_opportunity_reason`，绝不写进本行。
 - image_opportunity_reason：人类可读理由（一句话）。判定内容：先写值得被看见的主体/场景，以及图片能增加的证据、识别、临场感或情绪价值，再决定媒介。没有项目实拍不等于没有图片机会；尚未建成的空间、虚构人物、服务场景与风格化主视觉可考虑统一风格的生成图。具名真实人物、主创、嘉宾或团队成员是默认的真实图片机会：应规划批量检索肖像、官方简介照、活动照或团队合影；“不生成假真人”意味着改走真图检索，不意味着 `none`。具名作品、软件/产品、制作流程和真实案例也应先检查官方画面、界面、幕后图、过程拆解、实物或现场照片，而不是直接退成小图标与空卡片。若为 `none`，理由须说明真实检索后仍不可得且位图为何不增加听众价值，或为何会比图表/Canvas/排印更含糊；“CSS 更可控”“没有实拍”“担心 AI 出错”“为了风格统一”不是单独成立的 none 理由
 - presentation：位图的**展示/背景处理合同**，取值**只能是四枚举之一**：`subject-only` | `framed-scene` | `full-bleed` | `evidence-crop`。**有位图页必填、无位图页完全省略这一行**（不要写 `无` / `none` / `not-applicable` 占位）。⛔ `split-media` / `right-half` / `cards` / `分屏` / `左右` 等是**版式/构图（layout/arch）**，绝不能写进 presentation；它们放到 `layout` 行。角色、产品或物件需要悬浮、跨色场叠放或作为独立元素时必须选 `subject-only`，并在素材 brief 写 `subject_only: true`；其他三种必须把原图背景作为有意的画面、满幅或证据边界，不能偶然露出矩形底色。（例：夜间阅读实拍用于左右分屏 → `presentation: framed-scene`，分屏本身写在 `layout`。）
@@ -131,7 +131,7 @@
 - resolved_system_action：本页具体落实所选系统的哪一层关系（字体 / 色场 / 母题 / 图表 / 图片处理），不得只写系统 ID
 - image：主体、用途、比例、实际路径与 `origin`（downloaded / generated / material / derived）；下载图保留来源 URL，用户附件保留原路径，派生图保留 parent asset（如需要）
 - crop_contract（存在位图时）：`fit`（cover / contain / cutout）、`focal_point`、`protected_parts`、`allowed_crop` 与推荐 `object_position`。`protected_parts` 只列承担识别或语义的部分，如人脸/头顶/双手、完整产品轮廓、Logo、作品主体、图表坐标轴/图例；允许背景边缘有意出血，但不能用“满幅更有冲击力”解释主体残缺
-- material_asset_type：attachment-image | figure-crop | page-facsimile（仅复用附件视觉时）。页面称为 `Figure/Fig./图 N` 时必须是 `figure-crop`；不得把 PDF 整页截图当 Figure。
+- material_asset_type：attachment-image | figure-crop | page-facsimile（仅复用附件视觉时）。页面称为 `Figure/Fig./图 N` 时必须是 `figure-crop`；记录其 `source_pdf / source_page / visual_subject_box / render_source / pixel_size / body_text_fraction`，只裁视觉主体，不含论文正文和长图注；不得把 PDF 整页截图当 Figure。
 - 用户围绕附件图片提出“根据这张图讲解/制作”时，或图片本身是唯一产品、人物、场地、作品、证据、原始流程总图时，至少安排一次可辨认的原图或忠实裁切上屏；复杂图可以先展示原图全貌，再用 Canvas/HTML 重绘局部。只有重复、无关、不可读或存在用户明确排除理由时才 omit，并写明理由。
 - chart：数据、单位、时间、编码、结论（如需要）
 - diagram：节点、关系、方向、层级（如需要）
@@ -161,7 +161,7 @@
 | 时间演进 | timeline；时间轴与关键转折 |
 | 指标结论 | KPI / hero number；单位、时间、对比口径 |
 | 方案对比 | comparison；统一维度和清晰取舍 |
-| 过程机制 | Canvas diagram 或无文字图片 + HTML 标注；方向和关系可读 |
+| 过程机制 | 静态关系优先 SVG，动态/自动布局用 Canvas + HTML，空间隐喻用无文字图片 + HTML；方向和关系可读 |
 | 数据趋势 | ECharts；一图一结论、来源与单位齐全 |
 | 场景 / 具名人物 / 地点 | media-led；真实图片承担识别与证据，而非只用姓名卡、小图标或生成的相似面孔 |
 | 引述 | quote；原话、身份与出处 |
@@ -215,7 +215,7 @@
 - 背景处理来自同一 `background_system`：普通内容页共享基础画布家族；整页变体有用途、有进入/退出承接，不会突然形成数页“另一套 Deck”再无过渡切回；没有随机换色、无主题 glow 或通篇默认深藏青。表达型场景若 overview 仍退化为全册同一纯色底，已重新判断是否遗漏了主题环境光、肌理、色场、图片或生成背景；
 - 所有页面都有 page-type 与 Reference route；
 - Production groups 覆盖全部页面且无重复归属；封面、每张 divider、closing、hero、复杂图解和独立重制作页均为单页 group；普通内容组不超过 3 页，并写清 `why_grouped / anti_repetition_delta / boundary_handoff`；
-- 普通内容组只合并真正同构的制作任务，没有仅按章节把真实照片、受控 SVG/Canvas、图表和 cards 粗暴打包，也没有把连续左右分屏仅靠左右互换视为变化；
+- 普通内容组只合并真正同构的制作任务，没有仅按章节把真实照片、SVG/Canvas、图表和 cards 粗暴打包，也没有把连续左右分屏仅靠左右互换视为变化；
 - `Repetition & rhythm preflight` 已完成：相邻页无机械复刻，各章没有照抄同一套页面脚本，母题有主次与缺席，画布状态和密度形成叙事起伏；
 - 特殊页有亲缘性，普通页有足够构图变化；
 - 封面和结尾没有页码、页脚家具、制作状态或伪场记；特殊页没有用重复英文标签和无意义技术注冒充设计层；

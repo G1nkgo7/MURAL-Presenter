@@ -525,8 +525,11 @@ def _rasterize_worker(pdf_path, out_dir):
     # 0 means all pages. A positive operational cap is allowed, but the catalog
     # will mark the source incomplete and deterministic acceptance must reject it.
     max_pages = int(os.environ.get("MATERIAL_RASTER_MAX_PAGES", "0"))
-    dpi = int(os.environ.get("MATERIAL_RASTER_DPI", "150"))
-    max_pixels = int(os.environ.get("MATERIAL_RASTER_MAXPX", "2600"))
+    # Page rasters are reading/box-selection context. 200 DPI keeps paper
+    # Figures and labels legible enough for Vision; presentation-ready crops
+    # are re-rendered from the original PDF by deck.py material-figure.
+    dpi = int(os.environ.get("MATERIAL_RASTER_DPI", "200"))
+    max_pixels = int(os.environ.get("MATERIAL_RASTER_MAXPX", "3200"))
     try:
         import fitz
     except Exception as exc:
@@ -569,9 +572,18 @@ def _ocr_pages_worker(page_paths, out_dir, source_name):
     page_records = []
     full_parts = []
     for sequence, page_path in enumerate(page_paths, 1):
+        image_size = None
         match = re.search(r"p(?:age[_-]?)?(\d+)$", os.path.splitext(os.path.basename(page_path))[0], re.I)
         index = int(match.group(1)) if match else sequence
         try:
+            try:
+                from PIL import Image
+                with Image.open(page_path) as page_image:
+                    image_size = [int(page_image.width), int(page_image.height)]
+            except Exception:
+                # OCR remains useful for legacy/custom workers whose source path is
+                # not PIL-readable; their JSON is explicitly marked size-unknown.
+                image_size = None
             raw_result, _elapsed = engine(page_path)
             blocks = []
             for raw in raw_result or []:
@@ -595,6 +607,7 @@ def _ocr_pages_worker(page_paths, out_dir, source_name):
             record = {
                 "page": index,
                 "source_image": page_path,
+                "image_size": image_size,
                 "status": "ok",
                 "chars": len(text),
                 "sha256": _sha256_text(text),
@@ -608,6 +621,7 @@ def _ocr_pages_worker(page_paths, out_dir, source_name):
             record = {
                 "page": index,
                 "source_image": page_path,
+                "image_size": image_size,
                 "status": "failed",
                 "chars": 0,
                 "sha256": _sha256_text(""),

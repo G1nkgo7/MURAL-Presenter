@@ -76,6 +76,8 @@
 - **标题有演讲张力**：普通演讲的短标题已落实 Style Lock 的 `title_voice / title_scale / title_treatment`，从最终像素能看出它与正文的角色反差；没有退化成同一套 Noto Sans SC 常规字阶的屏幕文档。正式/严谨场景允许同族，但必须靠字阶、字重、锚点与留白建立明确舞台层级。
 - **resolved system 已真正兑现**：不是只换主色；最终像素同时能看到所选系统的字体分工、底/墨/accent 关系，以及母题、图表或图片处理中的至少一项招牌转译。多个页面没有退回白底安全卡片模板。
 - **附件重点真实上屏**：本页承接的 `attachment_priority_ids` 中，所有 `must_present` 内容都能在屏显文案、图表、Figure 或可见图解中直接读到；讲稿提到、内部计划写到或“已经理解后重画”均不能代替页面呈现。
+- **论文 Figure 是主体级高分辨率裁图**：若使用附件 Figure，catalog 显示 `render_source: source_pdf_clip`、`pixel_size` 达到长边 ≥1400px / 短边 ≥600px，`body_text_fraction` 通过门；最终像素保留完整面板、坐标轴、标签和必要图例，但不带页眉、页码、大段正文或长图注。附件中的其他图不要求机械全用，must-show/reuse/reference-only/omit 与页面职责和清晰度一致。
+- **课件与学术不降设计**：课件、组会、答辩和论文解读同样能看到完整 Style Lock、编辑字阶、非对称/网格秩序、证据视觉、方法图解、图表焦点与章节节奏；严谨只减少无意义装饰，不允许白底文档截图式布局成为默认。
 - **强调有主次**:accent 点在**真正要喊的几处**(不是标题线 / 眉签 / 要点 / 数字全染);单 accent 或主 + 次双 accent 由设计决策;正文 / 分隔线 / 标签用中性墨色浓淡。
 - **别用 AI 默认色**:主色来自主题,不是顺手套"深藏青 + 霓虹青/电光蓝"默认科技色或 `#6366f1` 靛蓝(主题真要则有意声明);暗底有色温,accent 不刺眼(降饱和)。
 - **面板有体积**:卡片 / 面板靠色调分层(页底→面板→内元素三级),不是扁平深色盒子;没有标题后那团泛用径向"光晕"假景深。
@@ -164,7 +166,7 @@
 - [ ] **每张 slide 有明确明度角色 + 明暗节奏(slide-theme / slide-rhythm)**:每页归位到「常规内容底 / 加深过渡底 / 满铺 hero」等已声明状态之一，体例全套统一。节奏变化服务章节和叙事高点，不为了打破连续次数随机换底；发现长段页面视觉状态没有变化且阅读疲劳时，再用同色系明度、图片或色场状态建立转折。
 - [ ] **骨架契约(layout-contract)**:root 直下只用标准 `.slide-title` / `.slide-body` / `.slide-footer`,正文内容尽量回到 `.slide-body` 的网格/flow。`render.py ⚠ CUSTOM-BODY` / `⚠ ABS-LAYOUT` 是**诊断告警(advisory)**、不是硬门:只有当新鲜像素确认它**真的**造成裁切、遮盖、下方溢出或不可读时才作为硬伤返修;若像素上构图完好(装饰/scrim 的绝对定位、或不影响阅读的自定义正文结构),记为 checker mismatch 保留,不为清零告警而破坏结构。真正的硬门只有 `broken` / `overflow` 与真实遮盖。
 - [ ] **遮盖护栏(layout-guard)**:`DECOR-OVERLAP` / `FOOTER-COVER` 候选已逐项对照新鲜像素；真实遮盖为零。没有可见遮盖的 bbox 误报记录为 checker mismatch，不为了清零报告破坏构图。
-- [ ] **概念图媒介(diagram-medium)**:静态 ≤7 节点且命中三层/径向/漏斗/循环/金字塔配方时，可使用带 `svg-diagram svg-allowed` 的受控 SVG；高节点数/动态布局用 Canvas + HTML，空间隐喻用无文字图片 + HTML。任何大型图都要确认标签、方向、锚点和主体真实可读，不按告警数量验收。
+- [ ] **概念图媒介(diagram-medium)**:静态结构、机制、关系和流程可使用大型 `svg-diagram`，不受固定 archetype 白名单限制；自动布局/动态计算/大量长标签用 Canvas + HTML，真实主体与空间隐喻优先图片 + HTML。任何大型图都要确认标签、方向、锚点和主体真实可读；`SVG-SMALL` / `SVG-LABEL-OVERLAP` 仍需像素核验。
 - [ ] **文本框溢出 / 卡内空洞(box-fit,见 §9⑩⑰)**:`render.py ⚠ TEXT-OVERFLOW-BOX`(文字撑出 panel/卡片/正文区)/ `⚠ INNER-GAP`(卡中间空一大块)必须为零;等分网格(`repeat(N,1fr)`)承载不等量文本改 `auto`+顶排、去掉不必要的 `margin-top:auto`、多区堆叠页不写死 `height:XXXpx`、封面巨字号用 `clamp()`/按字数降档不顶出安全区。
 - [ ] **底部溢出(footer-fit,见 §9⑦⑪,最严重)**:`render.py ⚠ FOOTER-PUSHED` 必须为零——正文体量绝不能把页脚顶下去 / 压过页脚顶 / 挤出视口;放不下就减字 / 拆两页 / 换紧凑版式、定高区改 `minmax(0,1fr)`、守 `--body-safe-bottom`。
 - [ ] **寡字 / 寡图(orphan,见 §9⑦⑱ / §6)**:`render.py ⚠ WIDOW-LINE`(末行 1-2 孤字)/ `⚠ IMG-LONELY`(位图孤立小图)尽量为零;文字块加宽 / 去多余 max-width 消孤字,位图放大 / 落网格 / 配说明 / 成组消孤图。

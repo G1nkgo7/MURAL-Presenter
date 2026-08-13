@@ -94,8 +94,8 @@ Choose media for meaning:
 1. Real people, places, products, events, or evidence: real photographs.
 2. Atmosphere, metaphor, story scenes, or hero art: generated or high-quality bitmap imagery.
 3. Data: ECharts.
-4. Static ≤7-node three-layer, radial, funnel, cycle, or pyramid structures: the controlled SVG recipes in `layout-patterns.md` section 9; higher-node/dynamic structures use Canvas plus HTML, and spatial metaphors use text-free bitmaps plus HTML.
-5. Other SVG: icons, logos, arrows, markers, small decoration, or accurate user-provided vector assets.
+4. Static processes, architectures, mechanisms, and relationships: use SVG from `layout-patterns.md` section 9 when crisp deterministic geometry fits; dynamic calculation, auto-layout, and many long labels use Canvas plus HTML, while spatial metaphors use text-free bitmaps plus HTML.
+5. SVG may be a large static explanatory medium as well as an icon/logo/decorative medium. Use `svg-diagram`, a content-fit viewBox, CSS tokens, clear direction, and readable labels; the five archetypes are starting recipes, not a whitelist.
 
 Do not replace visible people, products, works, activities, or environments with generic cards, tiny icons, decorative SVG, or abstract wireframes. A normal content slide needs a meaningful primary visual carrier: bitmap, chart, explanatory Canvas, or deliberate typographic composition.
 
@@ -122,7 +122,9 @@ Every attachment needs one `coverage_id`, `status: ok`, `coverage: complete`, co
 
 Every Material summary also writes `priority_ledger: complete`. Assign stable `priority_id` values and `screen_priority: must_present | supporting | speech_only` to major claims, decisive numbers/relationships, and must-recognize figures, products, people, or processes. `must_present` must survive into visible slide content; speech is never a substitute. `speech_only` may contain context and elaboration, not the attachment's main conclusion or evidence.
 
-Page PNGs are reading context, not automatic display figures. Named paper figures must become traceable `material_figure_crop` derivatives. A full-page facsimile is allowed only when page appearance itself is evidence and requires an explicit justification.
+Page PNGs are reading and box-selection context, not automatic display figures. Named paper figures must become traceable `material_figure_crop` derivatives rendered directly from the original PDF with `--source-pdf` and `--source-page`; scanned PDFs also pass `--ocr-json`. The crop defaults to the visual subject, excludes headers/body text/page numbers/long captions, and is rejected when body-text-heavy, page-like, or under-resolution. A full-page facsimile is allowed only when page appearance itself is evidence and requires an explicit justification.
+
+Attachment visuals are candidates, not a quota. Mark only user-named or uniquely evidentiary/result-bearing visuals as `must-show`; select other images by clarity, projection readability, and page role. Low-resolution, body-text-heavy, redundant, or narratively weak attachment visuals may be omitted while their facts remain grounded, and the page may instead use a better real/generated image, SVG/Canvas explanation, or ECharts. Do not mechanically display every Figure in a paper.
 
 #### Research
 
@@ -149,7 +151,7 @@ Style Lock fixes a visual language, not a page template. Stability comes from ty
 
 Unless the occasion is formal or rigorous, the title voice must visibly separate itself from body copy in family, scale, or treatment. Do not silently collapse an ordinary presentation into Noto Sans SC at document-like sizes.
 
-Formal and academic do not mean low-design. Use editorial publishing, evidence exhibition, and scientific-visualization language: strong type scale, asymmetric order, figure crops, focused charts, method diagrams, and chapter rhythm without decorative excess. When multiple systems fit, prefer the one with the clearer visual thesis and executable signature over the safest white-card layout.
+Courseware, seminars, paper talks, formal, and academic work do not mean low-design. Use editorial publishing, evidence exhibition, and scientific-visualization language: strong type scale, asymmetric order, figure crops, focused charts, method diagrams, and chapter rhythm without decorative excess. Rigour reduces decoration, not layout, media, or finish. When multiple systems fit, prefer the one with the clearer visual thesis and executable signature over the safest white-card layout.
 
 Before declaring `image_opportunity: none`, scan for visible people, places, products, works, activities, experiences, fictional characters, and emotional scenes. Search named real identities; never generate a fake likeness. Generated imagery is valid for fictional, conceptual, future, atmospheric, or metaphorical scenes. If image tools are available, a deck with no bitmaps or only a cover bitmap is an exception that must be justified, not the safe default.
 
@@ -165,7 +167,7 @@ python ${SKILL_DIR:-skills/mural-presenter}/scripts/deck.py prepare . --expected
 
 ### Stage 4 — Acquire imagery
 
-Delegate Image groups only after page briefs and asset IDs are stable. Image owns real/generated bitmap acquisition, material figure crops, cutouts, catalog assignment, contact sheets, Vision review, and final `ready` status. Slide may use only ready catalog assets whose paths are frozen into its page plans.
+Delegate Image groups only after page briefs and asset IDs are stable. Image owns real/generated bitmap acquisition, high-resolution PDF Figure crops, cutouts, catalog assignment, contact sheets, Vision review, and final `ready` status. For a selected paper Figure, use the page PNG only to locate the subject box, then run `material-figure --source-pdf ... --source-page ...`; verify the catalog's pixel size/body-text fraction and inspect the final crop. Slide may use only ready catalog assets whose paths are frozen into its page plans.
 
 ### Stage 5 — Produce slide groups
 
@@ -208,7 +210,7 @@ Every user request maps to a visible change; unaffected pages/assets remain unch
 
 - Data charts use ECharts; generated images never fake data graphics.
 - Accurate text lives in HTML, not AI-generated images.
-- SVG defaults to small supporting elements. Controlled ≤7-node diagrams are allowed only through the five section-9 recipes and must use `svg-diagram svg-allowed`; do not freely invent any other large SVG coordinate system, and route other large structures to Canvas/bitmap plus HTML.
+- SVG is not disabled: static structures, mechanisms, relationships, and flows may use a large `svg-diagram` without an archetype whitelist, subject to size, direction, label, and pixel checks. Do not redraw a usable real subject or paper Figure as SVG, and keep data graphics in ECharts.
 - `slides/` contains only canonical `slide_NN.html` files; backups live under `_trace/`.
 - Audience body copy is at least 20px; captions/secondary notes are at least 18px, or larger if tokens require it.
 - Fix overflow by reducing repetition, restructuring, reprioritizing, or splitting pages, never by hiding content or shrinking below the floor.

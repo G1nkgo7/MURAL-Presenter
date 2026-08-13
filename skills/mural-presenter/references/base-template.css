@@ -378,7 +378,7 @@ img{ display:block; max-width:100%; }
 /* 末节点也从它的点向右画线,伸到节点右缘(= 右安全线,与下方文字右缘对齐);别再 display:none 让它断在点上 */
 .arch-timeline .node:last-child::after{ right:0; }    /* 覆盖旧的 display:none:末节点线照画,伸到右缘对齐文字右侧 */
 
-/* F. diagram-frame:Canvas / 图片概念图框(大型 SVG 不作为新页面默认媒介) */
+/* F. diagram-frame:SVG / Canvas / 图片概念图框；按静态关系、动态复杂度与真实视觉主体选择媒介 */
 .arch-diagram{ display:grid; grid-template-rows:1fr auto; gap:20px; place-items:stretch; height:100%; min-height:0; }
 .arch-diagram > canvas,
 .arch-diagram > img,
@@ -405,7 +405,7 @@ img{ display:block; max-width:100%; }
   font-size:var(--diagram-label-min);
   color:var(--ink);
 }
-/* 兼容旧 deck / 小型矢量资产；新大型示意图优先 Canvas 或图片 + HTML 标签。 */
+/* SVG 可承担大型静态关系图；Canvas 留给自动布局/动态复杂度，图片留给真实或空间主体。 */
 .diagram-canvas > svg,
 svg.svg-diagram{
   width:100%;

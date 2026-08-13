@@ -20,23 +20,24 @@ Read only routed plans, `base.css`, needed catalog entries, and explicitly named
 - Search named-person sets in one batch using canonical name plus official institution/work/event. Prefer official bios, institutions, reputable media, or verifiable public collections.
 - Stylized illustration, generic scenes, atmosphere, metaphor, story moments, and text-safe hero backgrounds: generated bitmap.
 - Accurate nodes, labels, numbers, and relationships stay in HTML; a generated concept image must be text-free.
-- Data charts belong to Slide/ECharts. Exact processes and architectures belong to Slide/Canvas plus HTML labels.
-- SVG is only a small auxiliary medium.
+- Data charts belong to Slide/ECharts. Static processes and architectures may use a large Slide-owned SVG; dynamic/auto-layout structures use Canvas plus HTML labels.
+- Do not use SVG availability to skip a meaningful bitmap of a real person, product, paper Figure, experimental image, work, event, or scene.
 
 ## 4. Workflow
 
 1. Freeze one visual recipe per group: medium, palette, color temperature, saturation, light, and composition. Honor `presentation`: `subject-only` requires a validated alpha cutout; `framed-scene`, `full-bleed`, and `evidence-crop` may retain background.
 2. For real images, use precise queries, download with `fetch_image`, and verify identity, resolution, watermark, ratio, and crop safety. If `cover` would remove a face, head, hands, complete product silhouette, logo, artwork subject, axis, legend, or evidence label, select a better candidate or recommend `contain`/a different slot.
-3. For a named paper figure, inspect the Material page and create a traceable derivative:
+3. Create assets only for selected main-result, method-critical, or user-named paper Figures, not every Figure. Use the Material page only to locate `visual_subject_box`, then render a traceable derivative directly from the original PDF:
 
    ```bash
    python ${SKILL_DIR:-skills/mural-presenter}/scripts/deck.py material-figure . \
      --source materials/_work/<assignment>/_raw/<paper>_pages/pNNN.png \
-     --path assets/<paper>-figure-N.png --figure-id "Figure N" --source-page <N> \
+     --source-pdf materials/_work/<assignment>/_raw/<paper> --source-page <N> \
+     --path assets/<paper>-figure-N.png --figure-id "Figure N" \
      --box <x0,y0,x1,y1>
    ```
 
-   Inspect the resulting crop. It must preserve all required panels, labels, axes, and legends without unrelated page prose.
+   Add `--ocr-json .../page_NNN.json` for a scanned PDF. The command rejects body-text-heavy, page-like, and under-resolution crops and normally renders at least 1400px on the long edge and 600px on the short edge. Confirm `render_source: source_pdf_clip`, `pixel_size`, and `body_text_fraction` in the catalog, then inspect the crop. Preserve required panels, labels, axes, and legends without unrelated body prose or long captions.
 4. For generation, place the subject first, reuse 2–4 visual genes across prompts, and specify `no text, no watermark`. Submit independent generations in the same tool round. After a safety rejection, rewrite once at most, then use a real image, revise the brief, or return a fallback.
 5. Tools automatically record origins. Register user material with `deck.py asset-register`; never rename generated/fetched files with `mv` or `cp` in a way that breaks provenance.
 6. For transparent subjects, run:
@@ -64,7 +65,7 @@ Read only routed plans, `base.css`, needed catalog entries, and explicitly named
 - Preserve semantically important color. Do not grayscale real people, products, artwork, food, species, thermal/spectral/microscopy/remote-sensing evidence merely for a unified or academic look.
 - `subject-only` uses `contain`; `cover/full-bleed` may crop only allowed background and must preserve all protected parts.
 - Transparency requires real alpha. CSS masks, blending, white backing, or matching the canvas color are not cutout substitutes.
-- A ready paper figure catalog record includes `derivative_kind: material_figure_crop`, `figure_id`, `source_page`, and crop box. CSS clipping of a whole page is not a figure crop.
+- A ready paper Figure catalog record includes `derivative_kind: material_figure_crop`, `render_source: source_pdf_clip`, `figure_id`, `source_page`, delivery `pixel_size`, and an accepted `body_text_fraction`. CSS clipping of a whole page is not a Figure crop. `caption_mode: included` records a deliberate short-caption choice; it never relaxes the body/long-caption gate.
 
 ## 6. Final contract
 

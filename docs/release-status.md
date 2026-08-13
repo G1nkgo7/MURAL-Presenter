@@ -1,6 +1,6 @@
 # Release status and evidence boundary
 
-Last reviewed: 2026-08-09
+Last reviewed: 2026-08-13
 
 MURAL is a research project under active development. This repository intentionally separates
 what has been observed in the working system from what has been experimentally demonstrated or
@@ -15,12 +15,14 @@ cleared for public release.
 - A deployable project site.
 - A documented repository scaffold for query synthesis, data preparation, inference, QC, and the
   target Studio service boundary.
-- A sanitized SenseNova Present WebUI compatibility bundle. It can run as a UI preview; model
-  services, generation Skills, Harnesses, credentials, and production data remain external.
+- A sanitized SenseNova Present WebUI compatibility integration with the frozen MURAL Presenter
+  Skill/Harness pair. The workspace WebUI resolves the canonical repository pair without copying it.
+  It can run as a UI preview or connect to a user-configured model service;
+  credentials, model weights, optional service backends, and production data remain external.
 - Bilingual working-paper PDFs whose main bodies fit the nine-page target; all effectiveness
   result slots remain explicitly pending.
 
-## Implemented in the working system, not yet released here
+## Implemented and represented in the bundled MURAL workflow
 
 - A grouped authoring workflow with complete, non-overlapping slide groups.
 - A centralized image stage before group production.
@@ -32,7 +34,7 @@ These statements describe inspected mechanisms, not measured quality improvement
 
 ## Planned or awaiting a freeze
 
-- A clean public implementation commit and versioned MURAL Authoring Skill.
+- Stable public APIs around the bundled, versioned MURAL-Presenter Skill/Harness pair.
 - Extraction of the compatibility bundle's server routes into the versioned `services/api` boundary.
 - Rollouts and accepted agentic trajectories derived from the current 1,000 query specifications
   (850 Chinese and 150 English); completion, acceptance, and training counts are not yet frozen.

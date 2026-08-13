@@ -105,7 +105,7 @@ cd MURAL-Presenter
 从仓库根目录执行：
 
 ~~~bash
-cd apps/studio/sensenova_present
+cd webui
 cp .env.example .env
 chmod +x start.sh scripts/*.sh
 ./start.sh --ui-only --check
@@ -117,7 +117,7 @@ chmod +x start.sh scripts/*.sh
 从仓库根目录执行：
 
 ~~~powershell
-Set-Location apps\studio\sensenova_present
+Set-Location webui
 Copy-Item .env.example .env
 .\start.ps1 -UiOnly -Check
 .\start.ps1 -UiOnly -Language zh -Port 8001
@@ -185,31 +185,32 @@ Invoke-RestMethod http://127.0.0.1:8001/healthz
 然后访问 http://127.0.0.1:8010。
 
 本地项目、上传文件和状态默认保存在
-apps/studio/sensenova_present/studio/data，不会提交到 Git。
+webui/studio/data，不会提交到 Git。
 
 ## 5. UI-only 与完整生成的区别
 
-UI-only 是无需模型密钥的公开预览模式，可以启动 SenseNova Present 产品界面和本地状态层。
+UI-only 是无需模型服务的公开预览模式，可以启动 SenseNova Present 产品界面和本地状态层。
 
-它不包含自给自足的 PPT 生成后端。内容生成、图片生成、网络检索和动态渲染仍需要兼容的外部
-运行时及服务端点。公开仓库不会包含模型密钥、私有网关、模型权重、内部数据集或历史生成结果。
+仓库现在已经包含当前 `skills/mural-presenter` Skill 及其配套
+`harnesses/mural-presenter` 运行时。内容生成仍需配置兼容的模型端点；图片生成和网络检索是
+可选服务。公开仓库不会包含模型密钥、私有网关、模型权重、内部数据集或历史生成结果。
 
-启用完整生成前，需要在 apps/studio/sensenova_present/.env 中：
+启用完整生成前，需要在 webui/.env 中：
 
 1. 将 SENSENOVA_UI_ONLY 设置为 0。
-2. 配置 PPTAGENT_CLEAN_PIPELINE_ROOT 和所需 Skill/Harness 路径。
-3. 配置模型、图片和检索服务地址与密钥。
+2. 配置 SENSENOVA_MODEL_BASE_URL、SENSENOVA_MODEL_NAME，以及模型需要的密钥。
+3. 按需配置图片生成与检索服务。
 
 macOS 或 Linux：
 
 ~~~bash
-./start.sh --edition full --language zh --port 8001
+./start.sh --language zh --port 8001
 ~~~
 
 Windows：
 
 ~~~powershell
-.\start.ps1 -Edition full -Language zh -Port 8001
+.\start.ps1 -Language zh -Port 8001
 ~~~
 
 完整模式首次启动时可能下载 Playwright Chromium。不要提交 .env，也不要发送带真实密钥的 ZIP。
@@ -267,7 +268,7 @@ macOS 和 Windows 安装 Docker Desktop；Linux 安装 Docker Engine 与 Compose
 macOS 或 Linux：
 
 ~~~bash
-cd apps/studio/sensenova_present
+cd webui
 cp .env.example .env
 docker compose up --build
 ~~~
@@ -275,7 +276,7 @@ docker compose up --build
 Windows PowerShell：
 
 ~~~powershell
-Set-Location apps\studio\sensenova_present
+Set-Location webui
 Copy-Item .env.example .env
 docker compose up --build
 ~~~
@@ -301,7 +302,7 @@ ZIP 用户需要重新下载新版本。更新前请备份需要保留的 studio
 - **PowerShell 禁止执行：**使用 start.bat，或使用上面的单次 Bypass 命令。
 - **Address already in use：**使用 8010 等其他端口。
 - **依赖下载失败：**检查网络、代理和公司证书链，不要全局关闭 TLS 校验。
-- **无法生成 PPT：**先确认当前是否为 UI-only，以及外部运行时和模型端点是否已配置。
+- **无法生成 PPT：**确认已关闭 UI-only、仓库中的 MURAL Skill/Harness 路径完整，并已配置模型端点。
 - **不要直接暴露到公网：**默认 v1 模式监听 127.0.0.1，未启用生产级认证。
 
 ## 三个平台最短指令
@@ -312,7 +313,7 @@ ZIP 用户需要重新下载新版本。更新前请备份需要保留的 studio
 brew install git uv
 uv python install 3.12
 git clone https://github.com/G1nkgo7/MURAL-Presenter.git
-cd MURAL-Presenter/apps/studio/sensenova_present
+cd MURAL-Presenter/webui
 cp .env.example .env
 ./start.sh --ui-only --language zh --port 8001
 ~~~
@@ -323,7 +324,7 @@ cp .env.example .env
 curl -LsSf https://astral.sh/uv/install.sh | sh
 uv python install 3.12
 git clone https://github.com/G1nkgo7/MURAL-Presenter.git
-cd MURAL-Presenter/apps/studio/sensenova_present
+cd MURAL-Presenter/webui
 cp .env.example .env
 chmod +x start.sh scripts/*.sh
 ./start.sh --ui-only --language zh --port 8001
@@ -336,7 +337,7 @@ winget install --id Git.Git -e
 winget install --id astral-sh.uv -e
 uv python install 3.12
 git clone https://github.com/G1nkgo7/MURAL-Presenter.git
-Set-Location MURAL-Presenter\apps\studio\sensenova_present
+Set-Location MURAL-Presenter\webui
 Copy-Item .env.example .env
 .\start.ps1 -UiOnly -Language zh -Port 8001
 ~~~

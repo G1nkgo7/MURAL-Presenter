@@ -4,7 +4,7 @@ This directory contains the bilingual, deployable project site for MURAL — Mul
 Revision-Aware Authoring for Long-Horizon Presentations.
 
 This is the paper/project website, not the interactive presentation-authoring product. The latter
-is reserved under [`../apps/studio/`](../apps/studio/), with its server boundary under
+is maintained under [`../webui/`](../webui/), with its server boundary under
 [`../services/api/`](../services/api/).
 
 ## Routes

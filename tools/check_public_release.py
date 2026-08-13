@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import re
 from pathlib import Path
@@ -18,8 +19,10 @@ IGNORED_PARTS = {
     ".vinext",
     ".wrangler",
     "__pycache__",
+    "CONCURRENCY",
     "dist",
     "node_modules",
+    "runtime",
     "tmp",
 }
 TEXT_SUFFIXES = {
@@ -56,6 +59,10 @@ MARKDOWN_LINK = re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")
 def public_text_files() -> list[Path]:
     files: list[Path] = []
     for directory, child_dirs, child_files in os.walk(ROOT):
+        relative = Path(directory).relative_to(ROOT)
+        if relative == Path("webui/studio/data"):
+            child_dirs[:] = []
+            continue
         child_dirs[:] = [name for name in child_dirs if name not in IGNORED_PARTS]
         base = Path(directory)
         files.extend(
@@ -143,6 +150,85 @@ def check_brand_and_paper() -> list[str]:
     return errors
 
 
+def tree_digest(root: Path, *, excluded: set[str] | None = None) -> tuple[int, str]:
+    excluded = excluded or set()
+    digest_state = hashlib.sha256()
+    files = []
+    for path in sorted(root.rglob("*")):
+        if (
+            not path.is_file()
+            or any(part in IGNORED_PARTS for part in path.parts)
+            or path.suffix == ".pyc"
+        ):
+            continue
+        relative = path.relative_to(root).as_posix()
+        if relative in excluded:
+            continue
+        data = path.read_bytes()
+        digest_state.update(relative.encode("utf-8"))
+        digest_state.update(b"\0")
+        digest_state.update(hashlib.sha256(data).digest())
+        digest_state.update(b"\0")
+        files.append(relative)
+    return len(files), digest_state.hexdigest()
+
+
+def release_tree_digest(roots: tuple[Path, ...], *, relative_to: Path) -> str:
+    """Match the sha256sum-of-sha256s digest stored in the frozen release manifest."""
+    rows: list[tuple[str, Path]] = []
+    for root in roots:
+        for directory, child_dirs, child_files in os.walk(root):
+            child_dirs[:] = [name for name in child_dirs if name not in IGNORED_PARTS]
+            base = Path(directory)
+            for name in child_files:
+                path = base / name
+                if name in IGNORED_PARTS or path.suffix == ".pyc":
+                    continue
+                relative = path.relative_to(relative_to).as_posix()
+                if relative_to == root:
+                    relative = f"./{relative}"
+                rows.append((relative, path))
+    state = hashlib.sha256()
+    for relative, path in sorted(rows, key=lambda item: item[0].encode("utf-8")):
+        state.update(f"{digest(path)}  {relative}\n".encode("utf-8"))
+    return state.hexdigest()
+
+
+def check_mural_snapshot() -> list[str]:
+    errors: list[str] = []
+    skill_root = ROOT / "skills/mural-presenter"
+    harness_root = ROOT / "harnesses/mural-presenter"
+    release_path = ROOT / "configs/releases/mural-paper-v1.json"
+    try:
+        release = json.loads(release_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        return [f"MURAL release manifest is unreadable: {exc}"]
+    expected = (
+        (
+            "skill.tree_sha256",
+            release.get("skill", {}).get("tree_sha256"),
+            release_tree_digest((skill_root,), relative_to=skill_root),
+        ),
+        (
+            "harness.tree_sha256",
+            release.get("harness", {}).get("tree_sha256"),
+            release_tree_digest((harness_root,), relative_to=harness_root),
+        ),
+        (
+            "pair_tree_sha256",
+            release.get("pair_tree_sha256"),
+            release_tree_digest((skill_root, harness_root), relative_to=ROOT),
+        ),
+    )
+    for key, declared, actual in expected:
+        if declared != actual:
+            errors.append(
+                f"MURAL release manifest mismatch for {key}: "
+                f"expected {declared!r}, found {actual!r}"
+            )
+    return errors
+
+
 def check_repository_scaffold() -> list[str]:
     errors: list[str] = []
     required = (
@@ -159,17 +245,24 @@ def check_repository_scaffold() -> list[str]:
         "src/mural_presenter/quality_control/README.md",
         "src/mural_presenter/schemas/README.md",
         "configs/README.md",
-        "apps/studio/README.md",
-        "apps/studio/sensenova_present/README.md",
-        "apps/studio/sensenova_present/MIGRATION.md",
-        "apps/studio/sensenova_present/studio/app/main.py",
-        "apps/studio/sensenova_present/scripts/launch.py",
+        "webui/README.md",
+        "webui/README_EN.md",
+        "webui/RELEASE_MANIFEST.json",
+        "webui/studio/app/main.py",
+        "webui/scripts/launch.py",
         "services/api/README.md",
         "scripts/README.md",
         "tests/README.md",
         "data/README.md",
         "artifacts/README.md",
         "skills/mural_authoring/README.md",
+        "skills/mural-presenter/SKILL.md",
+        "skills/mural-presenter/subagents/slide.md",
+        "skills/mural-presenter/scripts/deck.py",
+        "harnesses/mural-presenter/infer.py",
+        "harnesses/mural-presenter/core/nova_bridge.py",
+        "harnesses/mural-presenter/pyproject.toml",
+        "configs/releases/mural-paper-v1.json",
         "benchmarks/thread_bench/README.md",
     )
     for filename in required:
@@ -186,6 +279,7 @@ def main() -> None:
         *link_errors,
         *check_mirrors(),
         *check_brand_and_paper(),
+        *check_mural_snapshot(),
         *check_repository_scaffold(),
     ]
     if errors:

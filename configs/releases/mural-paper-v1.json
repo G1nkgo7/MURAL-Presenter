@@ -1,0 +1,29 @@
+{
+  "release": "mural-paper-v1",
+  "display_name": "MURAL Presenter",
+  "status": "frozen-paper-baseline",
+  "skill": {
+    "key": "mural-presenter",
+    "path": "skills/mural-presenter",
+    "tree_sha256": "3ca12a08988d23ebee90bb7ee94a090317c31c1e8f9f00cb5e245a63e86138c2"
+  },
+  "harness": {
+    "key": "mural-presenter-harness",
+    "path": "harnesses/mural-presenter",
+    "entry": "infer.py",
+    "tree_sha256": "3d32e6e4200e99bb905c0be96078c7565060143628c16eac6e437627ca49623d"
+  },
+  "pair_tree_sha256": "91805ec8add2d0e34b97cfb701bde21b6f8f9cbd539c0dc76265dc92396c840c",
+  "lineage": {
+    "implementation": "Long-Horizon Presenter stable line",
+    "import_source_revision": "38f578263340ed7dd44b070475bbaa6739b4e31b",
+    "workspace_branding": "MURAL Presenter"
+  },
+  "validation": {
+    "skill_schema": "passed",
+    "harness_pytest_passed": 213,
+    "dual_mode_pytest_passed": 9,
+    "webui_pytest_passed": 24
+  },
+  "experimental_successor_included": false
+}

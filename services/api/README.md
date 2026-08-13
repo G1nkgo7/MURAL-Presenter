@@ -1,8 +1,8 @@
 # Studio API service
 
 This is the target extraction boundary between SenseNova Present Studio and reusable MURAL runtime
-modules. The imported product currently keeps these routes inside the FastAPI compatibility bundle
-at [`../../apps/studio/sensenova_present/studio/app/`](../../apps/studio/sensenova_present/studio/app/).
+modules. The product currently keeps these routes inside the canonical WebUI FastAPI application at
+[`../../webui/studio/app/`](../../webui/studio/app/).
 
 Extraction will be incremental: first stabilize project, run, artifact, revision, and event schemas;
 then move server responsibilities here without changing product behavior. This service will own

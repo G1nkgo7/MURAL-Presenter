@@ -109,6 +109,7 @@ uv run python infer.py --input /absolute/path/to/briefs.jsonl \
 
 完整的无损边界、断点续跑规则、产物目录、完整性门和环境变量见
 [Harness 运行说明](harnesses/mural-presenter/README.md)。
+
 ## 运行推理（默认：MURAL Presenter v0.2）
 
 当前推荐的推理配套是：
@@ -121,6 +122,11 @@ uv run python infer.py --input /absolute/path/to/briefs.jsonl \
 Orchestrator 第一次读取某个 `SKILL.md` 后锁定该说明版，但说明版语言不决定成品语言；
 成品语言由 query 或 JSONL 行中的 `lang` 字段决定。
 
+v0.2 的两个模式使用完全相同的 Skill、模型参数、单页并行拓扑、工具和质量门。
+`--mode inference` 是默认模式，可释放已消费图片并压缩旧活动上下文；`--mode synthesis`
+关闭这些有损操作，要求根 Agent 和所有子 Agent 提供完整多模态轨迹及 SHA-256 图片清单，
+缺失即拒收。DeepSeek 无签名 Thinking 会保存在轨迹中但不回灌 API；有签名 Thinking 可正常回放。
+
 ```bash
 cd harnesses/mural-presenter-v0.2
 cp .env.example .env                  # 填写模型凭据；不要提交 .env
@@ -130,12 +136,17 @@ uv run --no-project playwright install chromium
 # 单条任务
 uv run --no-project python infer.py \
   --query "制作一份 8 页的 RAVE 论文演示" \
-  --batch demo-v02 --workers 1
+  --batch demo-v02 --workers 1 --mode inference
 
 # JSONL 批量任务：每行至少包含 {"qid":"...","query":"..."}
 uv run --no-project python infer.py \
   --queries /absolute/path/to/briefs.jsonl \
   --batch bench-v02 --workers 4
+
+# 合成：无损多模态训练轨迹
+uv run --no-project python infer.py \
+  --queries /absolute/path/to/briefs.jsonl \
+  --batch synthesis-v02 --workers 4 --mode synthesis
 ```
 
 JSONL 还可提供 `lang`、`slide_count`、`materials`/`attachments`；附件值是绝对路径数组，
@@ -145,8 +156,7 @@ JSONL 还可提供 `lang`、`slide_count`、`materials`/`attachments`；附件�
 
 模型、生图、搜索、纯文本模型外挂 Vision、Thinking/运行上限、产物和续跑规则详见
 [v0.2 Harness 运行说明](harnesses/mural-presenter-v0.2/README.md)。冻结发布线
-`skills/mural-presenter/` + `harnesses/mural-presenter/` 仍保留显式的 inference/synthesis
-画像，但不再是默认推理路径。
+`skills/mural-presenter/` + `harnesses/mural-presenter/` 仍作为兼容回退保留，但不再是默认推理路径。
 
 ## 为什么使用 HTML？
 

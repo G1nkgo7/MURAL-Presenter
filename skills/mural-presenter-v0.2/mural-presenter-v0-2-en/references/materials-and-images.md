@@ -47,6 +47,12 @@ Choose the method from the information job, not from convenience:
 | Establish a controlled non-specific mood | image generation | conceptual illustration, generic scene, atmosphere, metaphor, coordinated visual series |
 | Explain data or relationships | SVG/CSS/HTML by Slide | chart, process, timeline, architecture, arrows, labels, icon system |
 
+Medium priority is explicit: real identity/setting uses sourced imagery;
+non-specific concept/atmosphere uses generated raster; SVG/CSS/HTML leads only
+when the information structure itself is data, process, architecture, mechanism,
+or relationship. “Easier to generate” never makes SVG the default replacement
+for photography, scenes, physical subjects, or atmospheric imagery.
+
 If the user asks for a real person or real scene, use a real sourced image. Do not
 generate a documentary substitute for a named person, artwork, event, product, or
 place. Do not generate charts or diagrams as raster images.

@@ -183,8 +183,9 @@ remain Slide decisions.
 ## Special pages
 
 Plan a meaningful Hero for the cover unless deliberate minimalism truly fits the
-subject. The Hero may be an authentic image, an evidence object, or a strong
-authored SVG mechanism.
+subject. Prefer authentic imagery for a real subject and an art-directed
+generated raster for non-specific atmosphere; prefer a strong authored SVG only
+when the cover itself explains a mechanism.
 
 Dividers within one deck share numbering grammar, type roles, motif treatment,
 color logic, and spatial character. They may alternate a small related set of
@@ -217,6 +218,14 @@ Use:
 - `code_only` for data, process, architecture, and relationship visuals;
 - `none` for a deliberately typographic page.
 
+Before choosing `code_only`, ask on every page whether a raster would add
+identity, setting, emotion, or memorability. Covers, closings, and dividers must
+all answer that question, as must narrative content about people, physical
+objects, places, case sites, or visible atmosphere. Choose SVG/code-only when
+the primary information is genuinely data, process, architecture, mechanism, or
+relationship. Do not replace a searchable/generatable image opportunity with a
+generic icon or vector merely because vectors are faster or more predictable.
+
 When the subject includes recognizable people, places, products, documents,
 works, events, or case sites, proactively mark the relevant pages `required` or
 `preferred` instead of expecting Slide to replace identity with generic icons.
@@ -235,6 +244,9 @@ visual storyboard. If every page became `code_only / none`, confirm that the
 user actually requested it or that every key visual has a concrete code-visual
 job; do not let convenience silently remove Image. Do not create an asset-count
 quota—repair only a real mismatch between global intent and page routing.
+Also revisit every cover, divider, closing, and narrative peak. If its SVG is
+decorative rather than information-bearing, route the page to `preferred` so
+Image can search or generate a more presentation-led raster.
 
 An explicit request for a real photograph stays an authenticity requirement; it
 must never silently become documentary-looking generated imagery.

@@ -29,6 +29,14 @@ Orchestrator defines what should be seen and why. You decide:
 - generation for non-specific atmosphere or a deliberately authored concept;
 - no raster for `code_only` or decorative ideas without explanatory value.
 
+Do not equate “SVG can draw it” with “no raster is needed.” Resolve a
+`preferred` commission positively when search or generation can give a cover,
+closing, divider, or narrative content page a real subject, spatial setting,
+atmosphere, emotion, or memorable image. Return work to a code visual only when
+its primary job is precise data, process, architecture, mechanism, or
+relationship communication. A generic vector person, landscape, product
+outline, or decorative motif is not a substitute for an obtainable raster.
+
 Never generate a documentary-looking substitute for a named real subject.
 Generated images contain no text, dates, logos, or watermarks.
 For generated assets, translate the deck's palette premise and visual character

@@ -51,7 +51,7 @@ Run a standalone job with:
 ```bash
 uv run --no-project python infer.py \
   --query "制作一份 8 页演示" \
-  --batch demo-v02 --workers 1
+  --batch demo-v02 --workers 1 --mode inference
 ```
 
 `--batch` names the output namespace. `--workers 1` runs one top-level Deck at a
@@ -92,9 +92,39 @@ Useful batch flags:
 - `--overwrite`: delete this batch's mutable run directory and manifest before
   starting. This is destructive and does not combine with `--resume`.
 
-There is no `--mode` switch in v0.2: `infer.py` is the inference entrypoint.
-The frozen `../mural-presenter/infer.py` separately supports explicit
-inference/synthesis profiles for release-baseline and trajectory work.
+## Inference and synthesis modes
+
+v0.2 uses the same explicit dual-mode contract as `../mural-presenter`:
+
+- `--mode inference` is the serving default. It releases image bytes after the
+  model has consumed them once and compacts sufficiently old active history.
+  Immutable image snapshots and the full text trace remain on disk.
+- `--mode synthesis` disables both forms of lossy active-context maintenance.
+  Every Orchestrator and child trace gets a hash-addressed
+  `multimodal-manifest.json`; the sample is rejected if any referenced snapshot
+  is missing.
+
+Both modes run the same Skill, one-Slide-per-Agent topology, prompts, tools,
+model settings, and delivery acceptance gates. They differ only in runtime
+context retention and trajectory completeness. In particular, synthesis does
+not use shorter prompts, fewer turns, smaller token limits, or compressed model
+responses.
+
+The CLI flag takes precedence over `MURAL_RUN_MODE`; the default is
+`inference`. Use distinct batch names because a batch namespace has one fixed
+trace policy:
+
+```bash
+# Fast delivery
+uv run --no-project python infer.py \
+  --query "制作一份 8 页演示" \
+  --batch demo-v02-infer --workers 1 --mode inference
+
+# Lossless training trajectory synthesis
+uv run --no-project python infer.py \
+  --queries /absolute/path/to/briefs.jsonl \
+  --batch train-v02-synthesis --workers 4 --mode synthesis
+```
 
 ## Skill and language routing
 
@@ -185,6 +215,7 @@ runs/<batch>/<sample_id>/
 ├── assets/                   # verified local imagery and catalog
 ├── renders/                  # page PNGs and contact sheets
 ├── _trace/                   # orchestrator/child messages and tool events
+│   └── **/multimodal-manifest.json  # synthesis mode only
 ├── present.html
 ├── speech.md
 └── result.json

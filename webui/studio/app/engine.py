@@ -705,7 +705,9 @@ def _mural_v02_skill(
         "core/language.py",
         "core/model_call.py",
         "core/render_broker.py",
+        "core/run_profiles.py",
         "core/run_batch.py",
+        "core/trace_mode.py",
         "core/tools.py",
     )
     missing_harness = [
@@ -755,6 +757,7 @@ def _mural_v02_skill(
         "caps": ["attachments", "revision", "static_html", "custom_fonts"],
         "runtime_env": {
             "CLEAN_MODEL_SELECT_SKILL": "1",
+            "MURAL_RUN_MODE": "inference",
             "CLEAN_SKILL_NAME": "mural-presenter-v0-2",
             "CLEAN_SKILL_NAME_ZH": names["zh"],
             "CLEAN_SKILL_NAME_EN": names["en"],

@@ -88,9 +88,11 @@ distinct composition action stated in its plan.
 Use a large custom SVG when a mechanism, architecture, cycle, funnel, hierarchy,
 radial relationship, or chapter motif needs authored geometry. Do not reduce it
 to a row of generic boxes. Give the SVG a real `viewBox`, readable live text,
-clear connectors, and shared tokens, then verify it in the PNG. When a cropped
-principal figure from an attachment is itself evidence, show that figure rather
-than redrawing an SVG that impersonates the original result.
+clear connectors, and shared tokens, then verify it in the PNG. Attachment
+figures provide OCR/text facts only; never display a document page or crop.
+Reconstruct data, results, and relationships only when page evidence is
+sufficient and preserve the reported scope. Never use generated art or an
+invented SVG as if it were the original experimental result.
 
 Full references are already in `speech.md`. Brief natural-language attribution is
 visible only when source identity changes how the audience should read the claim.
@@ -114,6 +116,8 @@ and the compiled deck. Use them verbatim and never prepend `../`; do not inspect
 `deck.py`, `tmp/`, or `renders/.page_NN/` to rediscover path resolution. When the
 catalog assigns an asset to this page, the final HTML displays that exact path;
 do not leave it in a comment, hidden element, or fully obscured background.
+Never reference `inputs/`, PDF page images, or any attachment-derived crop. The
+v0.2 catalog accepts only reacquired `real` and newly `generated` assets.
 
 ## Special pages
 

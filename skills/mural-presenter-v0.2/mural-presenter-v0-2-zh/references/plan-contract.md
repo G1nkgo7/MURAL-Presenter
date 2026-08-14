@@ -123,6 +123,11 @@ Slide 读取或“沿用 Pxx”。
 - 小写 kebab token 的 `page_family`；
 - `visual_evidence`：`required`、`preferred`、`code_only` 或 `none`。
 
+有文档附件时，`## 语义视觉需求` 只写 OCR/提取稿能够支持的对象、caption、标签、
+数值、关系与真实性边界，不写附件页图路径或裁剪框。`required/preferred` 表示重新搜索
+或重新生成的位图需求；数据、实验结果、流程和架构优先写成 `code_only` 以便忠实重绘。
+附件像素和 `kind: material` 不是 v0.2 的合法交付路径。
+
 普通内容页应同时填写 `composition` 与构图蓝图。若漏填，校验只告警，scaffold 会按
 `page_type / page_family` 推断安全起点，不阻断整册；显式规划仍更好，因为能保留原定
 主焦点与阅读路径。`composition` 从以下可改写骨架中选择：

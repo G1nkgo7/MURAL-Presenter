@@ -11,6 +11,7 @@ HARNESS = Path(__file__).resolve().parents[1]
 REPO = HARNESS.parents[1]
 sys.path.insert(0, str(HARNESS))
 
+from core import tools  # noqa: E402
 from core.agent_loop import _delegate_task, _finish_gap  # noqa: E402
 from core.run_batch import _extract_material  # noqa: E402
 
@@ -76,7 +77,7 @@ def test_pdf_ingestion_writes_complete_text_and_page_derivatives(tmp_path: Path)
     assert layout["image_pixels"][0] >= 1400
 
 
-def test_material_figure_accepts_subject_and_rejects_page_facsimile(tmp_path: Path) -> None:
+def test_attachment_pixels_are_rejected_by_crop_and_catalog(tmp_path: Path) -> None:
     from PIL import Image
 
     page_dir = tmp_path / "inputs/paper.pdf.pages"
@@ -91,7 +92,7 @@ def test_material_figure_accepts_subject_and_rejects_page_facsimile(tmp_path: Pa
         REPO
         / "skills/mural-presenter-v0.2/mural-presenter-v0-2-en/scripts/deck.py"
     )
-    accepted = subprocess.run(
+    blocked_crop = subprocess.run(
         [
             sys.executable,
             str(script),
@@ -107,24 +108,67 @@ def test_material_figure_accepts_subject_and_rejects_page_facsimile(tmp_path: Pa
         capture_output=True,
         text=True,
     )
-    assert accepted.returncode == 0, accepted.stderr
-    assert (tmp_path / "assets/figure.png").is_file()
+    assert blocked_crop.returncode != 0
+    assert "material-figure is disabled" in blocked_crop.stderr
+    assert not (tmp_path / "assets/figure.png").exists()
 
-    rejected = subprocess.run(
-        [
-            sys.executable,
-            str(script),
-            "material-figure",
-            str(tmp_path),
-            "--source",
-            "inputs/paper.pdf.pages/page_001.png",
-            "--output",
-            "assets/page.png",
-            "--box",
-            "0.01,0.01,0.99,0.99",
-        ],
+    assets = tmp_path / "assets"
+    assets.mkdir()
+    (assets / "figure.png").write_bytes(source.read_bytes())
+    (assets / "catalog.md").write_text(
+        """# Asset catalog
+
+## forbidden-attachment
+- slides: 1
+- kind: material
+- path: assets/figure.png
+- purpose: copied from attachment
+""",
+        encoding="utf-8",
+    )
+    blocked_catalog = subprocess.run(
+        [sys.executable, str(script), "fetch-images", str(tmp_path)],
         capture_output=True,
         text=True,
     )
-    assert rejected.returncode != 0
-    assert "page facsimile" in rejected.stderr
+    assert blocked_catalog.returncode != 0
+    assert "kind must be one of" in blocked_catalog.stderr
+    assert "generated" in blocked_catalog.stderr
+    assert "real" in blocked_catalog.stderr
+
+
+def test_image_role_cannot_read_or_view_attachment_pixels(tmp_path: Path) -> None:
+    class ImageAgent:
+        role = "image"
+
+    read_result = tools.read_file(
+        ImageAgent(),
+        "inputs/paper.pdf.pages/page_001.json",
+    )
+    assert "Image 不读取原始附件" in read_result
+
+    view_result = tools.vision_analyze(
+        ImageAgent(),
+        "inputs/paper.pdf.pages/page_001.png",
+    )
+    assert "Image 不查看或裁切附件像素" in view_result
+
+
+def test_image_terminal_does_not_expose_material_figure(tmp_path: Path) -> None:
+    script = (
+        REPO
+        / "skills/mural-presenter-v0.2/mural-presenter-v0-2-en/scripts/deck.py"
+    )
+
+    class ImageAgent:
+        role = "image"
+        ws = str(tmp_path)
+        render_script = str(script)
+        bash_relaxed = False
+
+    result = tools.terminal(
+        ImageAgent(),
+        f"python {script} material-figure . --source inputs/page.png "
+        "--output assets/figure.png --box 0.1,0.1,0.9,0.9",
+    )
+    assert "不允许的 deck.py 动作 `material-figure`" in result

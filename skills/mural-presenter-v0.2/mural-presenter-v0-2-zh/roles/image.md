@@ -16,14 +16,13 @@ thinking/reasoning 内容、素材判断和最终状态均使用中文；`en` �
 - `plan/deck.md`；
 - 所有标记为 `required` 或 `preferred` 的 `plan/slide_NN.md`；
 - `research/knowledge-brief.md` 中的视觉证据与来源线索；
-- 可复用的 Material 图片；
+- `research/material.md` / Research brief 中由 OCR 与提取稿形成的视觉替代 brief；
 - 必要时读取 `references/materials-and-images.md`。
 
 Orchestrator 说明要看见什么、为什么重要；你决定：
 
 - 真实人物、地点、产品、文件、作品、事件、案例现场等身份性证据：检索并下载；
 - 非特定氛围或明确需要原创的概念画面：生成；
-- 附件已经提供视觉时：复用 Material；
 - `code_only` 或没有解释价值的装饰需求：不做位图。
 
 不能为具名真实对象生成仿纪实替代。生成图不得含文字、日期、Logo 或水印。
@@ -31,18 +30,18 @@ Orchestrator 说明要看见什么、为什么重要；你决定：
 退回深蓝电影感。真实素材优先保持纪实真实性；可以由 Slide 通过裁切、字体和叠层协调，
 不能只因原生色彩不够统一就放弃可信证据。
 
-Material 给出论文页图线索时，先看候选页图，再用确定性裁图命令只提取视觉主体：
+不得读取、查看、复制、裁切或登记 `inputs/` 中的附件页图与附件派生图片，也不得在
+catalog 使用 `kind: material`。只根据 Material/Research 写出的 OCR 事实与视觉替代
+brief 重新取得视觉：
 
-```bash
-python skills/mural-presenter-v0-2-zh/scripts/deck.py material-figure . \
-  --source inputs/01_paper.pdf.pages/page_003.png \
-  --output assets/paper-main-figure.png --box 0.08,0.18,0.92,0.62
-```
+1. 能精确识别具名主体或原始视觉时，搜索论文官网、项目页、作者页或其他可信来源，
+   核验确为同一对象后按 `real` 下载；
+2. 非特定概念、氛围或隐喻可按 `generated` 重新生成，但提示词只使用已核实语义；
+3. Figure/Table 中的数字、曲线、消融结果、流程、架构与关系交给 Slide 以
+   HTML/CSS/SVG 忠实重绘，Image 不生成“看起来像数据”的栅格图；
+4. 搜不到原始视觉且又不能忠实重建时，报告缺口并使用计划中的代码/排印降级，不猜测。
 
-坐标是归一化 `x0,y0,x1,y1`。命令会拒绝整页、大段文字和低分辨率裁图。caption、长标签
-与解释性正文由 HTML 重排；裁图保留图表、示意图、照片或实验结果的视觉主体和必要短标签。
-不要截图摘要、正文段落或整页 PDF。附件图不是配图配额：它确实支撑论点时使用；否则
-仍可选择可信外部真图、生成图或代码视觉。
+生成图不得声称来自原附件，不得仿造论文截图、实验结果或带精确标签的数据 Figure。
 
 ## 批量处理
 
@@ -64,7 +63,7 @@ python skills/mural-presenter-v0-2-zh/scripts/deck.py material-figure . \
 ## Catalog 与联系表
 
 先完整写好唯一 `assets/catalog.md`，再运行素材命令。真实图片的 `source` 是稳定来源页，`download` 是已经
-核验的直接图片 URL；生成图和 Material 不写 `download`：
+核验的直接图片 URL；生成图不写 `download`：
 
 ```markdown
 # Asset catalog
@@ -80,8 +79,8 @@ python skills/mural-presenter-v0-2-zh/scripts/deck.py material-figure . \
 - expect_transparent: false
 ```
 
-kind 只使用 `material`、`real` 或 `generated`。真图保留来源；生成图与 Material 的
-本地文件应已经存在。`path` 必须是从工作区根目录出发的精确 `assets/NAME.ext`，
+kind 只使用 `real` 或 `generated`。真图保留来源；生成图的本地文件应已经存在。
+任何 `material`、附件页图或附件裁图条目都会被拒绝。`path` 必须是从工作区根目录出发的精确 `assets/NAME.ext`，
 不能写 `../assets/...`。`slides` 只登记真正需要消费该素材的页面；一旦登记，最终
 HTML 必须按这个精确路径显示它。复用素材时把所有消费者写进同一条目，不另建重复文件。
 

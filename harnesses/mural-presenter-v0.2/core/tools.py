@@ -459,6 +459,15 @@ def read_file(agent, path, offset=1, limit=500):
     while normalized.startswith("./"):
         normalized = normalized[2:]
     normalized = normalized.rstrip("/")
+    if (
+        getattr(agent, "role", "") == "image"
+        and (normalized == "inputs" or normalized.startswith("inputs/"))
+    ):
+        return (
+            "read_file 错误：mural-presenter-v0.2 的 Image 不读取原始附件或附件派生页图。"
+            "请只使用 research/material.md 与 research/knowledge-brief.md 中的 OCR/提取稿"
+            "事实，重新搜索、生成概念图，或把数据/关系交给 Slide 忠实重绘。"
+        )
     is_grouped_skill = _is_grouped_skill(agent)
     if (
         is_grouped_skill
@@ -718,7 +727,7 @@ def _bash_mutation_error(agent, cmd: str) -> str | None:
                         "restore-base", "validate-plans", "scaffold-from-plans",
                         "repair-contract", "sync-speech", "build", "render", "render-group", "finalize", "clean",
                         "audit", "fetch-images", "assets-resolve-group", "assets-finalize", "inspect-image",
-                        "remove-checkerboard", "material-figure",
+                        "remove-checkerboard",
                     }
                     else "fetch-images"
                 )
@@ -731,7 +740,6 @@ def _bash_mutation_error(agent, cmd: str) -> str | None:
                 "restore-base", "validate-plans", "scaffold-from-plans", "repair-contract", "sync-speech",
                 "build", "render", "render-group", "finalize", "clean", "audit", "fetch-images",
                 "assets-resolve-group", "assets-finalize", "inspect-image", "remove-checkerboard",
-                "material-figure",
             }:
                 return f"不允许的 deck.py 动作 `{tokens[2]}`。"
             if tokens[3] != ".":
@@ -1003,6 +1011,14 @@ def vision_analyze(agent, image_url, question="", _parent_tool_use_id=""):
     """返回图片像素让模型看见截图，并同时满足像素与请求体积限制。"""
     path = image_url
     normalized_path = str(path).replace("\\", "/").lstrip("./")
+    if (
+        getattr(agent, "role", "") == "image"
+        and (normalized_path == "inputs" or normalized_path.startswith("inputs/"))
+    ):
+        return (
+            "vision_analyze 错误：mural-presenter-v0.2 的 Image 不查看或裁切附件像素。"
+            "请从 OCR/提取稿视觉替代 brief 重新搜索或生成；数据与关系使用代码视觉。"
+        )
     if (
         _is_grouped_skill(agent)
         and getattr(agent, "role", "") == "orchestrator"

@@ -164,8 +164,10 @@ physical page number.
 ## Images
 
 Orchestrator states visual purpose and truth requirement in each page plan.
-Image decides whether to search, generate, reuse Material, or leave a
-`code_only` need to Slide:
+Image decides whether to search, generate, or leave a `code_only` need to
+Slide. v0.2 does not use any attachment pixel, rendered document page, or crop
+as a delivery asset. Attachments ground facts, data, captions, labels, and
+visual semantics only through native text/OCR:
 
 - known people, places, products, documents, works, events, and real cases:
   search and download authentic imagery;
@@ -173,6 +175,16 @@ Image decides whether to search, generate, reuse Material, or leave a
   allowed;
 - data, process, architecture, and relationships: HTML/CSS/SVG;
 - decoration without explanatory value: omit it.
+
+Do not crop or directly reference figures/tables from paper or course
+attachments, including any `inputs/` page image. Route from the title, caption,
+subject, labels, and values recorded by OCR/extraction: search for the exact
+visual on an official paper, project, or author page when a credible match is
+available; generate a new explanatory image only for conceptual subjects; and
+rebuild data, experimental results, and mechanisms in HTML/CSS/SVG from verified
+values. A generated image must never pose as the paper's original figure,
+experiment screenshot, or exact data graphic. When faithful reconstruction is
+not possible, use bounded copy or a code visual and preserve the uncertainty.
 
 Treat `preferred` as a positive visual commission when a truthful raster would
 materially improve identity, setting, evidence, or atmosphere. Image should

@@ -202,8 +202,9 @@ established takeaway, not carry the recommendation set.
 
 In `Semantic visual need`, state what must be seen, why it matters, and any truth
 or title-safe-area requirement. Do not assign an unverified candidate URL or
-native orientation as a hard requirement. Image chooses search, generation,
-Material reuse, or no raster based on the role card.
+native orientation as a hard requirement. Image chooses search, generation, or
+no raster based on the role card. v0.2 never plans attachment-pixel reuse,
+attachment crops, or direct display of document page images.
 
 Use:
 
@@ -221,11 +222,13 @@ works, events, or case sites, proactively mark the relevant pages `required` or
 `preferred` instead of expecting Slide to replace identity with generic icons.
 Do not set a raster need when an authored diagram communicates the idea better.
 
-When a paper or course attachment contains a principal figure, prefer a tight
-subject crop that supports the argument. External authentic imagery or generated
-concept art may still fill real visual gaps; attachment use is not exclusive.
-Academic decks do not default to `code_only` or surrender cover tension, layout
-variety, or image scale.
+Treat a principal figure in a paper or course attachment as an OCR/text evidence
+lead, not a delivery asset. Turn its caption, subject, key labels, values, and
+relationships into a replacement-visual brief: Image searches when the original
+can be credibly reacquired, conceptual subjects may be regenerated, and Slide
+faithfully reconstructs numbers, experimental results, and mechanisms. Academic
+decks do not default to plain text or surrender cover tension, layout variety,
+or image scale, but generated art must never pose as the original figure.
 
 After writing the page plans, cross-check them against `image_mode` and the
 visual storyboard. If every page became `code_only / none`, confirm that the

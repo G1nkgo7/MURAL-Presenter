@@ -133,6 +133,14 @@ Required preamble fields:
 - `page_family` as a lowercase kebab token;
 - `visual_evidence`: `required`, `preferred`, `code_only`, or `none`.
 
+With document attachments, `## Semantic visual need` records only the subject,
+caption, labels, values, relationships, and truth boundary supported by
+OCR/extraction; never record an attachment-page path or crop box. `required` and
+`preferred` request a reacquired or newly generated raster. Prefer `code_only`
+for data, experimental results, process, and architecture that require faithful
+reconstruction. Attachment pixels and `kind: material` are not valid v0.2
+delivery paths.
+
 Ordinary content pages should also state a `composition` and Composition
 blueprint. If either is omitted, validation warns and the scaffold infers a
 safe starting geometry from `page_type / page_family` rather than blocking the

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -172,3 +173,29 @@ def test_image_terminal_does_not_expose_material_figure(tmp_path: Path) -> None:
         "--output assets/figure.png --box 0.1,0.1,0.9,0.9",
     )
     assert "不允许的 deck.py 动作 `material-figure`" in result
+
+
+def test_v02_portable_font_bundle_is_self_contained(tmp_path: Path) -> None:
+    edition = REPO / "skills/mural-presenter-v0.2/mural-presenter-v0-2-en"
+    shutil.copyfile(edition / "assets/base.css", tmp_path / "base.css")
+    slides = tmp_path / "slides"
+    slides.mkdir()
+    (slides / "slide_01.html").write_text(
+        '<section class="slide"><h1 class="type-heavy">RAVE 渲染一致</h1></section>',
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [sys.executable, str(edition / "scripts/font_bundle.py"), str(tmp_path)],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    css = (tmp_path / "base.css").read_text(encoding="utf-8")
+    assert "DECK_FONT_BUNDLE_START" in css
+    assert '@font-face {' in css
+    manifest = json.loads(
+        (tmp_path / "assets/fonts/manifest.json").read_text(encoding="utf-8")
+    )
+    assert manifest["faces"]
+    assert all((tmp_path / face["path"]).is_file() for face in manifest["faces"])

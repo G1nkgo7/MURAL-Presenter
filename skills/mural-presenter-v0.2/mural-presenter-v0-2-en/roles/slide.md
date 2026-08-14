@@ -86,8 +86,12 @@ distinct composition action stated in its plan.
   or persistent animation.
 
 Use a large custom SVG when a mechanism, architecture, cycle, funnel, hierarchy,
-radial relationship, or chapter motif needs authored geometry. Do not reduce it
-to a row of generic boxes. Give the SVG a real `viewBox`, readable live text,
+or radial relationship needs authored geometry. Do not reduce it to a row of
+generic boxes. SVG never replaces an assigned raster or turns a person, place,
+product, physical object, case scene, or atmosphere into a convenient generic
+outline. Prefer SVG for a divider motif only when it carries an information
+relationship; when the catalog provides a raster, make that raster the dominant
+composition event. Give the SVG a real `viewBox`, readable live text,
 clear connectors, and shared tokens, then verify it in the PNG. Attachment
 figures provide OCR/text facts only; never display a document page or crop.
 Reconstruct data, results, and relationships only when page evidence is
@@ -131,12 +135,15 @@ Put full-bleed imagery, texture, SVG, and color in the first two layers. Keep al
 readable copy inside `special-safe`. Do not recreate `slide-inner`, `page-frame`,
 or a normal content header.
 
-- Cover: make the Hero and title one complete composition; do not turn it into an
-  executive-summary dashboard.
-- Divider: add only one semantic motif. Never duplicate the section number,
+- Cover: make the Hero and title one complete composition. When a raster exists,
+  give its identity/atmosphere real scale instead of treating it as corner
+  decoration; do not turn the page into an executive-summary dashboard.
+- Divider: add only one semantic motif. An assigned raster may be full-bleed or
+  a decisive crop. Never duplicate the section number,
   chapter label, title, or bridge sentence, and do not add body arguments.
-- Closing: remain sparse, balanced, and unmistakably an ending. Add no new
-  argument, fake contact detail, or large physical page number.
+- Closing: remain sparse, balanced, and unmistakably an ending. An assigned
+  raster may supply atmosphere or visual callback. Add no new argument, fake
+  contact detail, or large physical page number.
 
 `special_layout` owns the shared header grid; `page_family` supplies the
 subject-specific art direction. Refine title typography and the page-local motif,

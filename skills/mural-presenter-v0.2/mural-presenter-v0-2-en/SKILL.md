@@ -144,8 +144,11 @@ Background photography, texture, SVG, and color fields reach all four edges;
 readable copy stays inside `special-safe`. A special page never reuses the
 content-page `slide-inner → page-frame → page-body` chain.
 
-A cover normally has a meaningful Hero image, evidence object, or authored SVG
-mechanism. Condense the title when possible; when meaning requires length, split
+A cover normally has a meaningful Hero image or evidence object. Prefer sourced
+imagery for a retrievable real subject and a generated raster in the deck's art
+direction for non-specific atmosphere. Use an authored SVG as the main Hero only
+when the page itself must explain a mechanism, relationship, or data. Condense
+the title when possible; when meaning requires length, split
 its hierarchy and select a composition that can hold it. Do not default every
 deck to a top title or every short title to an empty centered canvas.
 
@@ -175,6 +178,16 @@ visual semantics only through native text/OCR:
   allowed;
 - data, process, architecture, and relationships: HTML/CSS/SVG;
 - decoration without explanatory value: omit it.
+
+Run a raster-opportunity check before choosing SVG. When a person, place,
+product, work, object, factual scene, case atmosphere, or narrative transition
+would gain identity, setting, emotion, or memorability from imagery, search or
+generate first. Never replace such an opportunity with generic vector art merely
+because SVG is faster or easier to control. SVG is primarily for precise data,
+process, architecture, mechanism, and relationship communication. Apply this
+check to covers, closings, dividers, and content pages. Intentional typographic
+rests remain valid, but a run of `code_only`/`none` pages must not hide viable
+image opportunities.
 
 Do not crop or directly reference figures/tables from paper or course
 attachments, including any `inputs/` page image. Route from the title, caption,

@@ -53,6 +53,7 @@ if _SCRIPT_DIR not in sys.path:
 _PREVIOUS_DONT_WRITE_BYTECODE = sys.dont_write_bytecode
 sys.dont_write_bytecode = True
 try:
+    from font_bundle import bundle_workspace, validate_font_bundle
     from image_background import (
         inspect_image,
         print_report as print_image_report,
@@ -1462,6 +1463,13 @@ def build(root: Path, expected: int | None = None) -> list[int]:
         raise FileNotFoundError("base.css is missing; run prepare first")
     deck, plans, fragments = _fragments(root, expected=expected)
     _validate_asset_requirements(root, plans, fragments)
+    # Server-side screenshots can see worker-local fonts, while a remote WebUI
+    # cannot. Freeze the deck's actual characters and font roles before
+    # assembly so the PNG and browser player resolve exactly the same faces.
+    bundle_workspace(root)
+    font_errors = validate_font_bundle(root)
+    if font_errors:
+        raise ValueError("portable font audit failed:\n- " + "\n- ".join(font_errors))
     css = css_path.read_text(encoding="utf-8")
     document = _document(css, fragments, deck["language"])
     atomic_write_text(root, root / "present.html", document)
@@ -1576,6 +1584,8 @@ def render(root: Path, page: int, expected: int | None) -> None:
 
 def audit(root: Path) -> None:
     violations = audit_workspace(root)
+    if (root / "present.html").is_file():
+        violations.extend(validate_font_bundle(root))
     if violations:
         raise ValueError("workspace output audit failed:\n- " + "\n- ".join(violations))
     print("status:PASS")
@@ -2149,6 +2159,7 @@ def main() -> int:
     p_clean.add_argument("--unused-assets", action="store_true")
     p_audit = sub.add_parser("audit")
     p_audit.add_argument("root")
+    p_audit.add_argument("--expected", type=int)
     p_inspect = sub.add_parser("inspect-image")
     p_inspect.add_argument("root")
     p_inspect.add_argument("--asset", required=True)

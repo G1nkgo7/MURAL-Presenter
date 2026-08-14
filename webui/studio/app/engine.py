@@ -685,9 +685,11 @@ def _mural_v02_skill(
         "roles/review.md",
         "roles/slide.md",
         "scripts/deck.py",
+        "scripts/font_bundle.py",
         "scripts/image_background.py",
         "scripts/render_deck.py",
         "scripts/workspace_policy.py",
+        "assets/licenses/OFL-1.1.txt",
     )
     missing_skill = [
         f"{name}/{relative}"
@@ -750,7 +752,7 @@ def _mural_v02_skill(
         "harness_entry": MURAL_V02_HARNESS_ENTRY,
         "harness_required_files": list(harness_required),
         "pairing": "mural-presenter-v0.2-single-slide",
-        "caps": ["attachments", "revision", "static_html"],
+        "caps": ["attachments", "revision", "static_html", "custom_fonts"],
         "runtime_env": {
             "CLEAN_MODEL_SELECT_SKILL": "1",
             "CLEAN_SKILL_NAME": "mural-presenter-v0-2",

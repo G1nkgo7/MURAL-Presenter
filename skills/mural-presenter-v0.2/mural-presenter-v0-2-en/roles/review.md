@@ -56,6 +56,10 @@ nothing, return `ready` without precautionary single-page inspection.
 - a terse request did not collapse into thin generic copy, repeated text/card
   pages, or an unused visual plan; deliberate typographic rests remain distinct
   from pages that simply lack a visual idea;
+- SVG/code-only pages genuinely communicate data, process, architecture,
+  mechanism, or relationships instead of using generic vector people,
+  landscapes, product outlines, or decoration in place of searchable/generated
+  imagery;
 - ordinary pages realize their `composition` and blueprint: the first-glance
   focal point is clear, the primary region carries imagery, chart, mechanism,
   evidence, or decisive typography, and adjacent pages do not merely swap copy
@@ -81,6 +85,9 @@ Special-page checks:
 - divider carries no body argument and its motif is not a tiny corner icon;
 - closing is sparse, balanced, unmistakably an ending, and contains no new
   argument, production note, fake contact, or prominent physical page number.
+- cover, divider, and closing pages honor their planned raster opportunities;
+  any SVG used there carries information structure rather than substituting for
+  imagery out of convenience.
 
 Text collision, clipping, duplicate chapter labels, broken full bleed, and canvas
 drift are defects, not intentional layering. The render metadata layout/canvas

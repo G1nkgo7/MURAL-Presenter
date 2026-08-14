@@ -86,6 +86,45 @@ MURAL 通过可复用的 **MURAL Authoring Skill** 串联四个阶段：
 - **Group replay**：涉及一组关联页面或组内共同视觉语言的修改。
 - **Deck replan**：只有当请求改变整册决策或结构时，才重新规划。
 
+## 运行推理（默认：MURAL Presenter v0.2）
+
+当前推荐的推理配套是：
+
+- Skill：[`skills/mural-presenter-v0.2/`](skills/mural-presenter-v0.2/)，包含行为等价的
+  中英文说明版；
+- Harness：[`harnesses/mural-presenter-v0.2/`](harnesses/mural-presenter-v0.2/)，生产阶段
+  一页一个独立 `Slide NN` Agent，不使用 SlideGroup。
+
+Orchestrator 第一次读取某个 `SKILL.md` 后锁定该说明版，但说明版语言不决定成品语言；
+成品语言由 query 或 JSONL 行中的 `lang` 字段决定。
+
+```bash
+cd harnesses/mural-presenter-v0.2
+cp .env.example .env                  # 填写模型凭据；不要提交 .env
+uv venv && uv pip install -r requirements.txt
+uv run --no-project playwright install chromium
+
+# 单条任务
+uv run --no-project python infer.py \
+  --query "制作一份 8 页的 RAVE 论文演示" \
+  --batch demo-v02 --workers 1
+
+# JSONL 批量任务：每行至少包含 {"qid":"...","query":"..."}
+uv run --no-project python infer.py \
+  --queries /absolute/path/to/briefs.jsonl \
+  --batch bench-v02 --workers 4
+```
+
+JSONL 还可提供 `lang`、`slide_count`、`materials`/`attachments`；附件值是绝对路径数组，
+或 `{ "path": "..." }` 对象数组。结果写入 `runs/<batch>/<sample_id>/`，批次追加式摘要为
+`logs/<batch>.manifest.jsonl`。中断后使用 `--resume`；`--overwrite` 会主动清除该批次已有的
+可变 run 目录，应谨慎使用。
+
+模型、生图、搜索、纯文本模型外挂 Vision、Thinking/运行上限、产物和续跑规则详见
+[v0.2 Harness 运行说明](harnesses/mural-presenter-v0.2/README.md)。冻结发布线
+`skills/mural-presenter/` + `harnesses/mural-presenter/` 仍保留显式的 inference/synthesis
+画像，但不再是默认推理路径。
+
 ## 为什么使用 HTML？
 
 MURAL 以 HTML/CSS/SVG 作为创作源，使文字、布局、图形、媒体与交互保持独立可寻址。

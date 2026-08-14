@@ -104,10 +104,14 @@ class ReleaseWebUIParityTests(unittest.TestCase):
         self.assertIn(".orchestration-timing-card", css)
         self.assertIn(".orch-output-time", css)
 
-    def test_public_release_still_exposes_only_the_renamed_workflow(self):
+    def test_public_release_defaults_to_v02_and_keeps_the_frozen_fallback(self):
         engine = (ROOT / "studio/app/engine.py").read_text(encoding="utf-8")
         app = (ROOT / "studio/static/app.js").read_text(encoding="utf-8")
-        self.assertIn('_DEFAULT_PUBLIC_SKILL_KEYS = ("mural-presenter",)', engine)
+        self.assertIn(
+            '_DEFAULT_PUBLIC_SKILL_KEYS = ("mural-presenter-v0.2", "mural-presenter")',
+            engine,
+        )
+        self.assertIn('"mural-presenter-v0.2": _mural_v02_skill()', engine)
         self.assertIn('"mural-presenter": "MURAL Presenter"', app)
         self.assertNotIn('"long-horizon-presenter": "Long-Horizon Presenter"', app)
 

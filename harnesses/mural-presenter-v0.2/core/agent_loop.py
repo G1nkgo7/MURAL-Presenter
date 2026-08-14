@@ -22,6 +22,8 @@ from pathlib import Path
 
 from . import config, model_call, nova_raw, tools
 from .language import infer_deck_language, normalize_language
+from .run_profiles import resolve_run_profile
+from .trace_mode import write_trace
 
 ROLES = {"material", "research", "image", "slide", "review"}
 GROUPED_SKILL_NAMES = {
@@ -374,6 +376,18 @@ def _compact_live_history(messages: list[dict], keep_recent: int) -> bool:
     return True
 
 
+def _compact_live_history_for_profile(
+    agent: object,
+    messages: list[dict],
+    keep_recent: int,
+) -> bool:
+    """Apply active-history compaction only for profiles that permit it."""
+    profile = getattr(agent, "profile", None) or resolve_run_profile("inference")
+    if not profile.compact_active_history:
+        return False
+    return _compact_live_history(messages, keep_recent)
+
+
 def _live_history_chars(messages: list[dict]) -> int:
     return len(_canonical_json(messages))
 
@@ -654,6 +668,13 @@ class Agent:
         self.role = role
         self.label = label
         self.cfg = cfg
+        self.profile = resolve_run_profile(self.cfg.get("run_mode"))
+        self.run_mode = self.profile.name
+        self.trace_mode_status = {
+            "mode": self.run_mode,
+            "complete": True,
+            "image_count": 0,
+        }
         self.initial_user = initial_user
         self.started = time.time()
         self.task_started_epoch = float(
@@ -669,10 +690,13 @@ class Agent:
             if not re.fullmatch(r"[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*", trace_namespace):
                 raise ValueError(f"非法 trace namespace：{trace_namespace!r}")
             trace_root /= trace_namespace
+        self.trace_label = str(cfg.get("_trace_label") or label)
+        if not re.fullmatch(r"[A-Za-z0-9_.-]+", self.trace_label):
+            raise ValueError(f"非法 trace label：{self.trace_label!r}")
         self.trace_dir = (
             trace_root / "orchestrator"
             if role == "orchestrator"
-            else trace_root / "subagents" / label
+            else trace_root / "subagents" / self.trace_label
         )
         (self.trace_dir / "images").mkdir(parents=True, exist_ok=True)
 
@@ -886,6 +910,7 @@ class Agent:
             "clock": time.strftime("%H:%M:%S", time.gmtime(now)),
             "sid": self.sid,
             "label": self.label,
+            "trace_label": self.trace_label,
             "agent_elapsed_seconds": max(0, int(elapsed)),
             "message": str(message),
         }
@@ -977,6 +1002,12 @@ class Agent:
             "model_base_url": self.cfg.get("model_base_url", config.ANTHROPIC_BASE_URL),
             "thinking": self.thinking,
             "thinking_effort": self.effort,
+            "run_mode": self.run_mode,
+            "run_profile": {
+                "release_consumed_images": self.profile.release_consumed_images,
+                "compact_active_history": self.profile.compact_active_history,
+                "require_complete_trace": self.profile.require_complete_trace,
+            },
             "skill_name": self.skill_name,
             "skill_language": self.skill_language,
             "query_language_hint": self.query_language_hint,
@@ -1030,6 +1061,8 @@ class Agent:
             "skill_language": self.skill_language,
             "response_language": self.response_language,
             "deck_language": self.deck_language,
+            "run_mode": self.run_mode,
+            "multimodal_trace": self.trace_mode_status,
         })
         _write_json(path, payload)
 
@@ -1083,6 +1116,38 @@ class Agent:
         return self.max_tokens
 
 
+def _messages_for_model(messages: list[dict]) -> list[dict]:
+    """Return a replay-safe copy without mutating the durable trajectory.
+
+    OpenAI-compatible providers expose useful unsigned reasoning as a thinking
+    block, while Anthropic rejects replaying such a block without a signature.
+    Preserve it in messages.json/SFT data and omit it only from the next API
+    request. Signed thinking remains unchanged.
+    """
+    changed = False
+    replay: list[dict] = []
+    for message in messages:
+        content = message.get("content") if isinstance(message, dict) else None
+        if not isinstance(content, list):
+            replay.append(message)
+            continue
+        filtered = [
+            block
+            for block in content
+            if not (
+                isinstance(block, dict)
+                and block.get("type") == "thinking"
+                and not block.get("signature")
+            )
+        ]
+        if len(filtered) != len(content):
+            replay.append({**message, "content": filtered})
+            changed = True
+        else:
+            replay.append(message)
+    return replay if changed else messages
+
+
 def _call(
     agent: Agent,
     messages: list[dict],
@@ -1093,7 +1158,7 @@ def _call(
     return model_call.call_with_tools(
         model=agent.model,
         system=agent.system,
-        messages=messages,
+        messages=_messages_for_model(messages),
         tools=agent.tool_schemas if with_tools else None,
         max_tokens=agent.token_limit(),
         thinking=agent.thinking,
@@ -1185,6 +1250,15 @@ def _run_child(parent: Agent, index: int, spec: dict) -> dict:
     else:
         label = f"{role}_{index:02d}"
     child_cfg = dict(parent.cfg)
+    prior_attempts = sum(
+        1 for candidate in parent.children if candidate.label == label
+    )
+    trace_attempt = prior_attempts + 1
+    child_cfg["_trace_label"] = (
+        label
+        if trace_attempt == 1
+        else f"{label}_r{trace_attempt}"
+    )
     child_cfg["_parent_deadline_monotonic"] = parent.deadline_monotonic
     child_cfg["deck_timeout_s"] = int(
         parent.cfg.get("child_wall_timeout_s", config.CHILD_WALL_TIMEOUT_S)
@@ -1231,6 +1305,7 @@ def _run_child(parent: Agent, index: int, spec: dict) -> dict:
             child.finish_snapshot()
     return {
         "label": label,
+        "trace_label": child.trace_label,
         "role": role,
         "ok": ok,
         "exit_reason": child.exit_reason,
@@ -1247,6 +1322,7 @@ def _run_child(parent: Agent, index: int, spec: dict) -> dict:
         "finalize_attempted": bool(getattr(child, "finalize_attempted", False)),
         "finalize_succeeded": bool(getattr(child, "finalize_succeeded", False)),
         "finalize_failure": str(getattr(child, "finalize_failure", ""))[-1200:],
+        "trace_mode": dict(getattr(child, "trace_mode_status", {}) or {}),
         "summary": child.final_text[-1800:],
     }
 
@@ -1597,10 +1673,12 @@ def _delegate(parent: Agent, args: dict) -> str:
         if label:
             outcomes[label] = {
                 "role": result.get("role"),
+                "trace_label": result.get("trace_label"),
                 "ok": bool(result.get("ok")),
                 "exit_reason": result.get("exit_reason"),
                 "completed_pages": result.get("completed_pages", []),
                 "incomplete_pages": result.get("incomplete_pages", []),
+                "trace_mode": dict(result.get("trace_mode") or {}),
             }
     if any(
         str(spec.get("role", "")).lower() == "review" and bool(result.get("ok"))
@@ -1895,6 +1973,18 @@ def _compact_consumed_images(messages: list[dict]) -> None:
                 item["content"] = compacted
 
 
+def _release_consumed_images_for_profile(
+    agent: object,
+    messages: list[dict],
+) -> bool:
+    """Release consumed pixels only in the delivery-oriented profile."""
+    profile = getattr(agent, "profile", None) or resolve_run_profile("inference")
+    if not profile.release_consumed_images:
+        return False
+    _compact_consumed_images(messages)
+    return True
+
+
 def _tool_results(agent: Agent, tool_uses, turn: int, tool_log: list[dict]) -> list[dict]:
     results: list[dict] = []
     remote_names = {"image_generate", "web_search"}
@@ -2143,8 +2233,14 @@ def _tool_results(agent: Agent, tool_uses, turn: int, tool_log: list[dict]) -> l
 
 
 def _flush(agent: Agent, messages: list[dict], tool_log: list[dict]) -> None:
-    _write_json(agent.trace_dir / "messages.json", [agent.compact_message(m) for m in messages])
-    _write_json(agent.trace_dir / "tool_log.json", tool_log)
+    cleaned = [agent.compact_message(m) for m in messages]
+    agent.trace_mode_status = write_trace(
+        agent.trace_dir,
+        cleaned,
+        tool_log,
+        agent.image_by_tool,
+        agent.run_mode,
+    )
 
 
 def _file_content_digest(path: Path) -> str:
@@ -2433,7 +2529,8 @@ def _run_loop_impl(agent: Agent) -> bool:
             )
         ):
             before = len(messages)
-            if _compact_live_history(
+            if _compact_live_history_for_profile(
+                agent,
                 messages,
                 config.HISTORY_KEEP_RECENT_MESSAGES,
             ):
@@ -2467,11 +2564,10 @@ def _run_loop_impl(agent: Agent) -> bool:
         append_message(
             {"role": "assistant", "content": agent.blocks(response_blocks)}
         )
-        # All image tool results already present in messages were consumed by
-        # the response above. Release their base64 payloads before the next API
-        # call while retaining the on-disk trace snapshots.
-        _compact_consumed_images(messages[:-1])
-        _compact_consumed_images(trace_messages[:-1])
+        # Inference releases image bytes after one model-visible consumption.
+        # Synthesis keeps the exact active multimodal history; its persisted
+        # trace still stores immutable shot references instead of base64.
+        _release_consumed_images_for_profile(agent, messages[:-1])
 
         text = ""
         for block in response_blocks:
@@ -2524,7 +2620,8 @@ def _run_loop_impl(agent: Agent) -> bool:
                 heals += 1
                 if heals >= 2:
                     before = len(messages)
-                    if _compact_live_history(
+                    if _compact_live_history_for_profile(
+                        agent,
                         messages,
                         max(8, min(config.HISTORY_KEEP_RECENT_MESSAGES, 12)),
                     ):
@@ -3118,6 +3215,30 @@ def run_sample(sample_id: str, seed: dict, workspace: str, cfg: dict) -> dict:
             "acceptance_reason": accept_reason,
             "loop_ok": False,
         }
+    if agent.profile.require_complete_trace:
+        trace_statuses = [
+            ("orchestrator", dict(agent.trace_mode_status or {})),
+            *[
+                (child.trace_label, dict(child.trace_mode_status or {}))
+                for child in agent.children
+            ],
+        ]
+        incomplete_traces = [
+            label
+            for label, trace_status in trace_statuses
+            if not trace_status or trace_status.get("complete") is not True
+        ]
+        detail = {
+            **detail,
+            "multimodal_trace_statuses": [
+                {"label": label, **trace_status}
+                for label, trace_status in trace_statuses
+            ],
+            "multimodal_trace_incomplete": incomplete_traces,
+        }
+        if incomplete_traces:
+            ok = False
+            reason = "合成模式轨迹不完整: " + ", ".join(incomplete_traces[:8])
     agent.finish_snapshot()
     usage = model_call.cost_summary()
     # Provider/auth failures are operationally retryable batch failures, not
@@ -3173,5 +3294,7 @@ def run_sample(sample_id: str, seed: dict, workspace: str, cfg: dict) -> dict:
             for candidate in [agent, *agent.children]
             if candidate.nova_raw is not None
         ],
+        "run_mode": agent.run_mode,
+        "multimodal_trace": dict(agent.trace_mode_status or {}),
         "pid": os.getpid(),
     }

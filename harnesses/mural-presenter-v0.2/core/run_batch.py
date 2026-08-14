@@ -27,6 +27,7 @@ sys.path.insert(0, str(ROOT))
 
 from core import config as acfg  # noqa: E402
 from core.language import infer_deck_language, normalize_language  # noqa: E402
+from core.run_profiles import resolve_run_profile  # noqa: E402
 
 RUNS = str(acfg.RUNS_DIR)
 LOGS = str(acfg.LOGS_DIR)
@@ -150,6 +151,7 @@ def run_dir_complete(run_dir):
 
 
 def build_config(args):
+    run_profile = resolve_run_profile(getattr(args, "mode", None))
     explicit_nova_root = os.environ.get("CLEAN_NOVA_RAW_ROOT", "").strip()
     nova_root = (
         Path(explicit_nova_root)
@@ -158,6 +160,7 @@ def build_config(args):
     )
     return {
         "batch": args.batch,
+        "run_mode": run_profile.name,
         "batch_workers": int(getattr(args, "workers", 4)),
         "max_attempts": int(getattr(args, "max_attempts", 3)),
         # model 取值链：MODEL > ANTHROPIC_MODEL(此时已被 .env 覆盖) > acfg 默认。
@@ -632,8 +635,9 @@ def revision_worker(task):
 
 
 class Progress:
-    def __init__(self, total):
+    def __init__(self, total, run_mode="inference"):
         self.total = total
+        self.run_mode = run_mode
         self.ok = self.rej = self.err = 0
         self.start = time.time()
 
@@ -655,7 +659,8 @@ class Progress:
 
     def close(self):
         dur = time.time() - self.start
-        print(f"\n完成。✓{self.ok} 通过  ⊘{self.rej} 丢弃  ✗{self.err} 失败  用时 {dur:.0f}s", flush=True)
+        activity = "合成" if self.run_mode == "synthesis" else "推理"
+        print(f"\n{activity}完成。✓{self.ok} 通过  ⊘{self.rej} 丢弃  ✗{self.err} 失败  用时 {dur:.0f}s", flush=True)
 
 
 def main():
@@ -670,6 +675,13 @@ def main():
     ap.add_argument("--resume", action="store_true", help="断点续跑：跳过 completed，重跑未完成")
     ap.add_argument("--overwrite", action="store_true", help="从头重来（删旧产物，危险）")
     ap.add_argument("--max-attempts", type=int, default=3, help="单 sample 最多尝试次数（含历史）")
+    ap.add_argument(
+        "--mode",
+        choices=("inference", "synthesis"),
+        default=os.environ.get("MURAL_RUN_MODE", "inference"),
+        help=("inference=交付优先，释放已消费图片并压缩旧上下文；"
+              "synthesis=训练数据优先，禁用有损上下文维护并强制完整轨迹"),
+    )
     args = ap.parse_args()
 
     cores = cgroup_cpus()
@@ -760,6 +772,7 @@ def main():
     # 实际生效的模型（经 .env 覆盖后的最终值，与 agent 落盘 config.json / 发给 API 的 model 同源）。
     # 显式打印，避免误以为用了 ~/.bashrc 的全局 ANTHROPIC_MODEL——环境变量到底哪个赢，一眼可查。
     print(f"🤖 model={config['model']}  base_url={acfg.ANTHROPIC_BASE_URL}  "
+          f"mode={config['run_mode']}  "
           f"thinking={'on' if config['thinking'] else 'off'}  effort={config['effort']}  "
           f"max_turns={config['max_turns']}  max_tokens={config['max_tokens']}  "
           f"child_turns={config['child_max_turns']}  "
@@ -822,7 +835,7 @@ def main():
         print("没有要跑的。")
         return
 
-    prog = Progress(len(tasks))
+    prog = Progress(len(tasks), config["run_mode"])
 
     def finish_record(rec, task):
         rec["finished_at"] = time.strftime("%Y-%m-%d %H:%M:%S")

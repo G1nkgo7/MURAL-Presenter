@@ -95,7 +95,7 @@ The revision router selects the smallest reliable scope:
 - **Group replay** when several related slides or their shared visual language must change.
 - **Deck replan** only when the request changes deck-level decisions or structure.
 
-## Inference and synthesis profiles
+## Frozen release inference and synthesis profiles (optional)
 
 The frozen Harness has one entrypoint and two explicit execution profiles:
 
@@ -119,6 +119,47 @@ uv run python infer.py --input /absolute/path/to/briefs.jsonl \
 
 See the [Harness operating guide](harnesses/mural-presenter/README.md) for the exact lossless
 boundary, resume rules, output tree, integrity gates, and environment overrides.
+## Run inference (default: MURAL Presenter v0.2)
+
+The recommended inference pair is:
+
+- Skill: [`skills/mural-presenter-v0.2/`](skills/mural-presenter-v0.2/) with behaviorally
+  equivalent Chinese and English instruction editions;
+- Harness: [`harnesses/mural-presenter-v0.2/`](harnesses/mural-presenter-v0.2/), using one
+  independent `Slide NN` Agent per page (no SlideGroup).
+
+The Orchestrator selects an instruction edition on its first `SKILL.md` read and locks it for the
+deck. This routing does **not** determine the output language; the query or a JSONL row's `lang`
+field does.
+
+```bash
+cd harnesses/mural-presenter-v0.2
+cp .env.example .env                  # fill model credentials; never commit .env
+uv venv && uv pip install -r requirements.txt
+uv run --no-project playwright install chromium
+
+# One deck
+uv run --no-project python infer.py \
+  --query "Create an 8-slide presentation about RAVE" \
+  --batch demo-v02 --workers 1
+
+# JSONL batch: each line contains at least {"qid":"...","query":"..."}
+uv run --no-project python infer.py \
+  --queries /absolute/path/to/briefs.jsonl \
+  --batch bench-v02 --workers 4
+```
+
+Optional JSONL fields include `lang`, `slide_count`, and `materials`/`attachments` (an array of
+absolute file paths or `{ "path": "..." }` objects). Results are written to
+`runs/<batch>/<sample_id>/`; the append-only batch summary is `logs/<batch>.manifest.jsonl`.
+Use `--resume` to continue an interrupted batch; `--overwrite` deliberately removes that batch's
+existing mutable run directory.
+
+The v0.2 [Harness guide](harnesses/mural-presenter-v0.2/README.md) documents credentials, image
+and search services, vision routing for text-only models, thinking/runtime limits, artifacts, and
+resume behavior. The frozen release pair at `skills/mural-presenter/` +
+`harnesses/mural-presenter/` remains available for explicit inference/synthesis profile work, but
+is not the default inference path.
 
 ## Why HTML?
 

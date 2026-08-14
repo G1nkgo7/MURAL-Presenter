@@ -49,8 +49,10 @@ nothing, return `ready` without precautionary single-page inspection.
 - research evidence used in claims rather than left only in the brief;
 - core definitions, methods, findings, and numbers from attachments remain
   visible on the pages that need them rather than being replaced by speech;
-- paper imagery is a high-resolution subject crop, never a full PDF page or a
-  screenshot dominated by prose;
+- no attachment page, paper crop, or `inputs/` pixel reaches the deck; paper
+  visuals are reacquired from an exact source, regenerated only as a conceptual
+  image, or faithfully reconstructed from verified data, and generated art does
+  not pose as the original figure;
 - a terse request did not collapse into thin generic copy, repeated text/card
   pages, or an unused visual plan; deliberate typographic rests remain distinct
   from pages that simply lack a visual idea;

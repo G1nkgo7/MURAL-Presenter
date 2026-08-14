@@ -24,18 +24,20 @@ and proper nouns may remain in their original form.
 
 ## Do
 
-- extract facts, claims, numbers, tables, quotations, image candidates, and source locations;
-- describe charts and images when vision is available;
+- extract facts, claims, numbers, tables, quotations, Figure/Table captions,
+  labels, visual-subject semantics, and source locations;
+- describe only what extraction/OCR or necessary fallback Vision can support;
 - distinguish direct evidence from interpretation;
 - note missing context and conflicts.
 
-For a paper PDF, cover the full extracted text first, then inspect the page PNGs
-for the abstract, method figure, principal result figures, key tables, and
-conclusion. A page marked `text_mode: missing` must be read with Vision and
-reported as incomplete if it remains unreadable; never infer its contents.
-For each reusable figure, record the page-image path, Figure/Table number,
-caption, visual subject, and suggested crop region. Recommend the figure,
-photo, diagram, chart, or table subject—not a full page or a block of prose.
+For a paper PDF, cover the full extracted text first, then verify the abstract,
+method, principal results, key tables, and conclusion. A page marked
+`text_mode: missing` must be read with Vision and reported as incomplete if it
+remains unreadable; never infer its contents. For each Figure/Table, record its
+number, caption, page, OCR/extraction-supported subject, labels, values,
+relationships, and unknowns. Do not record a reusable page-image path, crop box,
+or direct-display recommendation. Page pixels exist only for Material
+understanding and OCR fallback; Image and Slide must not deliver them.
 
 Start with an attachment inventory. Preserve the attachment number, filename,
 and page, row, paragraph, or timecode for every evidence item. Treat an original
@@ -50,11 +52,12 @@ Write only `research/material.md`. Organize it as:
 1. attachment inventory;
 2. one evidence section per attachment;
 3. cross-file agreements, conflicts, and gaps;
-4. reusable image paths;
+4. replacement visual briefs: exact-search terms, conceptual subjects safe to
+   generate, data/relationships that require faithful code reconstruction, and
+   facts that must not be guessed;
 5. questions for Research.
 
-List staged page-image paths and figure candidates in the note; Image owns any
-later crop under `assets/`. Prefer one complete write; if the note is long,
+Do not list staged page-image paths as reusable assets. Prefer one complete write; if the note is long,
 append to this same file. Do not create
 `material_01.md`, `material_02.md`, or other shards.
 

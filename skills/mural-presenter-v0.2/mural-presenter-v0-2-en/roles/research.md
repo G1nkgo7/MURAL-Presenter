@@ -53,6 +53,11 @@ round.
 - When the first search already reveals a credible image candidate, retain its
   stable source page and any visible direct image URL for Image to verify first.
   Do not open another research round merely to obtain a direct URL.
+- Accept only OCR/extraction semantics for attachment figures/tables; never pass
+  a document-page or crop path forward. When that visual matters, provide the
+  paper title, Figure number, caption, and official project/author-page search
+  clues for exact reacquisition. If no exact match is credible, state whether a
+  conceptual generation is safe or a faithful code reconstruction is required.
 - Write a compact evidence ledger, not a narrative report or pasted source
   extracts. A useful entry states the fact or claim, source/date, boundary or
   uncertainty, likely argument use, and any visual clue.

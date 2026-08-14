@@ -8,7 +8,7 @@ Extract only what the presentation can use:
 - numbers with units and time periods;
 - tables and chart data;
 - quotations with locations;
-- images and captions;
+- Figure/Table captions, labels, values, and visual-subject semantics;
 - conflicts, missing definitions, and uncertainty.
 
 Keep source locations precise enough for verification.
@@ -18,8 +18,9 @@ Keep source locations precise enough for verification.
 1. Parse supplied materials.
 2. Decide what questions remain.
 3. Research those questions.
-4. Reuse material imagery.
-5. Source or generate only missing imagery.
+4. Turn attachment visuals into OCR/extraction-grounded replacement briefs.
+5. Reacquire from credible external sources or regenerate non-specific concepts;
+   let Slide faithfully reconstruct data and relationships.
 
 This prevents repeated searching and contradictory evidence.
 
@@ -41,7 +42,7 @@ Choose the method from the information job, not from convenience:
 
 | Information job | Preferred source | Examples |
 |---|---|---|
-| Preserve supplied evidence | material reuse | attachment photo, screenshot, scanned page, supplied chart |
+| Preserve attachment evidence semantics | OCR/extraction grounding followed by new expression | captions, key labels, values, method relationships |
 | Show a real identity or factual scene | sourced real image | named person, artwork, place, building, product, document, event |
 | Establish a controlled non-specific mood | image generation | conceptual illustration, generic scene, atmosphere, metaphor, coordinated visual series |
 | Explain data or relationships | SVG/CSS/HTML by Slide | chart, process, timeline, architecture, arrows, labels, icon system |
@@ -49,6 +50,11 @@ Choose the method from the information job, not from convenience:
 If the user asks for a real person or real scene, use a real sourced image. Do not
 generate a documentary substitute for a named person, artwork, event, product, or
 place. Do not generate charts or diagrams as raster images.
+Never copy an attachment page, screenshot, scan, or crop into `assets/`. A paper
+figure may be downloaded as sourced `real` imagery only when it is reacquired as
+an exact match from an official paper, project, or author page. Otherwise use
+OCR/extraction-supported semantics for conceptual generation or verified values
+for a code visual. Generated output must not pose as the original figure.
 
 Generated images should follow one deck-level art direction and leave readable
 text, labels, dates, and logos to HTML. Real images may receive a CSS tint, scrim,
@@ -89,5 +95,5 @@ Record in `assets/catalog.md`:
 - expect_transparent: false
 ```
 
-`kind` is `material`, `real`, or `generated`. Slide receives the catalog and local
+`kind` is `real` or `generated`; the v0.2 hard gate rejects `material`. Slide receives the catalog and local
 paths; it does not search again.

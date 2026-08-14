@@ -103,7 +103,7 @@ COMPOSITIONS = {
     "freeform",
 }
 RASTER_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp"}
-ASSET_KINDS = {"material", "real", "generated"}
+ASSET_KINDS = {"real", "generated"}
 SECTION_ALIASES = {
     "narrative": {"narrative", "叙事"},
     "evidence": {"evidence", "内容证据", "证据"},
@@ -1094,6 +1094,16 @@ def _validate_fragment(
             f"{path.name} contains a visible/external URL; keep full sources in speech.md"
         )
     if re.search(
+        r"""(?:src|href|poster)\s*=\s*["'](?:\.?/)*inputs/"""
+        r"""|url\(\s*["']?(?:\.?/)*inputs/""",
+        text,
+        flags=re.I,
+    ):
+        raise ValueError(
+            f"{path.name} references attachment-derived pixels under inputs/; "
+            "v0.2 uses OCR/text grounding and reacquired or generated assets instead"
+        )
+    if re.search(
         r"""(?:src|href|poster)\s*=\s*["'](?:\.\./)+assets/"""
         r"""|url\(\s*["']?(?:\.\./)+assets/""",
         text,
@@ -1579,7 +1589,15 @@ def clean(root: Path, *, unused_assets: bool = False) -> None:
 
 
 def material_figure(root: Path, source_value: str, output_value: str, box_value: str) -> None:
-    """Crop a visual subject from a staged paper page with deterministic gates."""
+    """Reject document-pixel reuse in the v0.2 replacement-visual policy."""
+    raise ValueError(
+        "material-figure is disabled in mural-presenter-v0.2; use OCR/text grounding, "
+        "then reacquire a sourced real image, generate a conceptual image, or rebuild "
+        "verified data/relationships in HTML/CSS/SVG"
+    )
+
+    # Kept below only for source compatibility with older frozen traces. The
+    # unconditional policy gate above prevents any new v0.2 attachment crop.
     from PIL import Image
 
     source = (root / source_value).resolve()

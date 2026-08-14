@@ -12,8 +12,11 @@ presentation's delivery language.
 
 v0.2 keeps the v0.1 training-compatible topology: every `Slide NN:` is an
 independent child task and SlideGroup is rejected. It adds deterministic PDF
-text/page extraction, optional OCR for scanned pages, guarded paper-figure
-cropping, correct image-service routing, and a recoverable visual-repair ceiling.
+text/page extraction, optional OCR for scanned pages, correct image-service
+routing, and a recoverable visual-repair ceiling. Document pixels are evidence
+only: Image cannot inspect/crop `inputs/`, `material-figure` is blocked, and the
+delivery catalog accepts only reacquired `real` or newly `generated` raster
+assets. Verified data and relationships are reconstructed as code visuals.
 The Harness does not introduce additional model-authored ledgers or contracts.
 
 Run a standalone job with:

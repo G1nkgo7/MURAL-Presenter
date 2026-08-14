@@ -19,7 +19,7 @@ remain in their original form.
 - `plan/deck.md`;
 - every `plan/slide_NN.md` marked `required` or `preferred`;
 - visual evidence and source clues in `research/knowledge-brief.md`;
-- reusable Material imagery;
+- replacement-visual briefs derived from OCR/extraction in Material/Research;
 - `references/materials-and-images.md` when needed.
 
 Orchestrator defines what should be seen and why. You decide:
@@ -27,7 +27,6 @@ Orchestrator defines what should be seen and why. You decide:
 - search/download for real people, places, products, documents, works, events,
   case sites, and other identity-bearing evidence;
 - generation for non-specific atmosphere or a deliberately authored concept;
-- Material reuse when an attachment already supplies the visual;
 - no raster for `code_only` or decorative ideas without explanatory value.
 
 Never generate a documentary-looking substitute for a named real subject.
@@ -38,22 +37,24 @@ dark-blue cinematic imagery. For real assets, preserve documentary truth; Slide
 can harmonize them through crop, typography, and overlays rather than rejecting
 credible evidence only because its native colors are less uniform.
 
-When Material identifies a paper page, inspect that page PNG and crop only the
-visual subject with the deterministic command:
+Do not read, inspect, copy, crop, or catalog any attachment page image or other
+attachment-derived pixel under `inputs/`, and never use `kind: material`.
+Reacquire visuals only from the OCR-grounded replacement brief:
 
-```bash
-python skills/mural-presenter-v0-2-en/scripts/deck.py material-figure . \
-  --source inputs/01_paper.pdf.pages/page_003.png \
-  --output assets/paper-main-figure.png --box 0.08,0.18,0.92,0.62
-```
+1. For an identifiable real subject or original visual, search an official
+   paper, project, author, or other credible page and download it as `real` only
+   after verifying an exact match.
+2. Regenerate a non-specific concept, atmosphere, or metaphor as `generated`
+   using verified semantics only.
+3. Hand numbers, curves, ablations, experimental results, processes,
+   architecture, and relationships to Slide for faithful HTML/CSS/SVG
+   reconstruction; never generate a raster that merely looks like data.
+4. When the original cannot be found and the evidence is insufficient for a
+   faithful reconstruction, report the gap and use the planned code/typographic
+   fallback rather than guessing.
 
-The box is normalized `x0,y0,x1,y1`. The command rejects page facsimiles,
-prose-heavy crops, and insufficient resolution. Keep the figure, diagram,
-photo, result visualization, and necessary short labels; re-typeset captions,
-long labels, and explanation in HTML. Never screenshot an abstract, prose block,
-or full PDF page. Attachment figures are not a quota: use them when they support
-the argument, otherwise choose authentic external imagery, generated art, or a
-code visual.
+A generated image must not claim attachment provenance or imitate a paper
+screenshot, experimental result, or precisely labelled data figure.
 
 ## Batch
 
@@ -82,8 +83,8 @@ has a consumer.
 ## Catalog and contact sheet
 
 Complete one `assets/catalog.md` before running asset commands. For authentic imagery, `source` is the stable
-attribution page and `download` is the verified direct image URL. Generated and
-Material assets omit `download`:
+attribution page and `download` is the verified direct image URL. Generated
+assets omit `download`:
 
 ```markdown
 # Asset catalog
@@ -99,8 +100,9 @@ Material assets omit `download`:
 - expect_transparent: false
 ```
 
-Kinds are `material`, `real`, or `generated`. Every real asset retains a source;
-generated and Material paths already exist locally. `path` is the exact
+Kinds are `real` or `generated`. Every real asset retains a source; generated
+paths already exist locally. Any `material`, attachment-page, or attachment-crop
+entry is rejected. `path` is the exact
 workspace-root-relative `assets/NAME.ext`, never `../assets/...`. List only
 actual consumer pages in `slides`; once assigned, final HTML must display that
 exact path. When several pages reuse one asset, list all consumers in one entry

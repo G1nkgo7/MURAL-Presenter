@@ -38,16 +38,27 @@ test("server-renders the English MURAL launch page", async () => {
 
   const html = await response.text();
   assert.match(html, /<title>MURAL Presenter — Long-horizon presentation authoring<\/title>/i);
-  assert.match(html, /A presentation is not/);
-  assert.match(html, /THREAD-Bench follows requirements end to end/);
-  assert.match(html, /MURAL research preview/);
+  assert.match(html, /A presentation is not a stack of slides/);
+  assert.match(html, /Long-horizon is more than slide count\./);
+  assert.match(html, /ONE WALL · MANY HANDS/);
+  assert.doesNotMatch(html, /class="blog-nav-icon"/);
+  assert.match(html, /mural-wall-hero-v2\.webp/);
+  assert.match(html, /MATERIAL<\/span><i>→<\/i><span>PLAN/);
+  assert.match(html, /EXECUTION GRANULARITY/);
+  assert.match(html, /href="#overview">Overview/);
+  assert.match(html, /href="#task">The Task/);
+  assert.match(html, /href="#method">Method/);
+  assert.match(html, /href="#benchmark">Benchmark/);
+  assert.match(html, /OPEN RELEASE/);
+  assert.match(html, /AUTHORING LIFECYCLE/);
+  assert.match(html, /IMPACT-SCOPED REVISION/);
+  assert.match(html, /EVALUATION &amp; RELEASE/);
   assert.match(html, /Multi-Agent/);
   assert.match(html, /Unified/);
   assert.match(html, /Revision-Aware/);
   assert.match(html, /Authoring/);
   assert.match(html, /Long-Horizon Presentations/);
   assert.match(html, /https:\/\/github\.com\/G1nkgo7\/MURAL-Presenter/);
-  assert.match(html, /Local manuscript preview/);
   assert.match(html, /href="\/paper"/);
   assert.match(html, /og\.png/);
   assert.doesNotMatch(html, /Your site is taking shape|codex-preview|react-loading-skeleton/i);
@@ -57,11 +68,19 @@ test("server-renders the Chinese MURAL launch page", async () => {
   const response = await render("/zh");
   assert.equal(response.status, 200);
   const html = await response.text();
-  assert.match(html, /<main lang="zh-CN">/);
-  assert.match(html, /演示文稿不是/);
-  assert.match(html, /机制已经实现，效果结论仍等待正式实验/);
-  assert.match(html, /代码、更新与发布/);
-  assert.match(html, /本地论文预览/);
+  assert.match(html, /<main class="blog-page" lang="zh-CN"/);
+  assert.match(html, /演示文稿不是一摞页面/);
+  assert.match(html, /长程，不只是页数。/);
+  assert.match(html, /ONE WALL · MANY HANDS/);
+  assert.match(html, /MURAL Presenter · 长程创作系统/);
+  assert.match(html, /mural-wall-hero-v2\.webp/);
+  assert.match(html, /执行粒度/);
+  assert.match(html, /href="#overview">概览/);
+  assert.match(html, /href="#task">任务/);
+  assert.match(html, /href="#method">方法/);
+  assert.match(html, /href="#benchmark">评测/);
+  assert.match(html, /把完整创作过程，变成可继续执行的 Skill。/);
+  assert.match(html, /修改，也要保持整册决定。/);
   assert.match(html, /href="\/zh\/paper"/);
   assert.match(html, /多角色并行/);
   assert.match(html, /共享整册状态/);
@@ -71,24 +90,16 @@ test("server-renders the Chinese MURAL launch page", async () => {
   assert.match(html, /href="\/">English<\/a>/);
 });
 
-test("server-renders the English launch article", async () => {
+test("redirects the legacy English launch article to the project home", async () => {
   const response = await render("/blog");
-  assert.equal(response.status, 200);
-  const html = await response.text();
-  assert.match(html, /A presentation is not a stack of slides/);
-  assert.match(html, /The missing unit between a deck and a slide/);
-  assert.match(html, /Turning the lifecycle into an executable Skill/);
-  assert.match(html, /MURAL-Presenter/);
+  assert.ok([307, 308].includes(response.status));
+  assert.equal(response.headers.get("location"), "/");
 });
 
-test("server-renders the Chinese launch article", async () => {
+test("redirects the legacy Chinese launch article to the project home", async () => {
   const response = await render("/zh/blog");
-  assert.equal(response.status, 200);
-  const html = await response.text();
-  assert.match(html, /演示文稿不是一摞页面/);
-  assert.match(html, /整册和单页之间，缺少一个责任单元/);
-  assert.match(html, /把完整生命周期写成可执行 Skill/);
-  assert.match(html, /href="\/blog">English<\/a>/);
+  assert.ok([307, 308].includes(response.status));
+  assert.equal(response.headers.get("location"), "/zh");
 });
 
 test("server-renders the English local manuscript reader", async () => {
@@ -120,9 +131,10 @@ test("server-renders the Chinese local manuscript reader", async () => {
 
 test("ships the approved brand and paper assets without starter remnants", async () => {
   const required = [
-    "../public/favicon.png",
-    "../public/mural-mark.png",
+    "../public/favicon-v2.png",
+    "../public/mural-mark-v2.png",
     "../public/mural-mascot.png",
+    "../public/mural-wall-hero-v2.webp",
     "../public/execution-topologies.png",
     "../public/authoring-lifecycle.png",
     "../public/mural-paper.pdf",
@@ -139,13 +151,13 @@ test("ships the approved brand and paper assets without starter remnants", async
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
     readFile(new URL("../package.json", import.meta.url), "utf8"),
   ]);
-  assert.match(page, /MuralSite/);
-  assert.match(layout, /mural-mark|favicon\.png|og\.png/);
+  assert.match(page, /BlogPage/);
+  assert.match(layout, /favicon-v2\.png|og\.png/);
   assert.doesNotMatch(packageJson, /starter|react-loading-skeleton/);
 });
 
 test("keeps every in-page navigation fragment resolvable", async () => {
-  for (const pathname of ["/", "/zh", "/blog", "/zh/blog", "/paper", "/zh/paper"]) {
+  for (const pathname of ["/", "/zh", "/paper", "/zh/paper"]) {
     const response = await render(pathname);
     assert.equal(response.status, 200);
     assertFragmentLinksResolve(await response.text(), pathname);

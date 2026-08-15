@@ -4,7 +4,8 @@
 每个 agent(编排器 / 子 agent)各写各的原始轨迹到 `_trace/<sub_dir>/` 下,每个
 (上下文 -> 输出) 对都忠实保留:
     system_prompt.md  tools.json  config.json   —— 输入快照
-    messages.json     —— 清洗后的对话(图像块换成轻量 {type:image, shot:<路径>})
+    messages.json     —— 清洗后的对话(图像块换成轻量 {type:image, shot:<路径>};
+                        模型返回的有/无签名 thinking 均原样保留)
     summary.md        —— 最后一条 assistant 文字答复,供上层/模型稳定读取
     tool_log.json     —— 每次工具调用的 {turn,name,args}
     images/view_NN.png —— 看图**当下**的像素快照(因为 render 会覆盖 renders/,只存路径会丢真)

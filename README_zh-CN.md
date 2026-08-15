@@ -114,10 +114,10 @@ uv run python infer.py --input /absolute/path/to/briefs.jsonl \
 
 当前推荐的推理配套是：
 
-- Skill：[`skills/mural-presenter-v0.2/`](skills/mural-presenter-v0.2/)，包含行为等价的
-  中英文说明版；
-- Harness：[`harnesses/mural-presenter-v0.2/`](harnesses/mural-presenter-v0.2/)，生产阶段
-  一页一个独立 `Slide NN` Agent，不使用 SlideGroup。
+- Skill：[`skills/mural-presenter-v0.2/`](skills/mural-presenter-v0.2/)，包含基于同一
+  v0.2 合同的中英文 Single 与 Grouped 说明版；
+- Harness：[`harnesses/mural-presenter-v0.2/`](harnesses/mural-presenter-v0.2/)，同时支持
+  一页一个 `Slide NN` 和相邻 2–4 页一个 `SlideGroup`。两者只改变页面所有权拓扑。
 
 Orchestrator 第一次读取某个 `SKILL.md` 后锁定该说明版，但说明版语言不决定成品语言；
 成品语言由 query 或 JSONL 行中的 `lang` 字段决定。

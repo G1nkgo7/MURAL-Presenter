@@ -41,6 +41,58 @@ class RunProfileTests(unittest.TestCase):
 
 
 class SynthesisTraceTests(unittest.TestCase):
+    def test_unsigned_reasoning_is_preserved_in_messages_json(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            trace = Trace(tmp)
+            block = SimpleNamespace(
+                type="thinking",
+                thinking="DeepSeek returned this reasoning_content",
+                signature=None,
+            )
+            messages = [{
+                "role": "assistant",
+                "content": agent_core.blocks_to_dicts([block]),
+            }]
+            trace.write(messages, [], "synthesis")
+            saved = json.loads(
+                (Path(tmp) / "messages.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(
+                saved[0]["content"],
+                [{
+                    "type": "thinking",
+                    "thinking": "DeepSeek returned this reasoning_content",
+                }],
+            )
+
+    def test_replay_drops_only_unsigned_thinking_without_mutating_trace(self):
+        messages = [{
+            "role": "assistant",
+            "content": [
+                {"type": "thinking", "thinking": "unsigned deepseek"},
+                {
+                    "type": "thinking",
+                    "thinking": "signed anthropic",
+                    "signature": "sig-1",
+                },
+                {"type": "text", "text": "progress"},
+                {
+                    "type": "tool_use",
+                    "id": "tool-1",
+                    "name": "read_file",
+                    "input": {"path": "brief.md"},
+                },
+            ],
+        }]
+        replay = agent_core._messages_for_model(messages)
+        self.assertEqual(
+            [block["type"] for block in replay[0]["content"]],
+            ["thinking", "text", "tool_use"],
+        )
+        self.assertEqual(replay[0]["content"][0]["signature"], "sig-1")
+        self.assertEqual(messages[0]["content"][0]["thinking"], "unsigned deepseek")
+        self.assertEqual(len(messages[0]["content"]), 4)
+
     def test_synthesis_writes_hash_verified_image_manifest(self):
         with tempfile.TemporaryDirectory() as tmp:
             trace = Trace(tmp)

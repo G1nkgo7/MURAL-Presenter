@@ -121,6 +121,8 @@ def validate_proxy_health(
     timeout_s: int = 10,
     *,
     expected_builtin_vision_reader: bool = True,
+    gate_v1: bool = False,
+    expected_agent_model: str = "claude-opus-5",
 ) -> dict[str, Any]:
     """Fail closed unless Nova health matches the raw-V2 routing contract."""
     base = base_url.rstrip("/")
@@ -133,24 +135,68 @@ def validate_proxy_health(
         "ok": True,
         "object": "nova.vision_proxy.health",
         "builtin_vision_reader_enabled": expected_builtin_vision_reader,
-        "builtin_trace_format": "xml",
+        "builtin_trace_format": "natural" if gate_v1 else "xml",
         "agent_payload_format": "anthropic",
         "agent_vision_input_enabled": False,
         "agent_send_images_field": None,
         "render_vision_placeholders": False,
-        "vision_backend": "openai",
+        "vision_backend": "agent" if gate_v1 else "openai",
         "thinking_policy": "force_on",
         "agent_thinking": {"type": "adaptive", "display": "summarized"},
         "agent_output_config": {"effort": "high"},
         "agent_system_prompt_present": True,
         "agent_system_prompt_contract_ok": True,
     }
+    if gate_v1:
+        expected.update({
+            "internal_trace_enabled": True,
+            "agent_model": expected_agent_model,
+            "agent_max_tokens": 65536,
+            "agent_hard_max_tokens": 65536,
+            "agent_prompt_protocol": "anthropic_native",
+            "resolved_agent_prompt_protocol": "anthropic_native",
+            "vision_model": expected_agent_model,
+            "vision_max_tokens": 2048,
+            "vision_hard_max_tokens": 4096,
+            "vision_retries": 1,
+            "anthropic_agent_thinking_gate": "visible_signed",
+            "anthropic_agent_thinking_retries": 1,
+            "max_steps": 24,
+            "empty_output_retries": 2,
+            "anthropic_pdf_parsing_enabled": True,
+            "streaming": {
+                "content_mode": "buffered",
+                "early_headers": True,
+                "heartbeat_seconds": 5.0,
+                "disconnect_cancellation": "provider_boundary",
+            },
+        })
     for key, value in expected.items():
         if payload.get(key) != value:
             failures.append(f"{key}={payload.get(key)!r}, expected {value!r}")
     anthropic_messages = payload.get("anthropic_messages")
     if not isinstance(anthropic_messages, list) or "/v1/messages" not in anthropic_messages:
         failures.append("anthropic_messages does not expose /v1/messages")
+    if gate_v1:
+        missing_pdf_tools = payload.get("anthropic_pdf_missing_tools")
+        if not isinstance(missing_pdf_tools, list) or missing_pdf_tools:
+            failures.append(
+                "anthropic_pdf_missing_tools must be an empty array in Gate V1"
+            )
+        agent_request_url = str(payload.get("agent_request_url") or "")
+        vision_request_url = str(payload.get("vision_request_url") or "")
+        if not agent_request_url.endswith("/v1/messages"):
+            failures.append("agent_request_url does not end with /v1/messages")
+        if not vision_request_url.endswith("/v1/messages"):
+            failures.append(
+                "vision_request_url does not end with /v1/messages"
+            )
+        if agent_request_url != vision_request_url:
+            failures.append("Agent and Vision upstream request URLs must match")
+        for hash_key in ("config_sha256", "code_sha256"):
+            value = str(payload.get(hash_key) or "")
+            if len(value) != 64 or any(char not in "0123456789abcdef" for char in value):
+                failures.append(f"{hash_key} is not 64 lowercase hex characters")
     proxy = urlparse(health_root)
     for key in ("agent_request_url", "vision_request_url"):
         upstream = str(payload.get(key) or "").strip()

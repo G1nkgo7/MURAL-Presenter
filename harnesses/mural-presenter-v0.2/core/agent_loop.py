@@ -20,21 +20,31 @@ import time
 from collections import Counter, deque
 from pathlib import Path
 
-from . import config, model_call, nova_raw, tools
+from . import config, model_call, nova_raw, runtime_capabilities, tools
 from .language import infer_deck_language, normalize_language
 from .run_profiles import resolve_run_profile
 from .trace_mode import write_trace
 
 ROLES = {"material", "research", "image", "slide", "review"}
-GROUPED_SKILL_NAMES = {
+LEGACY_GROUPED_SKILL_NAMES = {
     "long-horizon-html-ppt-grouped",
     "long-horizon-html-ppt-grouped-inline-image",
 }
+V02_GROUPED_SKILL_NAMES = {
+    "mural-presenter-v0-2-grouped-zh",
+    "mural-presenter-v0-2-grouped-en",
+}
+GROUPED_SKILL_NAMES = LEGACY_GROUPED_SKILL_NAMES | V02_GROUPED_SKILL_NAMES
 INLINE_IMAGE_SKILL = "long-horizon-html-ppt-grouped-inline-image"
 
 
 def _is_grouped_skill_name(value: object) -> bool:
     return str(value or "") in GROUPED_SKILL_NAMES
+
+
+def _uses_legacy_grouped_contract(value: object) -> bool:
+    """Return whether the older grouped workflow, not just grouped ownership, applies."""
+    return str(value or "") in LEGACY_GROUPED_SKILL_NAMES
 
 
 def _is_inline_image_skill_name(value: object) -> bool:
@@ -413,6 +423,41 @@ def _response_language_rule(language: str) -> str:
     )
 
 
+def _runtime_capability_context(profile: dict, language: str) -> str:
+    """Render the deterministic capability overlay injected after the frozen Skill."""
+    if not profile:
+        return ""
+    roles = ", ".join(str(role) for role in profile.get("active_roles", [])) or "none"
+    omitted = ", ".join(str(role) for role in profile.get("omitted_roles", [])) or "none"
+    workflow = profile.get("workflow") if isinstance(profile.get("workflow"), dict) else {}
+    tool_flags = profile.get("tools") if isinstance(profile.get("tools"), dict) else {}
+    if language == "zh":
+        return f"""运行时能力合同（由 Harness 启动前探测，优先级高于 Skill 中的静态可选路线）：
+- 可委派角色：{roles}
+- 本次省略角色：{omitted}
+- Material：{workflow.get('material', 'omitted')}；交接到：{workflow.get('material_handoff', 'none')}
+- Research：{workflow.get('research', 'omitted')}
+- Image：{workflow.get('image', 'code_only')}
+- web_search/web_extract：{'可用' if tool_flags.get('web_search') else '不可用，不得委派 Research 或伪造外部检索'}
+- image_generate：{'可用' if tool_flags.get('image_generate') else '不可用，不得写入生成图路线'}
+只执行本合同列出的角色和工具。Material 交接到 Orchestrator 时，直接基于
+`research/material.md` 规划；未核实事实必须明确保留为边界。Image=code_only 时，
+逐页计划的 visual_evidence 只能使用 code_only/none，不得委派 Image。"""
+    return f"""Runtime capability contract (detected by the Harness before execution and
+authoritative over optional routes described by the frozen Skill):
+- delegable roles: {roles}
+- omitted roles: {omitted}
+- Material: {workflow.get('material', 'omitted')}; handoff: {workflow.get('material_handoff', 'none')}
+- Research: {workflow.get('research', 'omitted')}
+- Image: {workflow.get('image', 'code_only')}
+- web_search/web_extract: {'available' if tool_flags.get('web_search') else 'unavailable; do not delegate Research or claim external retrieval'}
+- image_generate: {'available' if tool_flags.get('image_generate') else 'unavailable; do not plan generated-image routes'}
+Use only the roles and tools listed here. When Material hands off to Orchestrator,
+plan directly from `research/material.md` and preserve unresolved facts as explicit
+boundaries. When Image=code_only, per-slide visual_evidence must be code_only/none
+and Image must not be delegated."""
+
+
 def _planned_delivery_language(workspace: str) -> str:
     """Read the resolved plan language when planning has already completed."""
     path = Path(workspace) / "plan" / "deck.md"
@@ -430,9 +475,9 @@ def _orchestrator_system(
     staged_materials: tuple[str, ...] = (),
     response_language: str = "auto",
     image_generation_enabled: bool = True,
+    runtime_profile: dict | None = None,
 ) -> str:
     """Keep the Harness thin; read the selected Skill contract at runtime."""
-    inline_image = _is_inline_image_skill_name(skill_name)
     root_workflow = skill_name == "long-horizon-html-ppt-grouped"
     startup_zh = (
         f"开工第一步读取 `skills/{skill_name}/SKILL.md`。\n"
@@ -470,21 +515,17 @@ def _orchestrator_system(
         if material_lines
         else ""
     )
+    profile_roles = list((runtime_profile or {}).get("active_roles") or ROLES)
+    runtime_tools = (runtime_profile or {}).get("tools") or {}
+    search_enabled = bool(runtime_tools.get("web_search", True))
     if skill_language == "zh":
         tool_surface_zh = (
-            "运行时工具面：Research 可使用 web_search；Image 可使用图片搜索，"
-            "并且 image_generate 本次"
-            + ("已启用。" if image_generation_enabled else "未启用。")
-            if inline_image
-            else "运行时工具面：Research/Image 可使用 web_search；Image 的 "
-            "image_generate 本次"
+            "运行时工具面：web_search/web_extract 本次"
+            + ("已启用；" if search_enabled else "未启用；")
+            + "image_generate 本次"
             + ("已启用。" if image_generation_enabled else "未启用。")
         )
-        child_roles_zh = (
-            "material、research、slide、review"
-            if inline_image
-            else "material、research、image、slide、review"
-        )
+        child_roles_zh = "、".join(profile_roles)
         return f"""\
 你是 HTML 演示文稿 Orchestrator，负责受众、叙事、设计系统、角色编排和最终交付。
 固定任务身份：当前调用始终是静态 HTML 演示文稿生产，不是开放域聊天；首条用户消息
@@ -504,19 +545,12 @@ Harness 已在首次模型调用前完成确定性工作区准备。
 """
     else:
         tool_surface_en = (
-            "Runtime tool surface: Research can use web_search; Image can "
-            "search images; image_generate is "
-            + ("enabled." if image_generation_enabled else "disabled.")
-            if inline_image
-            else "Runtime tool surface: Research/Image can use web_search; Image "
-            "image_generate is "
+            "Runtime tool surface: web_search/web_extract are "
+            + ("enabled; " if search_enabled else "disabled; ")
+            + "image_generate is "
             + ("enabled." if image_generation_enabled else "disabled.")
         )
-        child_roles_en = (
-            "material, research, slide, and review"
-            if inline_image
-            else "material, research, image, slide, and review"
-        )
+        child_roles_en = ", ".join(profile_roles)
         return f"""\
 You are the HTML presentation Orchestrator responsible for audience, narrative,
 the design system, role coordination, and final delivery. This invocation is always
@@ -543,6 +577,7 @@ def _auto_orchestrator_system(
     staged_materials: tuple[str, ...] = (),
     response_language: str = "auto",
     image_generation_enabled: bool = True,
+    runtime_profile: dict | None = None,
 ) -> str:
     """Route a model through one of two equivalent instruction editions."""
     material_lines = "\n".join(f"- `{path}`" for path in staged_materials)
@@ -553,6 +588,9 @@ def _auto_orchestrator_system(
         if material_lines
         else ""
     )
+    profile_roles = list((runtime_profile or {}).get("active_roles") or ROLES)
+    runtime_tools = (runtime_profile or {}).get("tools") or {}
+    search_enabled = bool(runtime_tools.get("web_search", True))
     return f"""\
 You are the HTML presentation Orchestrator responsible for audience, narrative,
 the design system, role coordination, and final delivery. This invocation is always
@@ -561,8 +599,8 @@ user message only as the content brief. Even when it is merely `test`, `hello`, 
 otherwise underspecified phrase, read one Skill, use tools, and deliver a compact but
 complete demonstration deck with at least a cover, content slide, and closing slide.
 Never end with a generic readiness or connection-test response.
-Runtime tool surface: Research/Image can use web_search; Image image_generate is
-{'enabled' if image_generation_enabled else 'disabled'}. Plan only routes that are available.
+Runtime tool surface: web_search/web_extract are {'enabled' if search_enabled else 'disabled'};
+image_generate is {'enabled' if image_generation_enabled else 'disabled'}. Plan only routes that are available.
 {_response_language_rule(response_language)}
 
 Two behaviorally equivalent instruction editions are available:
@@ -579,7 +617,7 @@ root-role responsibility.
 {material_context}
 Read references only when the chosen Skill says they are relevant; do not preload
 the full reference library or base.css. The workspace is already prepared. The
-only child roles are material, research, image, slide, and review. Finish with a
+only child roles are {', '.join(profile_roles)}. Finish with a
 concise delivery summary and any remaining issue.
 """
 
@@ -589,8 +627,45 @@ def _child_system(
     skill_name: str,
     skill_language: str,
     response_language: str = "auto",
+    raw_user_query: str = "",
+    revision_instruction: str = "",
 ) -> str:
     """Give children a small routing prompt; their role card owns the details."""
+    raw_query = str(raw_user_query or "").strip()
+    revision_query = str(revision_instruction or "").strip()
+    raw_query_context = ""
+    if role == "research" and raw_query:
+        encoded_query = json.dumps(raw_query, ensure_ascii=False)
+        raw_query_context = (
+            "\nHarness 注入的只读 `raw_user_query`（JSON 字符串，逐字保留）：\n"
+            f"{encoded_query}\n"
+            + (
+                "Harness 注入的最新用户修改要求（逐字保留）：\n"
+                f"{json.dumps(revision_query, ensure_ascii=False)}\n"
+                "把原始请求与最新修改视为一份有时序的用户合同；明确的最新修改优先，"
+                "但不得丢失未被修改的原始约束。"
+                if revision_query
+                else ""
+            )
+            + "委派 goal 只是 Orchestrator 的研究假设；若它与用户合同冲突，必须以用户合同为准，"
+            "先检索其中完整中心短语并在 brief 中纠偏。"
+            if skill_language == "zh"
+            else
+            "\nHarness-injected immutable `raw_user_query` (a verbatim JSON string):\n"
+            f"{encoded_query}\n"
+            + (
+                "Harness-injected latest user revision (verbatim):\n"
+                f"{json.dumps(revision_query, ensure_ascii=False)}\n"
+                "Treat the original request and latest revision as a chronological user "
+                "contract. An explicit latest revision controls while all unmodified original "
+                "constraints remain in force."
+                if revision_query
+                else ""
+            )
+            + "The delegated goal is only the Orchestrator's research hypothesis. If it conflicts "
+            "with the user contract, preserve the contract, search its complete head phrase first, "
+            "and correct the brief."
+        )
     material_note = (
         "\nResearch 已收到 research/material.md 时不要重新打开 inputs/ 原附件；只有笔记明确缺失内容时才回查。"
         if role == "research" and skill_language == "zh"
@@ -606,7 +681,7 @@ Harness 已选择 `{skill_name}`。{_response_language_rule(response_language)}
 开工第一步读取
 `skills/{skill_name}/roles/{role}.md`，它是职责、输入、行为、输出和所需 reference
 的唯一说明。不要读取完整 `SKILL.md`、其他角色卡或整个 references 目录。
-只完成任务分配给你的职责；完成后简短列出产物和遗留问题。{material_note}
+只完成任务分配给你的职责；完成后简短列出产物和遗留问题。{material_note}{raw_query_context}
 """
     else:
         return f"""\
@@ -617,16 +692,17 @@ Your first action is to read
 responsibility, inputs, actions, outputs, and required references. Do not read the
 full `SKILL.md`, other role cards, or the whole reference directory.
 Complete only the assigned role work, then report outputs and remaining issues
-concisely.{material_note}
+concisely.{material_note}{raw_query_context}
 """
 
 
 DELEGATE_TASK_SCHEMA = {
     "name": "delegate_task",
     "description": (
-        "Delegate one presentation role or one independent Slide page per task. "
+        "Delegate one presentation role or one Slide ownership unit per task. "
         "Prefix every goal with Material:, Research:, Image:, Review:, or "
-        "Slide NN:. This v0.2 runtime does not accept SlideGroup tasks. "
+        "Slide NN:, or—only when the selected Skill is grouped—"
+        "SlideGroup GROUP [NN,NN]:. "
         "Keep goals to case-specific objectives and paths; the role "
         "card supplies the method."
     ),
@@ -700,7 +776,25 @@ class Agent:
         )
         (self.trace_dir / "images").mkdir(parents=True, exist_ok=True)
 
-        self.enable_image_gen = bool(cfg.get("enable_image_gen", config.ENABLE_IMAGE_GEN))
+        self.runtime_capabilities = (
+            dict(cfg.get("_runtime_capabilities"))
+            if isinstance(cfg.get("_runtime_capabilities"), dict)
+            else {}
+        )
+        self.available_roles = set(
+            self.runtime_capabilities.get("active_roles") or ROLES
+        )
+        runtime_tools = (
+            self.runtime_capabilities.get("tools")
+            if isinstance(self.runtime_capabilities.get("tools"), dict)
+            else {}
+        )
+        self.search_enabled = bool(runtime_tools.get("web_search", True))
+        self.vision_enabled = bool(runtime_tools.get("vision_analyze", True))
+        self.enable_image_gen = bool(
+            cfg.get("enable_image_gen", config.ENABLE_IMAGE_GEN)
+            and runtime_tools.get("image_generate", True)
+        )
         self.img_base = cfg.get("openai_base_url", config.IMAGE_BASE_URL).rstrip("/")
         self.img_key = os.environ.get("IMAGE_API_KEY") or os.environ.get("OPENAI_API_KEY", "")
         self.image_model = cfg.get("image_model", config.IMAGE_MODEL)
@@ -739,12 +833,22 @@ class Agent:
             self.render_script = f"skills/{self.skill_name}/scripts/deck.py"
         self.bash_timeout = config.BASH_TIMEOUT_S
         self.max_vision_edge = config.MAX_VISION_EDGE
+        self.evidence_scope = str(
+            cfg.get("_evidence_scope") or cfg.get("evidence_scope") or "open_research"
+        ).strip().lower()
+        if self.evidence_scope not in {
+            "attachment_only",
+            "verify_external",
+            "open_research",
+        }:
+            self.evidence_scope = "open_research"
 
         if role == "orchestrator" and self.skill_language == "auto":
             self.system = _auto_orchestrator_system(
                 tuple(str(path) for path in cfg.get("_staged_materials", [])),
                 response_language=self.response_language,
                 image_generation_enabled=self.enable_image_gen,
+                runtime_profile=self.runtime_capabilities,
             )
         elif role == "orchestrator":
             self.system = _orchestrator_system(
@@ -753,6 +857,7 @@ class Agent:
                 tuple(str(path) for path in cfg.get("_staged_materials", [])),
                 response_language=self.response_language,
                 image_generation_enabled=self.enable_image_gen,
+                runtime_profile=self.runtime_capabilities,
             )
         else:
             self.system = _child_system(
@@ -760,19 +865,38 @@ class Agent:
                 self.skill_name,
                 self.skill_language,
                 response_language=self.response_language,
+                raw_user_query=str(cfg.get("_raw_user_query") or ""),
+                revision_instruction=str(cfg.get("_revision_instruction") or ""),
             )
         prompt_language = "zh" if self.skill_language == "zh" else "en"
         self.system = (
             f"{self.system.rstrip()}\n\n"
             f"{_runtime_time_context(self.task_started_epoch, prompt_language)}\n"
+            + (
+                f"\n当前证据范围：`{self.evidence_scope}`。这是 Harness 权限合同；"
+                "不得自行扩大。Material 必须把它写入 research/material.md。\n"
+                if prompt_language == "zh"
+                else f"\nEvidence scope: `{self.evidence_scope}`. This is a Harness "
+                "permission contract and must not be widened. Material must record "
+                "it in research/material.md.\n"
+            )
         )
+        capability_context = _runtime_capability_context(
+            self.runtime_capabilities,
+            prompt_language,
+        )
+        if capability_context:
+            self.system = f"{self.system.rstrip()}\n\n{capability_context}\n"
         self.revision_mode = bool(cfg.get("_revision_mode", False))
         self.tool_schemas = tools.agent_tools(
             role,
             enable_image_gen=self.enable_image_gen,
+            enable_web_search=self.search_enabled,
+            enable_vision=self.vision_enabled,
             render_script=self.render_script,
             skill_name=self.skill_name,
             revision_mode=self.revision_mode,
+            evidence_scope=self.evidence_scope,
         )
         if role == "orchestrator":
             self.tool_schemas.append(DELEGATE_TASK_SCHEMA)
@@ -861,11 +985,17 @@ class Agent:
         self.delegated_roles: list[str] = []
         self.material_required = False
         self.material_completed = False
-        self.research_required = not _is_grouped_skill_name(self.skill_name)
+        self.material_blocked = False
+        self.research_required = (
+            "research" in self.available_roles
+            and not _uses_legacy_grouped_contract(self.skill_name)
+        )
         self.research_completed = False
         self.image_required = False
         self.image_completed = False
         self.review_completed = False
+        self.quality_status = "ready"
+        self.review_changed = False
         self.final_render_after_review = False
         self.final_view_after_review = False
         self.finalize_attempted = False
@@ -879,6 +1009,12 @@ class Agent:
         self.expected_output_initial_hashes: dict[int, str] = {}
         self.rendered_output_hashes: dict[int, str] = {}
         self.viewed_output_hashes: dict[int, str] = {}
+        self.slide_pixel_inspections = 0
+        self.slide_inspection_state = ""
+        self.repair_required_reason = ""
+        self.required_review_pages: tuple[int, ...] = ()
+        self.review_viewed_page_hashes: dict[int, str] = {}
+        self.revision_route = ""
 
     def _record_event(self, event: dict, display: str) -> None:
         """Append one trace event and mirror a concise line to stdout."""
@@ -957,8 +1093,11 @@ class Agent:
         self.tool_schemas = tools.agent_tools(
             self.role,
             enable_image_gen=self.enable_image_gen,
+            enable_web_search=self.search_enabled,
+            enable_vision=self.vision_enabled,
             render_script=self.render_script,
             skill_name=self.skill_name,
+            evidence_scope=self.evidence_scope,
         )
         if self.role == "orchestrator":
             self.tool_schemas.append(DELEGATE_TASK_SCHEMA)
@@ -1018,6 +1157,8 @@ class Agent:
             "child_concurrency_max": self.child_concurrency_max,
             "child_concurrency_file": self.child_concurrency_file or None,
             "remote_tool_concurrency": self.remote_tool_concurrency,
+            "vision_backend_requested": config.VISION_BACKEND_REQUESTED,
+            "vision_backend_effective": config.VISION_BACKEND,
             "max_attempts": self.cfg.get("max_attempts"),
             "max_turns": self.max_turns,
             "max_tokens": self.max_tokens,
@@ -1277,6 +1418,8 @@ def _run_child(parent: Agent, index: int, spec: dict) -> dict:
         role=role,
         label=label,
     )
+    child.material_required = parent.material_required
+    child.material_completed = parent.material_completed
     if role == "slide":
         child.assigned_slide_pages = slide_pages
         child.slide_group_id = str(spec.get("group_id") or "")
@@ -1293,15 +1436,68 @@ def _run_child(parent: Agent, index: int, spec: dict) -> dict:
             child.expected_output_initial_hash = child.expected_output_initial_hashes[
                 slide_pages[0]
             ]
+    elif role == "review":
+        child.required_review_pages = tuple(
+            sorted(
+                {
+                    int(page)
+                    for page in spec.get("required_review_pages", [])
+                    if isinstance(page, int) and not isinstance(page, bool) and page > 0
+                }
+            )
+        )
     parent.children.append(child)
     ok = run_loop(child)
+    material_status = ""
+    if role == "material":
+        material_path = Path(parent.ws) / "research" / "material.md"
+        try:
+            material_text = material_path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            material_text = ""
+        if re.search(
+            r"(?mi)^\s*(?:[-*]\s*)?status\s*:\s*material_blocked\s*$",
+            material_text,
+        ):
+            ok = False
+            material_status = "material_blocked"
+            child.exit_reason = "material_blocked"
+            child.log(
+                "[material blocked] 附件无法形成可靠证据；停止 Research 与规划，"
+                "不允许用外部检索猜测缺失内容。"
+            )
+            child.finish_snapshot()
+    repair_issue = _slide_repair_issue(child) if role == "slide" else None
     if role == "slide":
         gap = _slide_deliverable_gap(child)
-        if gap:
+        if gap and not (
+            repair_issue and _repair_candidate_is_routable(child, repair_issue)
+        ):
             ok = False
             if child.exit_reason == "text_response":
                 child.exit_reason = "incomplete_deliverable"
             child.log(f"[deliverable rejected] {gap}")
+            child.finish_snapshot()
+        elif repair_issue:
+            child.completed_slide_pages = tuple(
+                int(page) for page in repair_issue.get("pages", [])
+            )
+            child.incomplete_slide_pages = ()
+    review_status = ""
+    review_fields: dict[str, str] = {}
+    if role == "review":
+        review_fields = _contract_fields(child.final_text)
+        review_status = review_fields.get("status", "").lower()
+        review_gap = _review_required_view_gap(child)
+        if review_status == "needs_orchestrator" or review_gap:
+            ok = False
+            child.exit_reason = (
+                "needs_orchestrator"
+                if review_status == "needs_orchestrator"
+                else "required_review_page_not_inspected"
+            )
+            if review_gap:
+                child.log(f"[deliverable rejected] {review_gap}")
             child.finish_snapshot()
     return {
         "label": label,
@@ -1323,6 +1519,21 @@ def _run_child(parent: Agent, index: int, spec: dict) -> dict:
         "finalize_succeeded": bool(getattr(child, "finalize_succeeded", False)),
         "finalize_failure": str(getattr(child, "finalize_failure", ""))[-1200:],
         "trace_mode": dict(getattr(child, "trace_mode_status", {}) or {}),
+        "status": (
+            "repair_required"
+            if repair_issue
+            else material_status or review_status or ("ready" if ok else "failed")
+        ),
+        "repair_issue": repair_issue,
+        "required_review_pages": list(
+            getattr(child, "required_review_pages", ()) or ()
+        ),
+        "attempt": trace_attempt,
+        "blocking": review_fields.get("blocking", "").lower(),
+        "final_pixels_inspected": (
+            review_fields.get("final_pixels_inspected", "").lower() == "yes"
+        ),
+        "review_changed": bool(getattr(child, "review_changed", False)),
         "summary": child.final_text[-1800:],
     }
 
@@ -1422,11 +1633,104 @@ def _child_wave_limit(parent: Agent, task_count: int) -> int:
     return effective
 
 
+def _pending_slide_repair_issues(parent: Agent) -> list[dict]:
+    outcomes = getattr(parent, "child_outcomes", {})
+    if not isinstance(outcomes, dict):
+        return []
+    issues: list[dict] = []
+    for label, outcome in sorted(outcomes.items()):
+        if not isinstance(outcome, dict):
+            continue
+        issue = outcome.get("repair_issue")
+        if not isinstance(issue, dict) or issue.get("status") != "repair_required":
+            continue
+        issues.append({"label": label, **issue})
+    return issues
+
+
+def _review_can_complete_needs_improvement(parent: Agent, result: dict) -> bool:
+    """Return whether a bounded Review warning is safe to deliver non-fatally."""
+    if bool(result.get("review_changed")):
+        current_pixels = bool(result.get("finalize_succeeded")) and bool(
+            result.get("final_view_after_review")
+        )
+    else:
+        current_pixels = bool(getattr(parent, "finalize_succeeded", False)) and bool(
+            result.get("final_view_after_review")
+        )
+    return bool(
+        not bool(result.get("ok"))
+        and result.get("status") == "needs_orchestrator"
+        and result.get("blocking") == "no"
+        and bool(result.get("final_pixels_inspected"))
+        and current_pixels
+        and int(result.get("attempt") or 0) >= config.REVIEW_MAX_ATTEMPTS
+    )
+
+
+def _revision_delegation_error(parent: Agent, specs: list[dict]) -> str:
+    """Lock one explicit edit route before a revision starts mutating pages."""
+    if not bool(getattr(parent, "revision_mode", False)):
+        return ""
+    roles = [str(spec.get("role", "")).lower() for spec in specs]
+    simple_review = bool(
+        len(specs) == 1
+        and roles == ["review"]
+        and re.search(
+            r"\bmode\s*=\s*simple_edit\b",
+            str(specs[0].get("task") or ""),
+            flags=re.IGNORECASE,
+        )
+    )
+    route = str(getattr(parent, "revision_route", "") or "")
+    if not route:
+        if simple_review:
+            parent.revision_route = "simple_edit"
+            return ""
+        impact_map = Path(parent.ws) / "plan" / "revision-impact.md"
+        if not impact_map.is_file() or not impact_map.read_text(
+            encoding="utf-8", errors="replace"
+        ).strip():
+            return (
+                "复杂编辑路由尚未建立影响图。先只读检查现有计划、页面、素材、讲稿与渲染，"
+                "把事实、叙事、页序、全局样式、素材、页面和讲稿的影响范围写入 "
+                "`plan/revision-impact.md`，再只委派实际受影响的角色。"
+            )
+        parent.revision_route = "complex_edit"
+        route = "complex_edit"
+    if route == "simple_edit" and not simple_review:
+        return (
+            "编辑路由已锁定为 simple_edit：只能使用唯一 "
+            "`Review: mode=simple_edit`，不得再委派 Research、Material、Image 或 Slide。"
+        )
+    if route == "complex_edit":
+        if simple_review:
+            return (
+                "编辑路由已锁定为 complex_edit，不能切换到 simple_edit。"
+                "按影响图完成受影响角色后，使用 `Review: mode=final_review` 收口。"
+            )
+        if "review" in roles and len(roles) > 1:
+            return (
+                "复杂编辑的最终 Review 必须单独委派，并等待所有受影响的 "
+                "Research、Material、Image 与 Slide 完成。"
+            )
+        if "review" in roles and not re.search(
+            r"\bmode\s*=\s*final_review\b",
+            str(specs[0].get("task") or ""),
+            flags=re.IGNORECASE,
+        ):
+            return "复杂编辑的 Review goal 必须显式包含 `mode=final_review`。"
+    return ""
+
+
 def _delegate(parent: Agent, args: dict) -> str:
     specs = args.get("tasks")
     if not isinstance(specs, list) or not specs:
         return "delegate_task 错误：tasks 必须是非空数组"
     specs = [dict(spec) for spec in specs]
+    route_error = _revision_delegation_error(parent, specs)
+    if route_error:
+        return route_error
     for spec in specs:
         if str(spec.get("role", "")).lower() == "material":
             # Material is a singleton role. One agent reads every attachment
@@ -1441,15 +1745,70 @@ def _delegate(parent: Agent, args: dict) -> str:
         if str(spec.get("role", "")).lower() != "review":
             continue
         spec["label"] = "review"
-        spec["task"] = (
-            "读取 renders/contact-sheet.png、可用时的 contact-sheet-special.png、"
-            "plan/deck.md 与 speech.md，按 Review 角色卡完成整册复审。"
-            if parent.skill_language == "zh"
-            else
-            "Review the completed deck from renders/contact-sheet.png, the special "
-            "contact sheet when present, plan/deck.md, and speech.md using the "
-            "Review role card."
+        requested_task = str(spec.get("task") or "")
+        simple_edit = bool(
+            re.search(
+                r"\bmode\s*=\s*simple_edit\b",
+                requested_task,
+                flags=re.IGNORECASE,
+            )
         )
+        if simple_edit:
+            instruction = str(parent.cfg.get("_revision_instruction") or "").strip()
+            review_task = (
+                "mode=simple_edit。只按用户修改要求和 goal 中界定的目标页执行 Review 快修；"
+                "不得扩展为整册重写，也不得启动其他角色。用户修改要求："
+                f"{instruction}\n受控 goal：{requested_task}"
+                if parent.skill_language == "zh"
+                else
+                "mode=simple_edit. Apply only the user revision and target-page scope "
+                "bounded by the goal; do not expand into a whole-deck rewrite or start "
+                f"another role. User revision: {instruction}\nControlled goal: {requested_task}"
+            )
+        else:
+            review_task = (
+                "mode=final_review。读取 renders/contact-sheet.png、可用时的 "
+                "contact-sheet-special.png、plan/deck.md 与 speech.md，按 Review "
+                "角色卡完成整册复审。"
+                if parent.skill_language == "zh"
+                else
+                "mode=final_review. Review the completed deck from "
+                "renders/contact-sheet.png, the special contact sheet when present, "
+                "plan/deck.md, and speech.md using the Review role card."
+            )
+        repair_issues = _pending_slide_repair_issues(parent)
+        required_pages = sorted(
+            {
+                int(page)
+                for issue in repair_issues
+                for page in issue.get("pages", [])
+                if isinstance(page, int) and not isinstance(page, bool) and page > 0
+            }
+        )
+        spec["required_review_pages"] = required_pages
+        if repair_issues:
+            ledger_path = Path(parent.ws) / "_trace" / "review-issues.json"
+            _write_json(
+                ledger_path,
+                {
+                    "status": "repair_required",
+                    "required_review_pages": required_pages,
+                    "issues": repair_issues,
+                },
+            )
+            pages_text = ", ".join(f"P{page:02d}" for page in required_pages)
+            review_task += (
+                " 先读取 `_trace/review-issues.json`；其中由 Slide 明确交接的页面 "
+                f"{pages_text} 必须逐页打开当前 PNG，不能只看联系表。修复后重新 finalize "
+                "并复看这些页的当前最终像素，关闭 issue 后才能返回 ready。"
+                if parent.skill_language == "zh"
+                else
+                " First read `_trace/review-issues.json`. The Slide handoff pages "
+                f"{pages_text} are mandatory individual current-PNG inspections, not "
+                "contact-sheet-only checks. After a repair, finalize and reopen their "
+                "current final pixels before returning ready."
+            )
+        spec["task"] = review_task
 
     # A retry request may include the entire previous wave even when only one
     # child failed. Labels are stable task identities, so successful children
@@ -1521,6 +1880,14 @@ def _delegate(parent: Agent, args: dict) -> str:
         )
     specs = pending_specs
     roles = [str(spec.get("role", "")).lower() for spec in specs]
+    available_roles = set(getattr(parent, "available_roles", ROLES) or ())
+    unavailable = sorted(set(roles) - available_roles)
+    if unavailable:
+        return (
+            "委派错误：运行时能力检查已省略以下角色："
+            + "、".join(unavailable)
+            + "。不要按静态 Skill 的可选路线调用它们；请按注入的运行时能力合同继续。"
+        )
     if roles.count("material") > 1:
         return (
             "Material 委派错误：每个 Deck 只使用一个 Material Agent。"
@@ -1552,6 +1919,17 @@ def _delegate(parent: Agent, args: dict) -> str:
             "Image 委派错误：每个 Deck 只使用一个逻辑 Image Agent。"
             "让它一次读取全部逐页计划并统一处理素材。"
         )
+    if "image" in roles and "slide" in roles:
+        slide_queue = (
+            "全部 Slide Group"
+            if _is_grouped_skill_name(getattr(parent, "skill_name", ""))
+            else "全部单页 Slide"
+        )
+        return (
+            "委派错误：v0.2 的同步 delegate_task 不把 Image 与 Slide 放在同一批。"
+            f"先单独完成 Image，再把{slide_queue}放入一个工作队列；"
+            "避免一个慢 code_only 页面阻塞已经完成的 Image 交接。"
+        )
     inline_image_skill = _is_inline_image_skill_name(
         getattr(parent, "skill_name", "")
     )
@@ -1565,7 +1943,11 @@ def _delegate(parent: Agent, args: dict) -> str:
     root = Path(parent.ws)
     grouped_skill = _is_grouped_skill_name(getattr(parent, "skill_name", ""))
     research_required = bool(
-        getattr(parent, "research_required", not grouped_skill)
+        getattr(
+            parent,
+            "research_required",
+            not _uses_legacy_grouped_contract(getattr(parent, "skill_name", "")),
+        )
     )
     if "research" in roles and parent.material_required and not parent.material_completed:
         return (
@@ -1652,7 +2034,7 @@ def _delegate(parent: Agent, args: dict) -> str:
         return "阶段顺序错误：Review 必须等待 Orchestrator 完成整册 render 与 contact-sheet。"
     if (
         "review" in roles
-        and grouped_skill
+        and _uses_legacy_grouped_contract(getattr(parent, "skill_name", ""))
         and not bool(getattr(parent, "finalize_attempted", False))
     ):
         return (
@@ -1667,6 +2049,18 @@ def _delegate(parent: Agent, args: dict) -> str:
         jobs = {pool.submit(_run_child, parent, i + 1, spec): i for i, spec in enumerate(specs)}
         for job in futures.as_completed(jobs):
             results[jobs[job]] = job.result()
+    # A bounded Review may leave a non-blocking aesthetic issue after genuine
+    # inspection.  Preserve the usable Deck as ``needs_improvement`` instead of
+    # converting that quality warning into an unusable whole-run failure. Hard
+    # delivery failures (blocking=yes), stale pixels, or an unfinalized edit are
+    # never promoted.
+    for spec, result in zip(specs, results):
+        if str(spec.get("role", "")).lower() != "review":
+            continue
+        if _review_can_complete_needs_improvement(parent, result):
+            result["ok"] = True
+            result["status"] = "needs_improvement"
+            result["exit_reason"] = "needs_improvement"
     outcomes = existing_outcomes
     for result in results:
         label = str(result.get("label") or "")
@@ -1679,6 +2073,9 @@ def _delegate(parent: Agent, args: dict) -> str:
                 "completed_pages": result.get("completed_pages", []),
                 "incomplete_pages": result.get("incomplete_pages", []),
                 "trace_mode": dict(result.get("trace_mode") or {}),
+                "status": result.get("status"),
+                "repair_issue": result.get("repair_issue"),
+                "blocking": result.get("blocking"),
             }
     if any(
         str(spec.get("role", "")).lower() == "review" and bool(result.get("ok"))
@@ -1696,6 +2093,7 @@ def _delegate(parent: Agent, args: dict) -> str:
         parent.final_view_after_review = bool(
             review_result.get("final_view_after_review")
         )
+        parent.quality_status = str(review_result.get("status") or "ready")
         if bool(review_result.get("finalize_attempted")):
             parent.finalize_attempted = True
             parent.finalize_succeeded = bool(
@@ -1709,6 +2107,12 @@ def _delegate(parent: Agent, args: dict) -> str:
         for spec, result in zip(specs, results)
     ):
         parent.material_completed = True
+    if any(
+        str(spec.get("role", "")).lower() == "material"
+        and result.get("status") == "material_blocked"
+        for spec, result in zip(specs, results)
+    ):
+        parent.material_blocked = True
     if any(
         str(spec.get("role", "")).lower() == "research" and bool(result.get("ok"))
         for spec, result in zip(specs, results)
@@ -1739,13 +2143,24 @@ def _delegate(parent: Agent, args: dict) -> str:
         for item in results
         if not item.get("ok")
     ]
+    repair_required = [
+        item.get("repair_issue")
+        for item in results
+        if item.get("ok") and isinstance(item.get("repair_issue"), dict)
+    ]
     # Child traces contain the full per-agent responses. Returning every Slide
     # summary here can exceed the tool-result cap on long decks; the truncated
     # result then makes the Orchestrator believe later pages never returned and
     # it delegates the whole deck again. Keep the control-plane result compact.
     all_succeeded = skipped_completed_labels + succeeded
     payload_record = {
-        "status": "completed" if not failed else "completed_with_failures",
+        "status": (
+            "completed_with_failures"
+            if failed
+            else "repair_required"
+            if repair_required
+            else "completed"
+        ),
         "requested": requested_count,
         "executed": len(results),
         "succeeded": len(all_succeeded),
@@ -1753,6 +2168,7 @@ def _delegate(parent: Agent, args: dict) -> str:
         "succeeded_labels": all_succeeded,
         "skipped_completed_labels": skipped_completed_labels,
         "failures": failed,
+        "repair_required": repair_required,
     }
     if roles != ["slide"] * len(roles):
         payload_record["agent_summaries"] = [
@@ -1834,10 +2250,14 @@ def _delegate_task(parent: Agent, args: dict) -> str:
         except json.JSONDecodeError:
             raw_tasks = None
     if not isinstance(raw_tasks, list) or not raw_tasks:
+        task_shape = (
+            "每组使用 `SlideGroup GROUP [NN,NN]:`"
+            if _is_grouped_skill_name(getattr(parent, "skill_name", ""))
+            else "每页使用一个 `Slide NN:`"
+        )
         return (
             "delegate_task 错误：tasks 必须是非空数组；请直接传数组，不要把数组再包成"
-            "字符串。每页使用一个 `Slide NN:` 任务，不要把多页合并为 SlideGroup，"
-            "也不要改由 Orchestrator 接管 Slide HTML。"
+            f"字符串。{task_shape}，也不要改由 Orchestrator 接管 Slide HTML。"
         )
 
     specs: list[dict] = []
@@ -1866,11 +2286,27 @@ def _delegate_task(parent: Agent, args: dict) -> str:
             flags=re.IGNORECASE,
         )
         if group_match:
-            return (
-                f"delegate_task 错误：task {index} 使用了 SlideGroup。"
-                "MURAL Presenter v0.2 与训练分布一致，只接受一页一个 `Slide NN:`；"
-                "请把该组展开为独立页面任务，并在同一个并行 wave 中委派。"
-            )
+            if not grouped_skill:
+                return (
+                    f"delegate_task 错误：task {index} 使用了 SlideGroup。"
+                    "当前 Single Skill 与训练分布一致，只接受一页一个 `Slide NN:`；"
+                    "请把该组展开为独立页面任务，并在同一个并行 wave 中委派。"
+                )
+            group_id = group_match.group(1).lower().replace("_", "-")
+            try:
+                pages = _parse_slide_group_pages(group_match.group(2))
+            except ValueError as exc:
+                return f"delegate_task 错误：task {index} 的 SlideGroup 页码无效：{exc}"
+            slide_numbers.extend(pages)
+            slide_group_ids.append(group_id)
+            specs.append({
+                "role": "slide",
+                "label": f"slide_group_{group_id}",
+                "group_id": group_id,
+                "pages": pages,
+                "task": goal.strip(),
+            })
+            continue
         slide_match = re.match(
             r"^\s*slide[_\s-]*0*(\d+)\s*:",
             goal,
@@ -1902,9 +2338,14 @@ def _delegate_task(parent: Agent, args: dict) -> str:
             flags=re.IGNORECASE,
         )
         if not role_match:
+            slide_shape = (
+                "SlideGroup GROUP [NN,NN]:"
+                if grouped_skill
+                else "Slide NN:"
+            )
             return (
                 f"delegate_task 错误：task {index} 的 goal 必须以 "
-                "Material:、Research:、Image:、Review: 或 Slide NN: 开头"
+                f"Material:、Research:、Image:、Review: 或 {slide_shape} 开头"
             )
         role = role_match.group(1).lower()
         task_text = goal.strip()
@@ -1913,7 +2354,7 @@ def _delegate_task(parent: Agent, args: dict) -> str:
                 "delegate_task 错误：inline-image 版本没有 Image 角色；"
                 "将图片任务保留在对应 SlideGroup 中。"
             )
-        if grouped_skill and role == "image":
+        if _uses_legacy_grouped_contract(getattr(parent, "skill_name", "")) and role == "image":
             task_text = (
                 "Image：根据 plan/deck.md 与正式逐页计划解析并交付已规划视觉素材"
                 if delegated_language == "zh"
@@ -1922,7 +2363,7 @@ def _delegate_task(parent: Agent, args: dict) -> str:
                     "the canonical slide plans"
                 )
             )
-        elif grouped_skill and role == "review":
+        elif _uses_legacy_grouped_contract(getattr(parent, "skill_name", "")) and role == "review":
             task_text = (
                 "Review：依据最终像素完成整册质量收口"
                 if delegated_language == "zh"
@@ -1937,6 +2378,17 @@ def _delegate_task(parent: Agent, args: dict) -> str:
         return "delegate_task 错误：同一批中不能重复委派同一页"
     if len(set(slide_group_ids)) != len(slide_group_ids):
         return "delegate_task 错误：同一批中不能重复使用同一个 SlideGroup ID"
+    if os.environ.get("CLEAN_PLAN_ONLY_EVAL", "0") == "1":
+        blocked = sorted({
+            str(spec.get("role", "")).lower()
+            for spec in specs
+            if str(spec.get("role", "")).lower() in {"image", "slide", "review"}
+        })
+        if blocked:
+            return (
+                "plan-only evaluation：Material、Research 与规划完成后必须停止；"
+                "本次禁止委派 " + ", ".join(blocked)
+            )
     return _delegate(parent, {"tasks": specs})
 
 
@@ -2062,10 +2514,22 @@ def _tool_results(agent: Agent, tool_uses, turn: int, tool_log: list[dict]) -> l
 
         command = str(args.get("command", ""))
         value_text = str(value)
+        actual_vision_payload = bool(
+            isinstance(value, dict)
+            and ("image_b64" in value or "vision_analysis" in value)
+        )
+        if (
+            agent.role == "slide"
+            and (
+                "repair_required" in value_text
+                or "render stop line" in value_text.lower()
+            )
+        ):
+            agent.repair_required_reason = value_text[-1200:]
         local_revision_reviewer = bool(
             agent.role == "orchestrator"
             and getattr(agent, "revision_mode", False)
-            and _is_grouped_skill_name(agent.skill_name)
+            and _uses_legacy_grouped_contract(agent.skill_name)
         )
         tool_succeeded = not any(
             marker in value_text
@@ -2128,8 +2592,23 @@ def _tool_results(agent: Agent, tool_uses, turn: int, tool_log: list[dict]) -> l
             use.name == "vision_analyze"
             and agent.role == "review"
             and tool_succeeded
+            and actual_vision_payload
         ):
             agent.final_view_after_review = True
+            source_path = str(
+                value.get("path", "") if isinstance(value, dict) else ""
+            ) or str(args.get("image_url", ""))
+            page_match = re.search(
+                r"(?:^|/)renders/slide_0*(\d+)\.png$",
+                source_path,
+            )
+            if page_match:
+                page = int(page_match.group(1))
+                digest = _file_content_digest(
+                    Path(agent.ws) / "renders" / f"slide_{page:02d}.png"
+                )
+                if digest:
+                    agent.review_viewed_page_hashes[page] = digest
         if (
             use.name == "vision_analyze"
             and local_revision_reviewer
@@ -2143,6 +2622,7 @@ def _tool_results(agent: Agent, tool_uses, turn: int, tool_log: list[dict]) -> l
             and use.name in {"patch", "write_file"}
             and tool_succeeded
         ):
+            agent.review_changed = True
             agent.final_render_after_review = False
             agent.final_view_after_review = False
             agent.finalize_succeeded = False
@@ -2155,7 +2635,22 @@ def _tool_results(agent: Agent, tool_uses, turn: int, tool_log: list[dict]) -> l
             agent.final_render_after_review = False
             agent.final_view_after_review = False
             agent.finalize_succeeded = False
-        if use.name == "vision_analyze" and tool_succeeded and agent.role == "slide":
+        if (
+            use.name == "vision_analyze"
+            and tool_succeeded
+            and actual_vision_payload
+            and agent.role == "slide"
+        ):
+            inspection_state = "|".join(
+                f"{page}:{agent.rendered_output_hashes.get(page, '')}"
+                for page in sorted(agent.rendered_output_hashes)
+            )
+            if (
+                inspection_state
+                and inspection_state != agent.slide_inspection_state
+            ):
+                agent.slide_pixel_inspections += 1
+                agent.slide_inspection_state = inspection_state
             source_path = str(
                 value.get("path", "") if isinstance(value, dict) else ""
             ) or str(args.get("image_url", ""))
@@ -2214,6 +2709,7 @@ def _tool_results(agent: Agent, tool_uses, turn: int, tool_log: list[dict]) -> l
                 "snapshot_bytes": len(snapshot),
                 "source_path": value.get("path") or args.get("image_url"),
                 "media_type": value.get("media_type", "image/png"),
+                "vision_backend": value.get("vision_backend", "same_model_native"),
             })
             results.append({
                 "type": "tool_result",
@@ -2250,6 +2746,110 @@ def _file_content_digest(path: Path) -> str:
         return ""
 
 
+def _contract_fields(text: str) -> dict[str, str]:
+    """Parse the compact role return contract without interpreting free prose."""
+    fields: dict[str, str] = {}
+    for raw_line in str(text or "").splitlines():
+        match = re.match(
+            r"^\s*(status|pages|issue_type|evidence|proposed_fix|blocking|"
+            r"final_pixels_inspected)\s*:\s*(.*?)\s*$",
+            raw_line,
+            flags=re.IGNORECASE,
+        )
+        if match:
+            fields[match.group(1).lower()] = match.group(2).strip()
+    return fields
+
+
+def _page_render_budget(root: Path, page: int) -> tuple[int, int]:
+    path = root / "_trace" / "slide-render-states" / f"page_{page:02d}.json"
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return 0, 0
+    hashes = payload.get("hashes") if isinstance(payload, dict) else None
+    limit = payload.get("limit") if isinstance(payload, dict) else None
+    return (
+        len(hashes) if isinstance(hashes, list) else 0,
+        int(limit) if isinstance(limit, int) and limit > 0 else 0,
+    )
+
+
+def _slide_repair_issue(agent: Agent) -> dict | None:
+    """Return a structured non-fatal repair handoff for a Slide child."""
+    if agent.role != "slide":
+        return None
+    fields = _contract_fields(agent.final_text)
+    declared = fields.get("status", "").lower() == "repair_required"
+    pages = tuple(getattr(agent, "assigned_slide_pages", ()) or ())
+    exhausted_pages: list[int] = []
+    for page in pages:
+        used, limit = _page_render_budget(Path(agent.ws), page)
+        if limit and used >= limit:
+            exhausted_pages.append(page)
+    runtime_reason = str(getattr(agent, "repair_required_reason", "") or "").strip()
+    if not declared and not runtime_reason and not exhausted_pages:
+        return None
+    evidence = fields.get("evidence", "").strip()
+    if not evidence:
+        if runtime_reason:
+            evidence = runtime_reason
+        elif exhausted_pages:
+            evidence = (
+                "per-page render-state recovery ceiling reached; final Review must "
+                "open and close this page before ready"
+            )
+    issue_type = fields.get("issue_type", "page_authoring").strip().lower()
+    if issue_type not in {"page_authoring", "shared_system", "render_capture"}:
+        issue_type = "page_authoring"
+    return {
+        "status": "repair_required",
+        "pages": list(pages),
+        "issue_type": issue_type,
+        "evidence": evidence[:1200],
+        "proposed_fix": fields.get("proposed_fix", "")[:1200],
+        "render_budget_exhausted_pages": exhausted_pages,
+    }
+
+
+def _repair_candidate_is_routable(agent: Agent, issue: dict) -> bool:
+    """Allow Review to inherit a candidate only when a baseline PNG is durable."""
+    pages = [int(page) for page in issue.get("pages", []) if int(page) > 0]
+    if not pages:
+        return False
+    root = Path(agent.ws)
+    for page in pages:
+        html = root / "slides" / f"slide_{page:02d}.html"
+        png = root / "renders" / f"slide_{page:02d}.png"
+        if not html.is_file() or html.stat().st_size < 1:
+            return False
+        if not png.is_file() or png.stat().st_size < 1:
+            return False
+    return True
+
+
+def _review_required_view_gap(agent: Agent) -> str:
+    required = tuple(getattr(agent, "required_review_pages", ()) or ())
+    if agent.role != "review" or not required:
+        return ""
+    root = Path(agent.ws)
+    viewed = dict(getattr(agent, "review_viewed_page_hashes", {}) or {})
+    stale_or_missing = [
+        page
+        for page in required
+        if viewed.get(page) != _file_content_digest(
+            root / "renders" / f"slide_{page:02d}.png"
+        )
+    ]
+    if not stale_or_missing:
+        return ""
+    pages = ", ".join(f"P{page:02d}" for page in stale_or_missing)
+    return (
+        "Review 未打开并核验 Slide 明确标记的当前最终像素："
+        f"{pages}。这些页不能只依赖联系表；逐页查看、修复或给出明确证据后再返回 ready。"
+    )
+
+
 def _slide_has_current_render(
     agent: Agent,
     page: int | None = None,
@@ -2278,7 +2878,7 @@ def _slide_has_current_render(
     root = Path(agent.ws)
     css_path = root / "base.css"
     png_path = root / "renders" / f"slide_{page:02d}.png"
-    grouped = _is_grouped_skill_name(getattr(agent, "skill_name", ""))
+    grouped = _uses_legacy_grouped_contract(getattr(agent, "skill_name", ""))
     state_path = (
         root / "_trace" / "render-state.json"
         if grouped
@@ -2316,7 +2916,7 @@ def _slide_has_current_render(
 
 def _slide_render_quality_actions(agent: Agent, page: int) -> int:
     """Return ACTIONs still owned by Slide before its pixel-state stop line."""
-    if not _is_grouped_skill_name(getattr(agent, "skill_name", "")):
+    if not _uses_legacy_grouped_contract(getattr(agent, "skill_name", "")):
         return 0
     path = Path(agent.ws) / "_trace" / "render-state.json"
     try:
@@ -2416,7 +3016,16 @@ def _finish_gap(agent: Agent) -> str:
     if incomplete_read:
         return incomplete_read
     if agent.role == "slide":
-        return _slide_deliverable_gap(agent)
+        gap = _slide_deliverable_gap(agent)
+        issue = _slide_repair_issue(agent)
+        if issue and _repair_candidate_is_routable(agent, issue):
+            pages = tuple(int(page) for page in issue.get("pages", []))
+            agent.completed_slide_pages = pages
+            agent.incomplete_slide_pages = ()
+            return ""
+        return gap
+    if agent.role == "review":
+        return _review_required_view_gap(agent)
     if agent.role != "orchestrator":
         return ""
     if agent.skill_language == "auto":
@@ -2425,6 +3034,8 @@ def _finish_gap(agent: Agent) -> str:
             f"读取 `skills/{config.SKILL_NAME_ZH}/SKILL.md` 或 "
             f"`skills/{config.SKILL_NAME_EN}/SKILL.md` 之一；首次读取即锁定。"
         )
+    if bool(getattr(agent, "material_blocked", False)):
+        return ""
     if agent.material_required and not agent.material_completed:
         return (
             "本任务有附件，但 Material 尚未完成。请先委派 Material 整理附件，"
@@ -2435,29 +3046,94 @@ def _finish_gap(agent: Agent) -> str:
             "Research 尚未完成。请把完整 query 与 research/material.md 交给 Research，"
             "由 Research 一次写出 research/knowledge-brief.md 后再继续规划。"
         )
+    if os.environ.get("CLEAN_PLAN_ONLY_EVAL", "0") == "1":
+        root = Path(agent.ws)
+        plans = sorted((root / "plan").glob("slide_[0-9][0-9].md"))
+        if not (root / "plan" / "deck.md").is_file() or len(plans) < 2:
+            return (
+                "plan-only evaluation 尚未完成：请写完 plan/deck.md 与全部逐页计划，"
+                "运行 validate-plans 后直接结束；不要进入 Image、Slide 或 Review。"
+            )
+        return ""
+    revision_mode = bool(getattr(agent, "revision_mode", False))
+    revision_route = str(getattr(agent, "revision_route", "") or "")
+    if revision_mode and not revision_route:
+        return (
+            "尚未锁定编辑路由。先只读建立影响范围：简单编辑只委派唯一 "
+            "`Review: mode=simple_edit`；复杂编辑先写 `plan/revision-impact.md`，"
+            "再委派实际受影响角色。"
+        )
     page_plans = list((Path(agent.ws) / "plan").glob("slide_[0-9][0-9].md"))
-    if len(page_plans) >= 2 and "slide" not in agent.delegated_roles:
+    if (
+        not revision_mode
+        and len(page_plans) >= 2
+        and "slide" not in agent.delegated_roles
+    ):
         return (
             f"当前已有 {len(page_plans)} 个逐页计划，但尚未委派 Slide。"
             "上下文长度、成本或预算不是跳过并行页面阶段的理由；"
             "请委派全部页面，等待完成后再 finalize。"
         )
-    if "slide" not in agent.delegated_roles:
+    if "slide" not in agent.delegated_roles and not revision_mode:
         return ""
     planned_pages = sorted(
         int(path.stem.rsplit("_", 1)[-1])
         for path in page_plans
     )
     outcomes = getattr(agent, "child_outcomes", {})
-    incomplete_pages = [
-        page
-        for page in planned_pages
-        if not (
-            isinstance(outcomes.get(f"slide_{page:02d}"), dict)
-            and bool(outcomes[f"slide_{page:02d}"].get("ok"))
+    grouped_skill = _is_grouped_skill_name(getattr(agent, "skill_name", ""))
+    if grouped_skill and revision_mode:
+        incomplete_pages = sorted({
+            int(page)
+            for outcome in outcomes.values()
+            if isinstance(outcome, dict)
+            for page in outcome.get("incomplete_pages", [])
+            if str(page).isdigit()
+        })
+    elif grouped_skill:
+        completed_pages = {
+            int(page)
+            for outcome in outcomes.values()
+            if isinstance(outcome, dict) and bool(outcome.get("ok"))
+            for page in outcome.get("completed_pages", [])
+            if str(page).isdigit()
+        }
+        incomplete_pages = [
+            page for page in planned_pages if page not in completed_pages
+        ]
+    elif revision_mode:
+        incomplete_pages = sorted(
+            int(label.rsplit("_", 1)[-1])
+            for label, outcome in outcomes.items()
+            if re.fullmatch(r"slide_\d+", str(label))
+            and isinstance(outcome, dict)
+            and not bool(outcome.get("ok"))
         )
-    ]
+    else:
+        incomplete_pages = [
+            page
+            for page in planned_pages
+            if not (
+                isinstance(outcomes.get(f"slide_{page:02d}"), dict)
+                and bool(outcomes[f"slide_{page:02d}"].get("ok"))
+            )
+        ]
     if incomplete_pages:
+        if grouped_skill:
+            grouped: dict[str, list[int]] = {}
+            for page in incomplete_pages:
+                group_id = _planned_production_group(
+                    Path(agent.ws) / "plan" / f"slide_{page:02d}.md"
+                ) or f"page-{page:02d}"
+                grouped.setdefault(group_id, []).append(page)
+            labels = ", ".join(
+                f"SlideGroup {group_id} [{','.join(f'{page:02d}' for page in pages)}]:"
+                for group_id, pages in grouped.items()
+            )
+            return (
+                "以下页组尚未形成成功闭环："
+                f"{labels}。只重新委派这些完整责任组；不要拆成单页，也不要重做已成功页组。"
+            )
         labels = ", ".join(f"Slide {page:02d}:" for page in incomplete_pages)
         return (
             "以下单页任务尚未形成成功闭环："
@@ -2925,6 +3601,31 @@ def _accept(agent: Agent, workspace: str) -> tuple[bool, str, dict]:
         ),
         "unresolved_child_failures": unresolved_children,
     }
+    if bool(getattr(agent, "material_blocked", False)):
+        return False, "material_blocked", {
+            "material_blocked": True,
+            **policy_detail,
+        }
+    if os.environ.get("CLEAN_PLAN_ONLY_EVAL", "0") == "1":
+        root = Path(workspace)
+        plans = sorted((root / "plan").glob("slide_[0-9][0-9].md"))
+        required = [root / "plan" / "deck.md"]
+        if bool(getattr(agent, "material_required", True)):
+            required.insert(0, root / "research" / "material.md")
+        if bool(getattr(agent, "research_required", True)):
+            required.insert(0, root / "research" / "knowledge-brief.md")
+        missing = [str(path.relative_to(root)) for path in required if not path.is_file()]
+        detail = {
+            "plan_only": True,
+            "n_slide_plans": len(plans),
+            "missing": missing,
+            **policy_detail,
+        }
+        if unresolved_children:
+            return False, "unresolved child agent failure", detail
+        if missing or len(plans) < 2:
+            return False, "plan-only deliverables incomplete", detail
+        return True, "plan-only deliverables complete", detail
     if unresolved_children:
         return False, "unresolved child agent failure", policy_detail
     if policy_detail["workspace_policy_violations"]:
@@ -2954,6 +3655,7 @@ def _accept(agent: Agent, workspace: str) -> tuple[bool, str, dict]:
         "finalize_attempted": bool(getattr(agent, "finalize_attempted", False)),
         "finalize_succeeded": bool(getattr(agent, "finalize_succeeded", False)),
         "finalize_failure": str(getattr(agent, "finalize_failure", ""))[-1200:],
+        "quality_status": str(getattr(agent, "quality_status", "ready") or "ready"),
         **policy_detail,
     }
     if detail["n_pages"] < 1:
@@ -3045,6 +3747,7 @@ def _revision_prompt(
     revision: dict,
     *,
     grouped: bool = False,
+    legacy_grouped: bool = False,
 ) -> str:
     instruction = str(revision.get("instruction") or "").strip()
     original_query = str(seed.get("user_query") or seed.get("query") or "").strip()
@@ -3055,6 +3758,55 @@ def _revision_prompt(
         or normalize_language(infer_deck_language(seed))
         or "zh"
     )
+    complex_route_en = (
+        "Then delegate only missing Research/Material/Image work and one complete "
+        "`SlideGroup GROUP [NN,NN]:` for each affected `production_group`; never "
+        "split an affected group into individual pages. Preserve every unaffected "
+        "group and artifact."
+        if grouped
+        else
+        "Then delegate only missing Research/Material/Image work and one `Slide NN:` "
+        "per affected page. Preserve every unaffected artifact."
+    )
+    complex_route_zh = (
+        "随后只补缺失的 Research/Material/Image，并把每个受影响的 "
+        "`production_group` 作为完整的 `SlideGroup GROUP [NN,NN]:` 委派；"
+        "不得把受影响页组拆成单页。保持所有未受影响页组和产物不变。"
+        if grouped
+        else
+        "随后只补缺失的 Research/Material/Image，并把每张受影响页分别委派为一个 "
+        "`Slide NN:`；保持所有未受影响产物不变。"
+    )
+    if not legacy_grouped:
+        if language == "en":
+            return f"""Revise the existing static presentation in this workspace. This is a continuation, not a fresh generation.
+
+Latest user revision:
+{instruction}
+
+Original raw request:
+{original_query}
+
+First inspect the existing plan, HTML, assets, speech, and current renders read-only. Classify the revision by impact, not page count, and lock exactly one route:
+
+1. Simple edit: the core argument, page order, page responsibilities, cross-page narrative, research/material/image evidence, deck-wide style, fonts, and shared structures all remain valid, and the bounded change is safe on a small known set of pages. Delegate exactly one `Review: mode=simple_edit; ...` containing the user revision, target pages, and invariants. Do not edit Slide HTML yourself and do not delegate Research, Material, Image, Slide, or another Review.
+2. Complex edit: any topic/entity correction, factual or evidence change, narrative/page-order responsibility change, new asset need, global style/font/shared-structure change, or uncertain impact. Before mutation, write `plan/revision-impact.md` mapping impact on facts, narrative, page order, global style, assets, pages, speech, and—when present—production groups. {complex_route_en} After affected pages close, finalize and delegate exactly one `Review: mode=final_review`.
+
+A correction such as changing what the named subject refers to is complex even when phrased in one sentence: rerun entity resolution, update all affected plans/evidence/assets/speech, and rebuild every affected page. Never treat it as a local wording patch. The Harness injects the original query and latest revision separately into Research. Finish with fresh final pixels, synchronized speech, and a rebuilt `present.html`."""
+        return f"""这是对工作区现有静态演示的续编修订，不是从头生成。
+
+最新用户修改要求：
+{instruction}
+
+原始用户请求：
+{original_query}
+
+先只读检查现有 plan、HTML、素材、讲稿与当前渲染，再按影响而非页数锁定且只选择一条路由：
+
+1. 简单编辑：核心论点、页序、页面职责、跨页叙事、Research/Material/Image 证据、整册样式、字体和共享结构都继续有效，且修改范围明确、可在少量已知页面内安全完成。只委派唯一 `Review: mode=simple_edit; ...`，goal 必须包含用户要求、目标页和不可改变项。Orchestrator 不直接改 Slide HTML，也不委派 Research、Material、Image、Slide 或第二个 Review。
+2. 复杂编辑：主题/实体纠正、事实或证据变化、叙事/页序/页面职责变化、新素材需求、全局样式/字体/共享结构变化，或影响范围不确定，任一成立即走此路由。修改前写 `plan/revision-impact.md`，分别列出事实、叙事、页序、全局样式、素材、页面、讲稿以及存在时的 production group 影响。{complex_route_zh}受影响页面闭环后 finalize，最后只委派一次 `Review: mode=final_review`。
+
+具名主题指代发生纠正时，即使用户只说一句也属于复杂编辑：必须重新消歧，更新全部受影响的计划、证据、素材和讲稿，并重做每张受影响页，不能当成局部换字。Harness 会把原始 query 和最新修改分别注入 Research。最后以新鲜最终像素、同步讲稿和重建后的 `present.html` 交付。"""
     grouped_instruction_en = ""
     grouped_instruction_zh = ""
     if grouped:
@@ -3097,7 +3849,39 @@ Treat the existing `plan/deck.md`, per-slide plans, HTML, assets, speech, and re
 
 def run_sample(sample_id: str, seed: dict, workspace: str, cfg: dict) -> dict:
     cfg = dict(cfg)
+    # Preserve the user's actual request independently from the Orchestrator's
+    # delegated goal. Children inherit cfg, so Research always receives this
+    # immutable value even when the Orchestrator has formed a wrong hypothesis.
+    cfg["_raw_user_query"] = str(
+        seed.get("user_query") or seed.get("query") or ""
+    ).strip()
+    requested_scope = str(
+        seed.get("evidence_scope") or cfg.get("evidence_scope") or ""
+    ).strip().lower()
+    if requested_scope not in {
+        "attachment_only",
+        "verify_external",
+        "open_research",
+    }:
+        attachment_only_patterns = (
+            r"(?:只|仅)(?:能|可)?(?:使用|基于|依据|参考|读取).{0,8}(?:附件|材料|文档)",
+            r"(?:不要|禁止|无需)(?:联网|外部搜索|检索外部|使用外部)",
+            r"(?:only|solely)\s+(?:use|using|based on|from)\s+(?:the\s+)?(?:attached|attachment|provided)",
+            r"(?:do not|don't)\s+(?:browse|search|use external)",
+        )
+        requested_scope = (
+            "attachment_only"
+            if any(
+                re.search(pattern, cfg["_raw_user_query"], flags=re.IGNORECASE)
+                for pattern in attachment_only_patterns
+            )
+            else "verify_external" if seed.get("_staged_materials") else "open_research"
+        )
+    cfg["_evidence_scope"] = requested_scope
     revision = seed.get("_revision") if isinstance(seed.get("_revision"), dict) else None
+    cfg["_revision_instruction"] = (
+        str(revision.get("instruction") or "").strip() if revision else ""
+    )
     if revision:
         # Studio clones every revision into a fresh workspace, so the canonical
         # root trace is both collision-free and visible to the existing live UI.
@@ -3132,19 +3916,55 @@ def run_sample(sample_id: str, seed: dict, workspace: str, cfg: dict) -> dict:
     )
     _link_skill(workspace, exposed)
     grouped_revision = any(_is_grouped_skill_name(name) for name in exposed)
+    legacy_grouped_revision = any(
+        _uses_legacy_grouped_contract(name) for name in exposed
+    )
     query = (
-        _revision_prompt(seed, revision, grouped=grouped_revision)
+        _revision_prompt(
+            seed,
+            revision,
+            grouped=grouped_revision,
+            legacy_grouped=legacy_grouped_revision,
+        )
         if revision
         else str(seed.get("query", str(seed)))
     )
     staged_materials = [str(path) for path in seed.get("_staged_materials", [])]
     cfg["_staged_materials"] = staged_materials
     cfg["_revision_mode"] = bool(revision)
+    plan_only = os.environ.get("CLEAN_PLAN_ONLY_EVAL", "0") == "1"
+    capability_profile = runtime_capabilities.detect_runtime_capabilities(
+        cfg,
+        staged_materials,
+        skill_names=exposed,
+        revision=bool(revision),
+        plan_only=plan_only,
+    )
+    cfg["_runtime_capabilities"] = capability_profile
+    capability_path = Path(workspace) / "_trace" / "runtime-capabilities.json"
+    _write_json(capability_path, capability_profile)
+    if capability_profile.get("fatal_errors"):
+        raise RuntimeError(
+            "runtime preflight blocked before model execution: "
+            + "; ".join(str(item) for item in capability_profile["fatal_errors"])
+        )
+    if plan_only and not revision:
+        query += """
+
+[PLAN-ONLY EVALUATION]
+本次只评估输入到规划的保真链路。先服从 Harness 注入的运行时能力合同：只执行其中
+启用的 Material/Research 阶段，然后写完 plan/deck.md 与全部 plan/slide_NN.md，
+并运行 validate-plans。完成后立即结束。禁止 scaffold-from-plans，禁止委派 Image、
+Slide 或 Review，也不要制作 HTML、PNG、speech.md 或 present.html。逐页计划仍须完整
+包含证据、视觉语义、来源与口语讲稿字段。
+"""
     agent = Agent(sample_id, workspace, query, cfg)
-    agent.material_required = bool(staged_materials) and not revision
+    active_roles = set(capability_profile.get("active_roles") or ())
+    agent.material_required = "material" in active_roles and not revision
     agent.research_required = (
         not revision
-        and not any(_is_grouped_skill_name(name) for name in exposed)
+        and "research" in active_roles
+        and not any(_uses_legacy_grouped_contract(name) for name in exposed)
     )
     agent.image_required = False
     revision_before = ""
@@ -3172,13 +3992,20 @@ def run_sample(sample_id: str, seed: dict, workspace: str, cfg: dict) -> dict:
             "工作区已准备好（Harness，首次模型调用前）："
             "plan/、slides/、assets/、research/、renders/、base.css、assets/catalog.md"
         )
+        agent.log(
+            "运行时能力检查完成：active_roles="
+            + ",".join(capability_profile.get("active_roles", []))
+            + "；omitted_roles="
+            + ",".join(capability_profile.get("omitted_roles", []))
+        )
     loop_ok = False
     try:
         loop_ok = run_loop(agent)
     finally:
-        agent.workspace_policy_violations = _workspace_output_violations(
-            workspace,
-            agent.skill_name,
+        agent.workspace_policy_violations = (
+            []
+            if os.environ.get("CLEAN_PLAN_ONLY_EVAL", "0") == "1"
+            else _workspace_output_violations(workspace, agent.skill_name)
         )
         if agent.workspace_policy_violations:
             agent.log(
@@ -3266,7 +4093,9 @@ def run_sample(sample_id: str, seed: dict, workspace: str, cfg: dict) -> dict:
         ok = False
         reason = "Nova raw V2 precheck failed; trajectory quarantined"
     status = (
-        "quarantine"
+        "material_blocked"
+        if bool(getattr(agent, "material_blocked", False))
+        else "quarantine"
         if nova_reports and not nova_ok
         else ("completed" if ok else ("failed" if operational_failure else "rejected"))
     )
@@ -3296,5 +4125,13 @@ def run_sample(sample_id: str, seed: dict, workspace: str, cfg: dict) -> dict:
         ],
         "run_mode": agent.run_mode,
         "multimodal_trace": dict(agent.trace_mode_status or {}),
+        "runtime_capabilities": {
+            "status": capability_profile.get("status"),
+            "active_roles": capability_profile.get("active_roles", []),
+            "omitted_roles": capability_profile.get("omitted_roles", []),
+            "workflow": capability_profile.get("workflow", {}),
+            "tools": capability_profile.get("tools", {}),
+            "warnings": capability_profile.get("warnings", []),
+        },
         "pid": os.getpid(),
     }

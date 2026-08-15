@@ -60,6 +60,7 @@ def make_static(html: str, public_prefix: str, external_base: str) -> str:
     for asset_root in (
         "_next/",
         "fonts/",
+        "mural-mark-v2.png",
         "mural-mark.png",
         "mural-mascot.png",
         "mural-blog-hero-source.png",
@@ -69,6 +70,7 @@ def make_static(html: str, public_prefix: str, external_base: str) -> str:
         "mural-paper-cover-zh.png",
         "execution-topologies.png",
         "authoring-lifecycle.png",
+        "favicon-v2.png",
         "favicon.png",
         "og.png",
     ):

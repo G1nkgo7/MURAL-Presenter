@@ -4,6 +4,48 @@
 两种模式共用同一套 Skill、Agent 编排、验收逻辑和 Deck 产物，区别只在运行时上下文维护与
 训练轨迹完整性要求。
 
+## 中英双语自动路由
+
+Harness 根据原始 query 的主要语言自动选择 Agent 工作合同，WebUI 不需要提供手动语言开关：
+
+| Query 主要语言 | Skill 入口 | 子 Agent 职责卡 |
+| --- | --- | --- |
+| 中文 | `skills/mural-presenter/SKILL.md` | `subagents/<role>.md` |
+| English | `skills/mural-presenter/SKILL.en.md` | `subagents/<role>.en.md` |
+
+路由只决定 `response_language` 和 Agent 读取的执行合同；PPT 屏显、规划与讲稿的
+`deliverable_language` 仍以用户明确要求为准。例如英文 query 要求交付中文 PPT，Agent 使用
+英文职责卡，但产出中文屏显与讲稿。
+
+每个 Deck 的 `_trace/skill-snapshot.json` 会同时记录 `language` 和实际入口 `entry`；中英文共用
+同一份脚本、references、素材目录和机器合同，不复制 Harness 运行时。
+
+## 两种创作画像
+
+`--authoring-profile` 控制的是页面创作权，不是推理/合成轨迹模式：
+
+| 画像 | WebUI 名称 | 页面生产方式 | 适用场景 |
+| --- | --- | --- | --- |
+| `stable`（默认） | MURAL Presenter | 同构页可由 Production Group 统一生产 | 弱模型、批量基准、稳定交付 |
+| `creative` | MURAL Presenter · Creative | 强制一页一个 Slide Agent；页面 Agent 可重写正文并独立构图 | Opus 等强模型、演讲型/教学型高完成度演示 |
+
+Creative 画像只放开主题解释、正文措辞和页面构图；附件优先级、`must_present` 屏显、素材来源、
+字体交付、渲染、最终 Review、`deck.py build/audit` 等工程门与默认画像完全相同。每个 Deck 的
+`_trace/skill-snapshot.json` 会记录 `authoring_profile`，因此训练数据和评测结果可明确区分。
+
+命令行示例：
+
+```bash
+uv run python infer.py \
+  --query "做一份 8 页、适合现场演讲的研究报告" \
+  --batch demo-creative \
+  --mode inference \
+  --authoring-profile creative
+```
+
+也可设置 `MURAL_AUTHORING_PROFILE=creative`，或在输入 JSONL 的单条样本中写
+`{"authoring_profile":"creative"}`；样本级设置优先于进程默认值。
+
 ## 两种模式
 
 | 行为 | `inference`（默认） | `synthesis` |
@@ -18,6 +60,11 @@
 压缩；图片在 `messages.json` 中以 shot 引用表示，原始模型输入字节保存在对应 `images/`
 文件，并由 `multimodal-manifest.json` 记录 SHA-256。它不表示公开模型服务内部未返回的
 隐藏状态也能被恢复。
+
+模型 API 实际返回的 reasoning 也属于轨迹：Anthropic 有签名 thinking 保存 `thinking + signature`；
+DeepSeek/Qwen 等 OpenAI 兼容接口的无签名 `reasoning_content` 保存为 `{type: thinking, thinking: ...}`。
+无签名 thinking 只在下一轮 API 的发送副本中被移除，不会回灌触发 Anthropic signature 校验，
+也不会从 `messages.json` 中丢失。对于 API 从未返回的内部隐藏思考，Harness 仍无法恢复。
 
 ## 直接运行
 

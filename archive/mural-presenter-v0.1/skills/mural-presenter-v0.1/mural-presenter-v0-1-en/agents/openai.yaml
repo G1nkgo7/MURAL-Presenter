@@ -1,0 +1,4 @@
+interface:
+  display_name: "Static HTML PPT (EN instructions)"
+  short_description: "Create polished audience-facing HTML presentations in the language requested"
+  default_prompt: "Use $mural-presenter-v0-1-en to create a polished HTML presentation in the language requested by the user."

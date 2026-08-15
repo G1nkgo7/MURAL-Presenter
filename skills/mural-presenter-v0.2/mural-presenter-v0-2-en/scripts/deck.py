@@ -8,11 +8,13 @@ Canonical planning files:
 Public commands:
   deck.py prepare ROOT
   deck.py restore-base ROOT
+  deck.py apply-plan-batch ROOT
   deck.py validate-plans ROOT [--expected N]
   deck.py scaffold-from-plans ROOT [--expected N] [--force]
   deck.py sync-speech ROOT [--expected N]
   deck.py build ROOT [--expected N]
   deck.py render ROOT --page NN
+  deck.py render-group ROOT --group GROUP --pages NN,NN
   deck.py fetch-images ROOT [--replace]
   deck.py assets-finalize ROOT
   deck.py inspect-image ROOT --asset PATH [--expect-transparent]
@@ -293,6 +295,62 @@ def restore_base(root: Path) -> None:
     atomic_copy(root, source, root / "base.css")
     print("status:PASS")
     print("restored: base.css")
+
+
+def apply_plan_batch(root: Path) -> None:
+    """Expand one model-written manifest into canonical per-page plans."""
+    batch_path = root / "plan" / "plan-batch.json"
+    if not batch_path.is_file():
+        raise FileNotFoundError("plan/plan-batch.json is missing")
+    try:
+        payload = json.loads(batch_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"plan batch is invalid JSON: {exc}") from exc
+    if not isinstance(payload, dict) or set(payload) != {"files"}:
+        raise ValueError("plan batch must be exactly {'files': [...]}")
+    files = payload["files"]
+    if not isinstance(files, list) or not 2 <= len(files) <= 6:
+        raise ValueError("plan batch must contain 2-6 files")
+    prepared: list[tuple[int, Path, str]] = []
+    seen: set[int] = set()
+    for index, item in enumerate(files, start=1):
+        if not isinstance(item, dict) or set(item) != {"path", "content"}:
+            raise ValueError(f"plan batch item {index} must contain path and content")
+        relative = item.get("path")
+        content = item.get("content")
+        match = (
+            re.fullmatch(r"plan/slide_(\d{2})\.md", relative)
+            if isinstance(relative, str)
+            else None
+        )
+        if not match:
+            raise ValueError(f"plan batch item {index} has noncanonical path: {relative!r}")
+        page = int(match.group(1))
+        if page < 1 or page in seen:
+            raise ValueError(f"plan batch has invalid or duplicate page: {page}")
+        if not isinstance(content, str) or not content.strip():
+            raise ValueError(f"plan batch item {index} content is empty")
+        seen.add(page)
+        prepared.append((page, root / relative, content))
+    pages = sorted(seen)
+    if pages != list(range(pages[0], pages[-1] + 1)):
+        raise ValueError(f"plan batch pages must be consecutive: {pages}")
+    for page, target, content in prepared:
+        if target.is_file() and target.read_text(encoding="utf-8") != content:
+            raise ValueError(
+                f"plan/slide_{page:02d}.md already differs; patch it or batch only missing pages"
+            )
+    changed = 0
+    for _, target, content in prepared:
+        if not target.is_file():
+            atomic_write_text(root, target, content)
+            changed += 1
+    batch_path.unlink()
+    print("status:PASS")
+    print(
+        f"plan batch applied: pages={','.join(f'{page:02d}' for page in pages)} "
+        f"changed={changed}"
+    )
 
 
 def _token(value: object, *, field: str) -> str:
@@ -1440,9 +1498,10 @@ def _document(css: str, fragments: list[tuple[int, str]], language: str) -> str:
       if (['ArrowLeft', 'PageUp'].includes(event.key)) step(-1);
     }});
     addEventListener('resize', fitDeck);
+    const fontsReady = Promise.resolve(document.fonts?.ready).catch(() => undefined);
     const initial = byNumber.has(current) ? current : ordered[0];
     fitDeck();
-    window.cleanDeck = {{ go, step, count: slides.length }};
+    window.cleanDeck = {{ go, step, count: slides.length, fontsReady }};
     go(initial);
     const start = () => requestAnimationFrame(() => {{
       fitDeck();
@@ -1580,6 +1639,37 @@ def render(root: Path, page: int, expected: int | None) -> None:
     print(f"render-state:{len(hashes)}/{MAX_PAGE_RENDER_STATES}")
     print("next: inspect this PNG before any further page edit")
     print(final_png)
+
+
+def render_group(
+    root: Path,
+    group: str,
+    pages_text: str,
+    expected: int | None,
+) -> None:
+    group_id = str(group or "").strip().lower().replace("_", "-")
+    if not re.fullmatch(r"[a-z0-9][a-z0-9-]*", group_id):
+        raise ValueError(f"invalid group id: {group!r}")
+    pages: list[int] = []
+    for item in str(pages_text or "").split(","):
+        token = item.strip()
+        if not token.isdigit() or int(token) < 1:
+            raise ValueError(f"invalid group page: {token!r}")
+        pages.append(int(token))
+    if not pages or len(set(pages)) != len(pages):
+        raise ValueError("group pages must be non-empty and unique")
+    for page in pages:
+        render(root, page, expected)
+    paths = [root / "renders" / f"slide_{page:02d}.png" for page in pages]
+    missing = [str(path.relative_to(root)) for path in paths if not path.is_file()]
+    if missing:
+        raise FileNotFoundError(f"group render is missing pages: {missing}")
+    target = root / "renders" / f"contact-sheet-group-{group_id}.png"
+    _contact_sheet(paths, target)
+    print("status:PASS")
+    print(f"group:{group_id}")
+    print("pages:" + ",".join(f"{page:02d}" for page in pages))
+    print(target)
 
 
 def audit(root: Path) -> None:
@@ -2129,6 +2219,8 @@ def main() -> int:
     p_prepare.add_argument("root")
     p_restore = sub.add_parser("restore-base")
     p_restore.add_argument("root")
+    p_plan_batch = sub.add_parser("apply-plan-batch")
+    p_plan_batch.add_argument("root")
     p_validate = sub.add_parser("validate-plans")
     p_validate.add_argument("root")
     p_validate.add_argument("--expected", type=int)
@@ -2146,6 +2238,11 @@ def main() -> int:
     p_render.add_argument("root")
     p_render.add_argument("--page", type=int, required=True)
     p_render.add_argument("--expected", type=int)
+    p_render_group = sub.add_parser("render-group")
+    p_render_group.add_argument("root")
+    p_render_group.add_argument("--group", required=True)
+    p_render_group.add_argument("--pages", required=True)
+    p_render_group.add_argument("--expected", type=int)
     p_fetch = sub.add_parser("fetch-images")
     p_fetch.add_argument("root")
     p_fetch.add_argument("--replace", action="store_true")
@@ -2178,6 +2275,8 @@ def main() -> int:
         prepare(root)
     elif args.command == "restore-base":
         restore_base(root)
+    elif args.command == "apply-plan-batch":
+        apply_plan_batch(root)
     elif args.command == "validate-plans":
         validate_plans(root, args.expected)
     elif args.command == "scaffold-from-plans":
@@ -2188,6 +2287,8 @@ def main() -> int:
         build(root, args.expected)
     elif args.command == "render":
         render(root, args.page, args.expected)
+    elif args.command == "render-group":
+        render_group(root, args.group, args.pages, args.expected)
     elif args.command == "fetch-images":
         fetch_images(root, replace=args.replace)
     elif args.command == "material-figure":

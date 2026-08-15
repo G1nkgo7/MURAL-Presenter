@@ -16,9 +16,12 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import sys
+import tempfile
 import time
 import traceback
+import zipfile
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -285,6 +288,126 @@ def ensure_control_file(path: Path, initial: int) -> bool:
     return True
 
 
+def _extract_package_media(
+    source: Path,
+    output_dir: Path,
+    prefixes: tuple[str, ...],
+) -> list[Path]:
+    """Expose embedded Office media as deterministic Material-only derivatives."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    extracted: list[Path] = []
+    with zipfile.ZipFile(source) as archive:
+        names = sorted(
+            name for name in archive.namelist()
+            if any(name.startswith(prefix) for prefix in prefixes)
+            and not name.endswith("/")
+        )
+        for index, name in enumerate(names, 1):
+            suffix = Path(name).suffix.lower() or ".bin"
+            destination = output_dir / f"embedded_{index:03d}{suffix}"
+            destination.write_bytes(archive.read(name))
+            extracted.append(destination)
+    return extracted
+
+
+def _render_office_pages(source: Path, output_dir: Path) -> list[Path]:
+    """Best-effort LibreOffice rendering; embedded media remains the fallback."""
+    executable = shutil.which("libreoffice") or shutil.which("soffice")
+    if not executable:
+        return []
+    output_dir.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="mural-office-") as temporary:
+        converted = subprocess.run(
+            [
+                executable,
+                "--headless",
+                "--convert-to",
+                "pdf",
+                "--outdir",
+                temporary,
+                str(source),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=False,
+        )
+        pdf = Path(temporary) / f"{source.stem}.pdf"
+        if converted.returncode != 0 or not pdf.is_file():
+            return []
+        import pymupdf as fitz
+
+        document = fitz.open(pdf)
+        rendered: list[Path] = []
+        try:
+            for index, page in enumerate(document, 1):
+                pixmap = page.get_pixmap(matrix=fitz.Matrix(2.0, 2.0), alpha=False)
+                destination = output_dir / f"page_{index:03d}.png"
+                pixmap.save(destination)
+                rendered.append(destination)
+        finally:
+            document.close()
+        return rendered
+
+
+def _relative_derivative(path: Path, source: Path) -> str:
+    return str(path.relative_to(source.parent.parent)).replace(os.sep, "/")
+
+
+def _append_visual_derivatives(
+    blocks: list[str],
+    source: Path,
+    media: list[Path],
+    pages: list[Path],
+) -> None:
+    blocks.extend(["", "## Visual derivatives", ""])
+    if pages:
+        blocks.append(
+            "> Complete Office page previews are available for Material visual inspection."
+        )
+        blocks.extend(f"- page_preview: {_relative_derivative(path, source)}" for path in pages)
+    else:
+        blocks.append(
+            "> Complete page rendering unavailable in this runtime; embedded media and structured text follow."
+        )
+    image_suffixes = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff"}
+    for path in media:
+        blocks.append(f"- embedded_media: {_relative_derivative(path, source)}")
+        if path.suffix.lower() not in image_suffixes:
+            continue
+        ocr_text, _, ocr_note = _rapidocr_page(path)
+        if ocr_text:
+            blocks.extend([
+                "  embedded_media_ocr: |",
+                *[f"    {line}" for line in ocr_text.splitlines()],
+            ])
+        else:
+            blocks.append(f"  embedded_media_ocr: unavailable ({ocr_note or 'no text'})")
+    if not media:
+        blocks.append("- embedded_media: none")
+
+
+def _append_chart_xml(blocks: list[str], source: Path, prefix: str) -> None:
+    """Preserve cached chart labels/values even when Office rendering is unavailable."""
+    from xml.etree import ElementTree as ET
+
+    with zipfile.ZipFile(source) as archive:
+        chart_names = sorted(
+            name for name in archive.namelist()
+            if name.startswith(prefix) and name.endswith(".xml")
+        )
+        for index, name in enumerate(chart_names, 1):
+            root = ET.fromstring(archive.read(name))
+            labels = [
+                (node.text or "").strip()
+                for node in root.iter()
+                if node.tag.rsplit("}", 1)[-1] in {"v", "f"}
+                and (node.text or "").strip()
+            ]
+            blocks.extend(["", f"### Chart {index}", ""])
+            blocks.append(" | ".join(labels) if labels else "(chart XML has no cached labels or values)")
+
+
 def _extract_material(source: Path, target: Path) -> bool:
     """Create a readable Markdown companion for common office files.
 
@@ -298,21 +421,28 @@ def _extract_material(source: Path, target: Path) -> bool:
             try:
                 from openpyxl import load_workbook
 
-                book = load_workbook(source, read_only=True, data_only=True)
-                sheets = (
-                    (sheet.title, ([cell.value for cell in row] for row in sheet.iter_rows()))
-                    for sheet in book.worksheets
-                )
-                for title, rows in sheets:
+                book = load_workbook(source, read_only=False, data_only=False)
+                for sheet in book.worksheets:
+                    title = sheet.title
                     blocks.extend([f"## Sheet: {title}", ""])
-                    for row in rows:
+                    if sheet.merged_cells.ranges:
+                        blocks.append(
+                            "> merged_ranges: "
+                            + ", ".join(str(item) for item in sheet.merged_cells.ranges)
+                        )
+                    for row in sheet.iter_rows():
                         values = [
-                            "" if value is None else str(value).replace("\n", " ")
-                            for value in row
+                            "" if cell.value is None else str(cell.value).replace("\n", " ")
+                            for cell in row
                         ]
                         if any(values):
                             blocks.append(" | ".join(values))
+                    if getattr(sheet, "_charts", None):
+                        blocks.append(f"> charts_on_sheet: {len(sheet._charts)}")
+                    if getattr(sheet, "_images", None):
+                        blocks.append(f"> embedded_images_on_sheet: {len(sheet._images)}")
                     blocks.append("")
+                book.close()
             except ImportError:
                 # The production model environment is intentionally small. XLSX is
                 # a ZIP of XML files, so retain a dependency-free readable fallback.
@@ -339,13 +469,26 @@ def _extract_material(source: Path, target: Path) -> bool:
                             values: list[str] = []
                             for cell in row.findall("m:c", ns):
                                 value = cell.find("m:v", ns)
+                                inline = cell.find("m:is", ns)
+                                formula = cell.find("m:f", ns)
                                 text = "" if value is None else (value.text or "")
+                                if inline is not None:
+                                    text = "".join(
+                                        node.text or "" for node in inline.findall(".//m:t", ns)
+                                    )
                                 if cell.get("t") == "s" and text.isdigit():
                                     text = shared[int(text)]
+                                if formula is not None and (formula.text or "").strip():
+                                    text = f"={formula.text}" + (f" [cached: {text}]" if text else "")
                                 values.append(text.replace("\n", " "))
                             if any(values):
                                 blocks.append(" | ".join(values))
                         blocks.append("")
+            derivative_dir = source.with_suffix(source.suffix + ".pages")
+            media = _extract_package_media(source, derivative_dir, ("xl/media/",))
+            pages = _render_office_pages(source, derivative_dir)
+            _append_visual_derivatives(blocks, source, media, pages)
+            _append_chart_xml(blocks, source, "xl/charts/")
         elif suffix == ".docx":
             from docx import Document
 
@@ -355,6 +498,10 @@ def _extract_material(source: Path, target: Path) -> bool:
                 blocks.extend(["", f"## Table {table_index}", ""])
                 for row in table.rows:
                     blocks.append(" | ".join(cell.text.replace("\n", " ") for cell in row.cells))
+            derivative_dir = source.with_suffix(source.suffix + ".pages")
+            media = _extract_package_media(source, derivative_dir, ("word/media/",))
+            pages = _render_office_pages(source, derivative_dir)
+            _append_visual_derivatives(blocks, source, media, pages)
         elif suffix == ".pptx":
             from pptx import Presentation
 
@@ -365,6 +512,21 @@ def _extract_material(source: Path, target: Path) -> bool:
                     text = getattr(shape, "text", "").strip()
                     if text:
                         blocks.append(text)
+                    if getattr(shape, "has_table", False):
+                        for row in shape.table.rows:
+                            blocks.append(
+                                " | ".join(cell.text.replace("\n", " ") for cell in row.cells)
+                            )
+                    if getattr(shape, "has_chart", False):
+                        blocks.append("> chart_present: yes")
+                    description = str(getattr(shape, "alternative_text", "") or "").strip()
+                    if description:
+                        blocks.append(f"> alt_text: {description}")
+            derivative_dir = source.with_suffix(source.suffix + ".pages")
+            media = _extract_package_media(source, derivative_dir, ("ppt/media/",))
+            pages = _render_office_pages(source, derivative_dir)
+            _append_visual_derivatives(blocks, source, media, pages)
+            _append_chart_xml(blocks, source, "ppt/charts/")
         elif suffix == ".pdf":
             _extract_pdf(source, target, blocks)
         elif suffix in {".txt", ".md", ".csv", ".tsv", ".json"}:
@@ -373,6 +535,8 @@ def _extract_material(source: Path, target: Path) -> bool:
             return False
     except Exception as exc:  # noqa: BLE001
         blocks.extend(["", f"> Extraction failed: {type(exc).__name__}: {exc}"])
+        target.write_text("\n".join(blocks).strip() + "\n", encoding="utf-8")
+        return False
     target.write_text("\n".join(blocks).strip() + "\n", encoding="utf-8")
     return True
 
@@ -497,6 +661,7 @@ def stage_materials(run_dir, seed):
     if isinstance(raw, (str, dict)):
         raw = [raw]
     staged = []
+    failures: list[dict[str, str]] = []
     inputs = Path(run_dir) / "inputs"
     for index, item in enumerate(raw, 1):
         source_value = item.get("path") if isinstance(item, dict) else item
@@ -510,13 +675,65 @@ def stage_materials(run_dir, seed):
         shutil.copy2(source, target)
         staged.append(str(target.relative_to(run_dir)))
         if target.suffix.lower() in {
-            ".md", ".markdown", ".txt", ".csv", ".tsv", ".json", ".jsonl"
+            ".md", ".markdown", ".txt", ".csv", ".tsv", ".json", ".jsonl",
+            ".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tif", ".tiff",
         }:
             continue
         companion = target.with_suffix(target.suffix + ".md")
         if _extract_material(target, companion):
             staged.append(str(companion.relative_to(run_dir)))
+            if target.suffix.lower() == ".pdf" and acfg.VISION_BACKEND == "disabled":
+                companion_text = companion.read_text(
+                    encoding="utf-8", errors="replace"
+                )
+                if re.search(r"(?mi)^>\s*text_mode:\s*missing\s*$", companion_text):
+                    failures.append({
+                        "path": str(target.relative_to(run_dir)),
+                        "error": (
+                            "scanned page has no native/OCR text and the selected "
+                            "main model is text-only (VISION_BACKEND=disabled)"
+                        ),
+                    })
+        else:
+            if companion.is_file():
+                staged.append(str(companion.relative_to(run_dir)))
+                detail = next(
+                    (
+                        line.removeprefix("> Extraction failed: ").strip()
+                        for line in companion.read_text(
+                            encoding="utf-8", errors="replace"
+                        ).splitlines()
+                        if line.startswith("> Extraction failed:")
+                    ),
+                    "unsupported or incomplete extraction",
+                )
+            else:
+                detail = "unsupported attachment type"
+            failures.append({"path": str(target.relative_to(run_dir)), "error": detail})
+    seed["_material_ingestion_failures"] = failures
     return staged
+
+
+def _material_blocked(run_dir: str, failures: list[dict[str, str]]) -> None:
+    research = Path(run_dir) / "research"
+    research.mkdir(parents=True, exist_ok=True)
+    lines = [
+        "# Material ingestion",
+        "",
+        "- status: material_blocked",
+        "- blocking: yes",
+        "",
+        "## Failed attachments",
+        "",
+    ]
+    for item in failures:
+        lines.append(f"- `{item['path']}`: {item['error']}")
+    lines.extend([
+        "",
+        "The Harness stopped before Research and planning. Fix the deterministic parser "
+        "or replace the unreadable attachment; external search must not guess its contents.",
+    ])
+    (research / "material.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def worker(task):
@@ -545,6 +762,18 @@ def worker(task):
                     "error": "run_dir 反复无法创建，跳过"}
     try:
         seed["_staged_materials"] = stage_materials(run_dir, seed)
+        ingestion_failures = list(seed.get("_material_ingestion_failures") or [])
+        if ingestion_failures:
+            _material_blocked(run_dir, ingestion_failures)
+            return {
+                "sample_id": sid,
+                "run_dir": run_dir,
+                "status": "material_blocked",
+                "query": seed.get("query"),
+                "skill_name": config.get("skill_name"),
+                "skill_language": config.get("skill_language"),
+                "material_ingestion_failures": ingestion_failures,
+            }
         res = run_sample(sid, seed, run_dir, config)
         status = res.get("status", "completed") if isinstance(res, dict) else "completed"
         out = {"sample_id": sid, "run_dir": run_dir, "status": status}
@@ -726,7 +955,10 @@ def main():
             raise SystemExit(
                 "CLEAN_NOVA_RAW_V2=1 时必须设置 NOVA_VISION_PROXY_BASE_URL"
             )
-        if acfg.NOVA_VISION_PROXY_BASE_URL == acfg.NOVA_PROXY_BASE_URL:
+        if (
+            not acfg.NOVA_GATE_V1
+            and acfg.NOVA_VISION_PROXY_BASE_URL == acfg.NOVA_PROXY_BASE_URL
+        ):
             raise SystemExit(
                 "Nova exact-raw 必须使用主/辅双 Proxy：主 Proxy 禁用 builtin "
                 "vision_reader，NOVA_VISION_PROXY_BASE_URL 指向独立辅助 Proxy"
@@ -739,16 +971,31 @@ def main():
         from core.nova_raw import validate_proxy_health
 
         try:
-            main_health = validate_proxy_health(
-                acfg.NOVA_PROXY_BASE_URL,
-                timeout_s=acfg.NOVA_HEALTH_TIMEOUT_S,
-                expected_builtin_vision_reader=False,
-            )
-            vision_health = validate_proxy_health(
-                acfg.NOVA_VISION_PROXY_BASE_URL,
-                timeout_s=acfg.NOVA_HEALTH_TIMEOUT_S,
-                expected_builtin_vision_reader=True,
-            )
+            if acfg.NOVA_GATE_V1:
+                if acfg.NOVA_PROXY_BASE_URL != acfg.NOVA_VISION_PROXY_BASE_URL:
+                    raise RuntimeError(
+                        "Gate V1 mainline profile requires the frozen shared Nova Proxy "
+                        "endpoint for both Hermes call sites"
+                    )
+                main_health = validate_proxy_health(
+                    acfg.NOVA_PROXY_BASE_URL,
+                    timeout_s=acfg.NOVA_HEALTH_TIMEOUT_S,
+                    expected_builtin_vision_reader=True,
+                    gate_v1=True,
+                    expected_agent_model=acfg.NOVA_GATE_AGENT_MODEL,
+                )
+                vision_health = main_health
+            else:
+                main_health = validate_proxy_health(
+                    acfg.NOVA_PROXY_BASE_URL,
+                    timeout_s=acfg.NOVA_HEALTH_TIMEOUT_S,
+                    expected_builtin_vision_reader=False,
+                )
+                vision_health = validate_proxy_health(
+                    acfg.NOVA_VISION_PROXY_BASE_URL,
+                    timeout_s=acfg.NOVA_HEALTH_TIMEOUT_S,
+                    expected_builtin_vision_reader=True,
+                )
         except Exception as exc:  # noqa: BLE001
             raise SystemExit(
                 f"Nova Proxy preflight 失败，拒绝开始刷数：{type(exc).__name__}: {exc}"
@@ -766,7 +1013,7 @@ def main():
             f"raw_root={config['nova_raw_root']} "
             f"agent_upstream={main_health.get('agent_request_url')} "
             f"vision_upstream={vision_health.get('vision_request_url')} "
-            "strict_dual_proxy=yes",
+            f"proxy_topology={'shared-gate-v1' if acfg.NOVA_GATE_V1 else 'strict-dual'}",
             flush=True,
         )
     # 实际生效的模型（经 .env 覆盖后的最终值，与 agent 落盘 config.json / 发给 API 的 model 同源）。

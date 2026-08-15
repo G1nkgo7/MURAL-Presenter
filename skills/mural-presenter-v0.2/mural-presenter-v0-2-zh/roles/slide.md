@@ -146,7 +146,9 @@ python skills/mural-presenter-v0-2-zh/scripts/deck.py render . --page NN
 若本页单页预览正确、后续整册截图却不一致，报告 `render_capture` 及证据，不要为了
 适配错误截图而修改页面。
 
-正常生产只做首稿检查与一次合并修复检查。渲染器保留八种不同状态作为异常恢复上限，
+正常生产只做首稿检查与一次合并修复检查。第二次像素检查后不再 patch、render 或复看；
+若仍有可见缺陷，保留当前已验证状态并返回 `repair_required`，由最终 Review 接手。
+渲染器保留八种不同状态作为异常恢复上限，
 不是审美探索预算；预检拒绝的不同状态也计入，未变化状态才复用旧 PNG。此后的每个
 render → vision → edit 循环都必须解决仍存在的可见缺陷。两次检查后仍有硬伤时简化
 构图或如实上报，让后续修复 Agent 仍有合法恢复入口。
@@ -159,5 +161,16 @@ render → vision → edit 循环都必须解决仍存在的可见缺陷。两�
 
 - 完成的 `slides/slide_NN.html`；
 - `renders/slide_NN.png`；
-- 一行状态：已完成、`final_pixels_inspected=yes`、PNG 无可见 P0 问题、以及遗留
-  共享问题。不要输出长篇构图说明。
+严格返回以下精简合同，不输出长篇构图说明：
+
+```text
+status: ready | repair_required
+pages: NN
+issue_type: none | page_authoring | shared_system | render_capture
+evidence: none | <当前 PNG 中仍可见的具体缺陷>
+proposed_fix: none | <交给 Review 的最小安全修法>
+final_pixels_inspected: yes | no
+```
+
+`repair_required` 是非致命交接状态，不代表整套 Deck 失败。不得为了写 `ready` 隐藏已知
+缺陷；也不得仅因可选润色返回 `repair_required`。

@@ -6,12 +6,20 @@ Turn the request and Research brief into one coherent deck: define the audience
 argument and visual grammar, lock the title sequence, write the global and
 per-page plans, coordinate Image and Slide, and deliver the Review-approved result.
 
+Before every run, the Harness injects a runtime capability contract. That
+contract is authoritative over the complete-capability workflow below: never
+delegate a Material, Research, or Image role that it omits, and never narrate a
+missing capability as if it ran. Continue through the handoff named by the contract.
+
 Write every child-task goal in the language derived from the raw query and locked
 in `Resolved deck brief`.
 
 ## Resolve the request
 
 - Obey an explicit language, page count, audience, or image preference.
+- Before Research, never delete, replace, or generalize the raw query's head
+  entity or entity-type term. A Research goal is only a hypothesis to verify;
+  Research's evidence-backed disambiguation overrides that hypothesis.
 - When any is unstated, infer it from the request's primary language, audience,
   subject complexity, and presentation setting. The Skill edition is irrelevant
   to the delivery language.
@@ -23,34 +31,44 @@ in `Resolved deck brief`.
   and one-line `rationale`.
 - Treat that brief as the internal truth for all later plans and roles. Do not
   let page count, language, or visual-medium strategy drift.
-- With no attachments, begin with Research. Do not create a Material task or
-  spend a turn explaining why Material was skipped.
+- With no attachments, do not create Material. Run Research only when the
+  runtime contract enables it; otherwise plan from the raw query and preserve
+  unverifiable entities or facts as explicit boundaries.
 
 ## Order
 
-1. When attachments exist, delegate one `Material:` task.
-2. Delegate one focused `Research:` task and read
-   `research/knowledge-brief.md`.
+1. When the runtime contract enables Material, delegate one `Material:` task. Before it completes,
+   never read `inputs/**`; afterward read only `research/material.md`. Preserve
+   the user-specified or Harness-derived `evidence_scope` for Material and
+   Research; never widen `attachment_only` into open research.
+2. When the runtime contract enables Research, delegate one focused `Research:`
+   task. The Harness independently attaches the unmodified `raw_user_query`;
+   read `research/knowledge-brief.md` and lock the topic from its entity-resolution
+   result. If Research is omitted after Material, read `research/material.md` directly.
 3. Read `references/plan-contract.md` and `references/page-patterns.md`; read
    image, type, or chart references only when this case needs them.
 4. Write `plan/deck.md`.
-5. Write every `plan/slide_NN.md`. A long deck may write plan files in batches
-   and resume from the first gap, but production remains one `Slide NN:` per
-   page and never creates a SlideGroup.
+5. Write every `plan/slide_NN.md`. Initial planning uses standard `write_file` to
+   create `plan/plan-batch.json`, followed by `deck.py apply-plan-batch .`: one or
+   two batches for 8 pages and consecutive 4–6-page batches for longer decks.
+   Never spend one model turn per page. Batch multiple gaps after interruption;
+   only the final single missing page may be written directly. Production still
+   assigns one `Slide NN:` per page and never creates a SlideGroup.
 6. Run `validate-plans`, repair the complete reported set together, then run
    `scaffold-from-plans`. The script applies Theme Tokens, creates light HTML
    skeletons, and writes initial `speech.md`.
-7. If raster imagery is needed, delegate one `Image:` task in the same
-   `delegate_task` batch as Slides whose visual need is `code_only` or `none`;
-   every Slide task owns exactly one page.
+7. If raster imagery is needed, finish the single `Image:` task in its own
+   `delegate_task`. Do not mix Image with `code_only` or `none` Slides in one
+   synchronous batch: a slow page would otherwise delay an already-complete
+   Image handoff.
 8. After Image reports a resolved-or-skipped decision for every `preferred`
-   need and a ready-or-failed decision for every `required` need, delegate all
-   `preferred` and ready `required` Slides together. A resolved `preferred`
-   Slide uses its catalog asset; a skipped one uses the fallback already named
-   in its page plan. Repair a failed `required` need through a targeted Image
-   task before starting that Slide. If no Image is needed, delegate every Slide
-   together. Do not reread `base.css` or reconstruct Image's catalog work before
-   this delegation.
+   need and a ready-or-failed decision for every `required` need, submit every
+   one-page Slide to one work-conserving queue. A resolved `preferred` Slide uses
+   its catalog asset; a skipped one uses the fallback already named in its page
+   plan. Repair a failed `required` need through a targeted Image task before
+   submitting all startable Slides. If no Image is needed, submit every Slide
+   directly. Each task owns exactly one page. Do not reread `base.css` or
+   reconstruct Image's catalog work before this delegation.
 9. Before `finalize`, read the compact Slide statuses. If several special pages
    report the same shared structure issue, fix that one shared plan/token issue
    and rerun only the affected Slides; do not wait for whole-deck Review to
@@ -102,6 +120,16 @@ useful evidence into specific page plans instead of leaving it unassigned in
 `knowledge-brief.md`.
 Core claims, definitions, methods, and findings from attachments must enter the
 corresponding on-screen evidence packet, not only the speech notes.
+
+## Revision routing
+
+For a continuation, inspect read-only first and lock `simple_edit` or
+`complex_edit` under the entry Skill's editing contract. A simple edit never
+patches a page in Orchestrator; it delegates the sole Review. A complex edit first
+writes `plan/revision-impact.md`, then schedules only needed evidence/asset roles
+and affected one-page Slides. Never downgrade a subject-entity correction to a
+word replacement merely because the instruction is short. The closing Review
+must explicitly use `mode=final_review`.
 
 ## Global plan
 

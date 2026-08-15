@@ -11,8 +11,8 @@ is maintained under [`../webui/`](../webui/), with its server boundary under
 
 - `/` — English project page
 - `/zh` — Chinese project page
-- `/blog` — English launch article
-- `/zh/blog` — Chinese launch article
+- `/blog` — legacy redirect to `/`
+- `/zh/blog` — legacy redirect to `/zh`
 - `/paper` — English working-manuscript reader
 - `/zh/paper` — Chinese working-manuscript reader
 
@@ -33,7 +33,7 @@ Twitter metadata resolve to the deployed site rather than the localhost developm
 
 ## Dependency-free dashboard export
 
-After building and starting the site, the repository-level exporter can copy all six routes into a
+After building and starting the site, the repository-level exporter can copy the four canonical routes into a
 static directory. Deployment-specific paths and hosts are intentionally passed at invocation time;
 they are not stored in the public source tree.
 

@@ -1,0 +1,4 @@
+interface:
+  display_name: "MURAL Presenter v0.4"
+  short_description: "自适应选择 Single/Grouped 所有权，生成高完成度 HTML 演示文稿"
+  default_prompt: "使用 $mural-presenter-v0-4，根据跨页依赖选择页面所有权拓扑，并按用户要求的语言生成高完成度 HTML 演示文稿。"

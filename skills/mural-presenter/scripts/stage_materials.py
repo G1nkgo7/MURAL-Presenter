@@ -17,9 +17,10 @@
 跨解释器(本脚本用哪个 python 跑都行,内部 worker 会由对应解释器重新调用本文件):
   - 文本解析:`$NORMALIZE_PY stage_materials.py _parse-to-files <file> <out_dir> <name>`
   - 扫描PDF光栅化:`$RASTERIZE_PY stage_materials.py _rasterize <pdf> <out_dir>`
+  - 扫描PDF OCR:`$MATERIAL_OCR_PY stage_materials.py _ocr-pages <out_dir> <name> <page...>`
 
 产出:`<materials_dir>/catalog.json` + 各 `<name>.md` + `_chunks/<name>/chunk_NNN.md`
-+ `_raw/<name>_pages/pNNN.png`。长文档的 `<name>.md` 保留完整解析文本，chunk 文件提供
++ `_raw/<name>_pages/pNNN.png` + 扫描件 `_ocr/<name>/{fulltext,page_NNN,coverage}.*`。长文档的 `<name>.md` 保留完整解析/OCR文本，chunk 文件提供
 确定性、连续且可验收的读取单元，不再截掉尾部。
 catalog schema 保持稳定(material.md 依赖这些字段):
     name / raw / ext / kind(doc|image) / text / text_chunks / chars / status /
@@ -66,6 +67,8 @@ _MARKITDOWN_UNAVAILABLE = False
 NORMALIZE_PY = os.environ.get("NORMALIZE_PY", sys.executable)
 # 光栅化用解释器(需 PyMuPDF;默认回退当前解释器,装了 pymupdf 就能用)
 RASTERIZE_PY = os.environ.get("RASTERIZE_PY", os.environ.get("PYMUPDF_PY", sys.executable))
+# OCR 与文本规范化共享隔离解释器；install.sh 会在该环境安装 RapidOCR。
+OCR_PY = os.environ.get("MATERIAL_OCR_PY", os.environ.get("OCR_PY", NORMALIZE_PY))
 
 
 def _normalize_worker_init():
@@ -225,6 +228,37 @@ def _pdf_text(path):
             return "\n\n".join((page.extract_text() or "") for page in PdfReader(path).pages)
     finally:
         signal.alarm(0)
+
+
+def _pdf_text_coverage(path):
+    """Measure native text coverage per page so mixed scan/text PDFs cannot hide gaps."""
+    try:
+        from pypdf import PdfReader
+        reader = PdfReader(path)
+        minimum = max(1, int(os.environ.get("MATERIAL_PDF_TEXT_MIN_CHARS_PER_PAGE", "10")))
+        pages = []
+        for index, page in enumerate(reader.pages, 1):
+            try:
+                chars = len((page.extract_text() or "").strip())
+                status = "text" if chars >= minimum else "needs_ocr"
+            except Exception as exc:
+                chars = 0
+                status = "failed"
+                pages.append({"page": index, "chars": chars, "status": status,
+                              "note": f"{type(exc).__name__}: {str(exc)[:120]}"})
+                continue
+            pages.append({"page": index, "chars": chars, "status": status})
+        covered = sum(1 for item in pages if item["status"] == "text")
+        return {
+            "status": "complete" if covered == len(pages) and pages else "incomplete",
+            "unit": "pages", "covered": covered, "total": len(pages),
+            "minimum_chars_per_page": minimum, "pages": pages,
+        }
+    except Exception as exc:
+        return {
+            "status": "unavailable", "unit": "pages", "covered": 0, "total": None,
+            "note": f"{type(exc).__name__}: {str(exc)[:160]}",
+        }
 
 
 def _finish_text(text):
@@ -444,6 +478,7 @@ def _parse_one(path):
             return {"status": "failed", "content": "", "note": f"plain text: {exc}"}
     if ext == "pdf":
         record = _finish_text(_pdf_text(path))
+        record["pdf_text_coverage"] = _pdf_text_coverage(path)
         if record.get("content_chars", 0) < 20:
             record.update(status="failed", note="near-empty (likely scanned PDF, needs vision)")
         return record
@@ -490,8 +525,11 @@ def _rasterize_worker(pdf_path, out_dir):
     # 0 means all pages. A positive operational cap is allowed, but the catalog
     # will mark the source incomplete and deterministic acceptance must reject it.
     max_pages = int(os.environ.get("MATERIAL_RASTER_MAX_PAGES", "0"))
-    dpi = int(os.environ.get("MATERIAL_RASTER_DPI", "150"))
-    max_pixels = int(os.environ.get("MATERIAL_RASTER_MAXPX", "2600"))
+    # Page rasters are reading/box-selection context. 200 DPI keeps paper
+    # Figures and labels legible enough for Vision; presentation-ready crops
+    # are re-rendered from the original PDF by deck.py material-figure.
+    dpi = int(os.environ.get("MATERIAL_RASTER_DPI", "200"))
+    max_pixels = int(os.environ.get("MATERIAL_RASTER_MAXPX", "3200"))
     try:
         import fitz
     except Exception as exc:
@@ -516,6 +554,122 @@ def _rasterize_worker(pdf_path, out_dir):
     except Exception as exc:
         return {"pages": pages, "total": total, "note": f"{type(exc).__name__}: {str(exc)[:150]}"}
     return {"pages": pages, "total": total}
+
+
+def _ocr_pages_worker(page_paths, out_dir, source_name):
+    """Run one OCR engine instance across every rasterized page and persist full evidence."""
+    try:
+        from rapidocr_onnxruntime import RapidOCR
+    except Exception as exc:
+        return {
+            "status": "unavailable", "engine": "rapidocr_onnxruntime",
+            "covered": 0, "total": len(page_paths),
+            "note": f"RapidOCR unavailable: {type(exc).__name__}: {exc}",
+        }
+    os.makedirs(out_dir, exist_ok=True)
+    engine = RapidOCR()
+    min_score = float(os.environ.get("MATERIAL_OCR_MIN_SCORE", "0.35"))
+    page_records = []
+    full_parts = []
+    for sequence, page_path in enumerate(page_paths, 1):
+        image_size = None
+        match = re.search(r"p(?:age[_-]?)?(\d+)$", os.path.splitext(os.path.basename(page_path))[0], re.I)
+        index = int(match.group(1)) if match else sequence
+        try:
+            try:
+                from PIL import Image
+                with Image.open(page_path) as page_image:
+                    image_size = [int(page_image.width), int(page_image.height)]
+            except Exception:
+                # OCR remains useful for legacy/custom workers whose source path is
+                # not PIL-readable; their JSON is explicitly marked size-unknown.
+                image_size = None
+            raw_result, _elapsed = engine(page_path)
+            blocks = []
+            for raw in raw_result or []:
+                if not isinstance(raw, (list, tuple)) or len(raw) < 3:
+                    continue
+                box, value, score = raw[0], str(raw[1] or "").strip(), float(raw[2] or 0.0)
+                if not value or score < min_score:
+                    continue
+                points = [[float(point[0]), float(point[1])] for point in box]
+                blocks.append({
+                    "text": value,
+                    "score": round(score, 6),
+                    "box": points,
+                    "x": min(point[0] for point in points),
+                    "y": min(point[1] for point in points),
+                })
+            # RapidOCR generally returns reading order. Sorting here makes the
+            # persisted transcript deterministic across provider/runtime versions.
+            blocks.sort(key=lambda item: (round(item["y"] / 12.0), item["x"], item["y"]))
+            text = "\n".join(item["text"] for item in blocks)
+            record = {
+                "page": index,
+                "source_image": page_path,
+                "image_size": image_size,
+                "status": "ok",
+                "chars": len(text),
+                "sha256": _sha256_text(text),
+                "blocks": [
+                    {key: value for key, value in item.items() if key not in {"x", "y"}}
+                    for item in blocks
+                ],
+            }
+        except Exception as exc:
+            text = ""
+            record = {
+                "page": index,
+                "source_image": page_path,
+                "image_size": image_size,
+                "status": "failed",
+                "chars": 0,
+                "sha256": _sha256_text(""),
+                "blocks": [],
+                "note": f"{type(exc).__name__}: {str(exc)[:240]}",
+            }
+        json_path = os.path.join(out_dir, f"page_{index:03d}.json")
+        markdown_path = os.path.join(out_dir, f"page_{index:03d}.md")
+        record["json_path"] = json_path
+        record["text_path"] = markdown_path
+        with open(json_path, "w", encoding="utf-8") as stream:
+            json.dump(record, stream, ensure_ascii=False, indent=2)
+        with open(markdown_path, "w", encoding="utf-8") as stream:
+            stream.write(text)
+        page_records.append(record)
+        full_parts.append(f"## {source_name} · page {index}\n\n{text}".rstrip())
+    full_text = "\n\n".join(full_parts) + ("\n" if full_parts else "")
+    full_path = os.path.join(out_dir, "fulltext.md")
+    with open(full_path, "w", encoding="utf-8") as stream:
+        stream.write(full_text)
+    covered = sum(1 for item in page_records if item["status"] == "ok")
+    coverage = {
+        "status": "complete" if covered == len(page_paths) and page_paths else "incomplete",
+        "unit": "pages",
+        "covered": covered,
+        "total": len(page_paths),
+    }
+    coverage_path = os.path.join(out_dir, "coverage.json")
+    with open(coverage_path, "w", encoding="utf-8") as stream:
+        json.dump({
+            "engine": "rapidocr_onnxruntime",
+            "coverage": coverage,
+            "pages": [{
+                "page": item["page"], "status": item["status"],
+                "chars": item["chars"], "sha256": item["sha256"],
+                "json_path": item["json_path"], "text_path": item["text_path"],
+            } for item in page_records],
+        }, stream, ensure_ascii=False, indent=2)
+    return {
+        "status": coverage["status"],
+        "engine": "rapidocr_onnxruntime",
+        "covered": covered,
+        "total": len(page_paths),
+        "coverage": coverage,
+        "fulltext": full_path,
+        "coverage_path": coverage_path,
+        "pages": page_records,
+    }
 
 
 def _load_attachments(mdir):
@@ -618,6 +772,8 @@ def stage(mdir, attachments):
                     for key in ("note", "semantic_coverage", "suggested_actions"):
                         if rec.get(key) is not None:
                             entry[key] = rec[key]
+                    if isinstance(rec.get("pdf_text_coverage"), dict):
+                        entry["pdf_text_coverage"] = rec["pdf_text_coverage"]
                     if rec.get("semantic_coverage") == "incomplete":
                         entry["status"] = "incomplete"
                         entry["coverage"]["status"] = "incomplete"
@@ -626,22 +782,87 @@ def stage(mdir, attachments):
                         kind="doc", status=rec.get("status", "failed"), note=rec.get("note"),
                         suggested_actions=rec.get("suggested_actions") or [],
                     )
-                    # 图片式/扫描 PDF 抽不出文本 → 光栅化页图,当图片交 vision_analyze(否则内容彻底丢失)
+                    # 图片式/扫描 PDF 抽不出文本 → 全页光栅化 + 确定性逐页 OCR。
+                    # Vision 继续负责图表/版式语义，但不再承担唯一的文字恢复路径。
                     if ext == "pdf":
                         _pgs, _total = _rasterize(dst, os.path.join(raw, name + "_pages"))
                         if _pgs:
-                            complete = bool(_total) and len(_pgs) == _total
-                            entry["status"] = "ok" if complete else "incomplete"
-                            entry["coverage"] = {
-                                "status": "complete" if complete else "incomplete",
+                            raster_complete = bool(_total) and len(_pgs) == _total
+                            ocr = _ocr_pages(
+                                _pgs, os.path.join(mdir, "_ocr", name), name
+                            )
+                            ocr_complete = (
+                                ocr.get("status") == "complete"
+                                and int(ocr.get("covered") or 0) == len(_pgs)
+                            )
+                            entry["status"] = "ok" if raster_complete and ocr_complete else "incomplete"
+                            entry["visual_coverage"] = {
+                                "status": "complete" if raster_complete else "incomplete",
                                 "unit": "pages",
                                 "covered": len(_pgs),
                                 "total": _total,
                             }
                             entry["rasterized_pages"] = len(_pgs)
-                            entry["note"] = ("图片式/扫描 PDF、无文本层;已 rasterize "
-                                             + str(len(_pgs)) + (f"/{_total}" if _total else "")
-                                             + " 页成图,内容见下方同名 image 条目,请用 vision_analyze 逐页读。")
+                            entry["ocr_engine"] = ocr.get("engine") or "rapidocr_onnxruntime"
+                            entry["ocr_coverage"] = {
+                                "status": "complete" if ocr_complete else "incomplete",
+                                "unit": "pages",
+                                "covered": int(ocr.get("covered") or 0),
+                                "total": len(_pgs),
+                            }
+                            if ocr.get("coverage_path"):
+                                entry["ocr_coverage_path"] = _workspace_path(ocr["coverage_path"])
+                            entry["ocr_pages"] = [{
+                                "page": item.get("page"),
+                                "status": item.get("status"),
+                                "chars": item.get("chars"),
+                                "sha256": item.get("sha256"),
+                                "json": _workspace_path(item["json_path"]) if item.get("json_path") else None,
+                                "text": _workspace_path(item["text_path"]) if item.get("text_path") else None,
+                            } for item in ocr.get("pages") or []]
+                            fulltext_path = ocr.get("fulltext")
+                            if ocr_complete and fulltext_path and os.path.isfile(fulltext_path):
+                                with open(fulltext_path, encoding="utf-8") as stream:
+                                    fulltext = stream.read()
+                                text_rec = _write_text_outputs(fulltext, mdir, name)
+                                chunks = []
+                                for chunk in text_rec.get("text_chunks") or []:
+                                    item = dict(chunk)
+                                    item["path"] = _workspace_path(item["path"])
+                                    chunks.append(item)
+                                entry.update(
+                                    text=_workspace_path(text_rec["text_path"]),
+                                    text_sha256=text_rec.get("text_sha256"),
+                                    text_chunks=chunks,
+                                    chars=len(fulltext),
+                                    coverage={
+                                        "status": "complete" if raster_complete else "incomplete",
+                                        "unit": "chars",
+                                        "covered": sum(int(item.get("chars") or 0) for item in chunks),
+                                        "total": len(fulltext),
+                                        "chunks": len(chunks),
+                                    },
+                                )
+                                entry["note"] = (
+                                    f"图片式/扫描 PDF、无文本层；已 rasterize {len(_pgs)}/"
+                                    f"{_total or len(_pgs)} 页并完成 OCR {len(_pgs)}/{len(_pgs)}；"
+                                    "全文与连续 chunks 可检索，页图仍需用 vision_analyze 核验图表和版式。"
+                                )
+                            else:
+                                entry["coverage"] = {
+                                    "status": "incomplete", "unit": "pages",
+                                    "covered": int(ocr.get("covered") or 0), "total": _total,
+                                }
+                                entry["semantic_coverage"] = "incomplete"
+                                entry["suggested_actions"] = [
+                                    "configure_material_ocr", "manual_visual_review"
+                                ]
+                                entry["note"] = (
+                                    f"图片式/扫描 PDF 已 rasterize {len(_pgs)}/{_total or len(_pgs)} 页；"
+                                    f"OCR {ocr.get('status', 'unavailable')} "
+                                    f"{int(ocr.get('covered') or 0)}/{len(_pgs)}。"
+                                    + str(ocr.get("note") or "")
+                                )
                             derivative_entries = [{"name": f"{name} · p{i}",
                                                    "raw": _workspace_path(pg),
                                                    "ext": "png", "kind": "image", "status": "ok",
@@ -675,6 +896,60 @@ def stage(mdir, attachments):
                         "reuse_policy": "reference_only_until_cropped",
                         "coverage": {"status": "complete", "unit": "asset", "covered": 1, "total": 1},
                     } for index, page in enumerate(pages, 1))
+                    native_coverage = entry.get("pdf_text_coverage") or {}
+                    needs_mixed_ocr = (
+                        native_coverage.get("status") == "incomplete"
+                        and int(native_coverage.get("covered") or 0)
+                        < int(native_coverage.get("total") or len(pages))
+                    )
+                    if needs_mixed_ocr:
+                        needs_ocr_pages = [
+                            pages[int(item["page"]) - 1]
+                            for item in native_coverage.get("pages") or []
+                            if item.get("status") != "text"
+                            and 1 <= int(item.get("page") or 0) <= len(pages)
+                        ]
+                        ocr = _ocr_pages(
+                            needs_ocr_pages, os.path.join(mdir, "_ocr", name), name
+                        )
+                        ocr_complete = (
+                            ocr.get("status") == "complete"
+                            and int(ocr.get("covered") or 0) == len(needs_ocr_pages)
+                        )
+                        entry["ocr_engine"] = ocr.get("engine") or "rapidocr_onnxruntime"
+                        entry["ocr_coverage"] = {
+                            "status": "complete" if ocr_complete else "incomplete",
+                            "unit": "pages", "covered": int(ocr.get("covered") or 0),
+                            "total": len(needs_ocr_pages),
+                            "scope": "pages_without_native_text",
+                        }
+                        if ocr.get("coverage_path"):
+                            entry["ocr_coverage_path"] = _workspace_path(ocr["coverage_path"])
+                        if ocr.get("fulltext"):
+                            entry["ocr_text"] = _workspace_path(ocr["fulltext"])
+                        entry["ocr_pages"] = [{
+                            "page": item.get("page"), "status": item.get("status"),
+                            "chars": item.get("chars"), "sha256": item.get("sha256"),
+                            "json": _workspace_path(item["json_path"]) if item.get("json_path") else None,
+                            "text": _workspace_path(item["text_path"]) if item.get("text_path") else None,
+                        } for item in ocr.get("pages") or []]
+                        if not ocr_complete:
+                            entry["status"] = "incomplete"
+                            entry["semantic_coverage"] = "incomplete"
+                            entry["suggested_actions"] = [
+                                "configure_material_ocr", "manual_visual_review"
+                            ]
+                            entry["note"] = (
+                                (entry.get("note") or "")
+                                + f"; mixed PDF OCR {ocr.get('status', 'unavailable')} "
+                                + f"{int(ocr.get('covered') or 0)}/{len(needs_ocr_pages)} "
+                                + str(ocr.get("note") or "")
+                            ).strip("; ")
+                        else:
+                            entry["note"] = (
+                                (entry.get("note") or "")
+                                + "; native text layer missed one or more pages; complete per-page OCR transcript added"
+                            ).strip("; ")
                 else:
                     entry["visual_coverage"] = {"status": "unavailable", "covered": 0, "total": total, "unit": "pages"}
                     entry["note"] = ((entry.get("note") or "") + "; PDF page rasterization unavailable").strip("; ")
@@ -782,6 +1057,33 @@ def _rasterize(pdf_path, out_dir):
         return [], 0
 
 
+def _ocr_pages(page_paths, out_dir, source_name):
+    """Run deterministic page OCR in the configured isolated interpreter."""
+    if not page_paths:
+        return {"status": "incomplete", "covered": 0, "total": 0,
+                "note": "no rasterized pages available for OCR"}
+    timeout = max(300, int(os.environ.get("MATERIAL_OCR_TIMEOUT_PER_PAGE", "90")) * len(page_paths))
+    try:
+        proc = subprocess.run(
+            [OCR_PY, _SELF, "_ocr-pages", out_dir, source_name, *page_paths],
+            capture_output=True, text=True, timeout=timeout, check=False,
+        )
+        if not proc.stdout.strip():
+            return {
+                "status": "unavailable", "covered": 0, "total": len(page_paths),
+                "note": (proc.stderr or f"OCR worker exit={proc.returncode}")[-500:],
+            }
+        payload = json.loads(proc.stdout.strip().splitlines()[-1])
+        if proc.returncode and payload.get("status") == "complete":
+            payload["status"] = "incomplete"
+        return payload
+    except Exception as exc:
+        return {
+            "status": "unavailable", "covered": 0, "total": len(page_paths),
+            "note": f"OCR worker {type(exc).__name__}: {str(exc)[:300]}",
+        }
+
+
 if __name__ == "__main__":
     if len(sys.argv) >= 3 and sys.argv[1] == "_parse-one":
         try:
@@ -805,6 +1107,16 @@ if __name__ == "__main__":
         except Exception as exc:
             payload = {"pages": [], "total": 0,
                        "note": f"{type(exc).__name__}: {str(exc)[:150]}"}
+        print(json.dumps(payload, ensure_ascii=False))
+        sys.exit(0)
+    if len(sys.argv) >= 5 and sys.argv[1] == "_ocr-pages":
+        try:
+            payload = _ocr_pages_worker(sys.argv[4:], sys.argv[2], sys.argv[3])
+        except Exception as exc:
+            payload = {
+                "status": "failed", "covered": 0, "total": len(sys.argv[4:]),
+                "note": f"{type(exc).__name__}: {str(exc)[:300]}",
+            }
         print(json.dumps(payload, ensure_ascii=False))
         sys.exit(0)
     if len(sys.argv) == 2 and sys.argv[1] in {"-h", "--help"}:

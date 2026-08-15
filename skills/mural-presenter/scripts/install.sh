@@ -3,7 +3,7 @@
 # mural-presenter · 环境安装脚本(让 skill 自包含:一键装齐运行所需的全部依赖)
 #
 # 装什么(四块,缺一不可):
-#   1) normalize venv  —— stage_materials.py 内部文本 worker 使用 markitdown/pdfminer/openpyxl
+#   1) normalize venv  —— stage_materials.py 内部文本/OCR worker 使用 markitdown/pdfminer/RapidOCR
 #   2) pymupdf(fitz)   —— 扫描 PDF rasterize 成页图(交 vision 兜底);装进渲染环境
 #   3) OFL 字体包      —— 从官方项目获取中文/拉丁开源字体到 ~/.fonts
 #   4) FontTools/Brotli/Pillow —— 裁剪 Deck 自带 WOFF2 + 生成 Review 联系表
@@ -43,6 +43,7 @@ NORMALIZE_PACKAGES=(
   "pillow-heif>=0.22,<2"
   "lxml==6.1.1"
   "mammoth==1.11.0"
+  "rapidocr-onnxruntime>=1.4,<2"
 )
 
 log(){ echo "[install] $*"; }
@@ -52,15 +53,22 @@ install_normalize(){
   if command -v uv >/dev/null 2>&1; then
     uv venv "$NORMALIZE_VENV" >/dev/null 2>&1 || true
     uv pip install --python "$NORMALIZE_VENV/bin/python" "${NORMALIZE_PACKAGES[@]}"
+    # rapidocr-onnxruntime declares the GUI OpenCV wheel.  Headless benchmark
+    # hosts have no libGL, so deliberately install the API-compatible headless
+    # wheel last to own the shared cv2 package files.
+    uv pip install --python "$NORMALIZE_VENV/bin/python" --reinstall \
+      "numpy>=1.24,<2" "opencv-python-headless>=4.8,<4.12"
   else
     "$PYBIN" -m venv "$NORMALIZE_VENV"
     "$NORMALIZE_VENV/bin/python" -m pip install -q --upgrade pip
     "$NORMALIZE_VENV/bin/python" -m pip install -q "${NORMALIZE_PACKAGES[@]}"
+    "$NORMALIZE_VENV/bin/python" -m pip install -q --force-reinstall \
+      "numpy>=1.24,<2" "opencv-python-headless>=4.8,<4.12"
   fi
   # 冒烟:import 三个关键库
   "$NORMALIZE_VENV/bin/python" - <<'PY' && log "  normalize venv OK"
-import markitdown, pdfminer, openpyxl
-print("  imports ok:", markitdown.__name__, pdfminer.__name__, openpyxl.__name__)
+import markitdown, pdfminer, openpyxl, rapidocr_onnxruntime
+print("  imports ok:", markitdown.__name__, pdfminer.__name__, openpyxl.__name__, rapidocr_onnxruntime.__name__)
 PY
 }
 

@@ -5,15 +5,15 @@
   "skill": {
     "key": "mural-presenter",
     "path": "skills/mural-presenter",
-    "tree_sha256": "3ca12a08988d23ebee90bb7ee94a090317c31c1e8f9f00cb5e245a63e86138c2"
+    "tree_sha256": "9314b2423f5ab628d6e7cc93d04ea0a65a2afeebe0917838fcefbbfd589b2e6c"
   },
   "harness": {
     "key": "mural-presenter-harness",
     "path": "harnesses/mural-presenter",
     "entry": "infer.py",
-    "tree_sha256": "3d32e6e4200e99bb905c0be96078c7565060143628c16eac6e437627ca49623d"
+    "tree_sha256": "2264ac993245b0c0418e3c2946d3b98023f2fa8ca59a82c8caa232ad47a2b3c4"
   },
-  "pair_tree_sha256": "91805ec8add2d0e34b97cfb701bde21b6f8f9cbd539c0dc76265dc92396c840c",
+  "pair_tree_sha256": "bca7b1665cf45c0dcbc2d0b7df4c7bd4866418c41b49ef1b40f04b294585fad9",
   "lineage": {
     "implementation": "Long-Horizon Presenter stable line",
     "import_source_revision": "38f578263340ed7dd44b070475bbaa6739b4e31b",
@@ -21,9 +21,9 @@
   },
   "validation": {
     "skill_schema": "passed",
-    "harness_pytest_passed": 213,
+    "harness_pytest_passed": 242,
     "dual_mode_pytest_passed": 9,
-    "webui_pytest_passed": 24
+    "webui_pytest_passed": 32
   },
   "experimental_successor_included": false
 }

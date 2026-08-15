@@ -25,23 +25,24 @@ goal 会给出稳定的 `group_id`，以及每项素材的 `asset_id`、用途�
 - 封面、章节、结尾或峰值页需要 hero / 背景画面时，也属于图片任务；画面应预留文字安全区，并延续全册背景系统与色彩故事。
 - 大型概念页：可生成“无文字视觉底图”，准确节点、数值与关系标签交给 Slide 放在 HTML 层。
 - 数据图表不属于图片任务；交给 Slide 用 ECharts。
-- 精确流程、架构、层级和关系图优先由 Slide 用 Canvas + HTML 标签完成。
-- 对具备可见主体的普通内容页，优先提供能承担 hero、图字分屏或主要证据职责的高质量位图，不用微型图标或抽象 SVG 代替人物、地点、产品、作品、活动与场景。复杂主视觉若不适合位图，由 Slide 使用 Canvas + HTML；SVG 只用于小型辅助图形。
+- 静态流程、架构、层级和关系图可由 Slide 使用大型 SVG；动态/自动布局才使用 Canvas + HTML。
+- 对具备可见主体的普通内容页，优先提供能承担 hero、图字分屏或主要证据职责的高质量位图，不用抽象 SVG 代替人物、地点、产品、论文 Figure、实验影像、作品、活动与场景。Image 不负责生成 SVG，但也不得把“可用 SVG”误解成可以跳过有意义的配图。
 
 ## 4. 工作流
 
 1. 先为整个分片固定一条视觉配方：媒介、主色、色温、饱和度、光线和构图气质。同时逐项核对计划的 `presentation`：`subject-only` 必须生成/下载易分离的独立主体并最终交付 Alpha cutout；`framed-scene` / `full-bleed` / `evidence-crop` 才允许保留原图背景。不得把“站在奶油色背景上”的场景图返回给悬浮角色槽位。
 2. 真实图片：用精确查询找一个最优候选；多人集合在同一检索回合提交互不重复的姓名查询，避免逐人形成串行搜索链。使用 `fetch_image` 下载到 `assets/` 后检查身份、主体、清晰度、水印、比例和裁切安全。候选必须能在计划槽位中保住 `protected_parts`；若需要大幅 `cover` 才能匹配、并会切掉人脸/头顶/双手、完整产品轮廓、Logo、作品主体或证据标签，换更合适比例的候选，或建议 Slide 改用 `contain` / 调整槽位，不能把不可用裁切交给下游。图片直链不得交给 `web_extract`，也不要用 terminal 的 curl/wget、自造 Wikimedia API 或反复改写同一 URL。某个主机返回 403/429、HTML 或无效图片后立即换独立来源；具体真实主体不得用“看起来像”的生成图冒充。多人集合无法全部取得时，返回已核实人物、缺失人物和可执行的团队合影/关键人物版式建议，不伪造齐套结果。
-   复用论文中的命名 Figure 时，不搜索替代图，也不把 `pdf_page_visual/scanned_pdf_page` 整页复制进 PPT。先查看 Material 给出的对应页图，确认 Figure 的完整面板、图内标签、图例和边界，再生成可追溯裁图：
+   仅对规划选中的主结果/方法关键/用户点名 Figure 生成素材，不机械提取论文全部图片。不要把 `pdf_page_visual/scanned_pdf_page` 整页复制进 PPT。先查看 Material 给出的对应页图确定 `visual_subject_box`，再从原 PDF 高分辨率重渲可追溯裁图：
 
    ```bash
    python ${SKILL_DIR:-skills/mural-presenter}/scripts/deck.py material-figure . \
      --source materials/_work/<assignment>/_raw/<paper>_pages/pNNN.png \
-     --path assets/<paper>-figure-N.png --figure-id "Figure N" --source-page <N> \
+     --source-pdf materials/_work/<assignment>/_raw/<paper> --source-page <N> \
+     --path assets/<paper>-figure-N.png --figure-id "Figure N" \
      --box <x0,y0,x1,y1>
    ```
 
-   `--box` 使用 0–1 归一化坐标。默认排除论文页眉、正文、页码和长图注；图注若有必要可用 `--caption-mode included`，否则由 Slide 在 HTML 层重写简短说明。命令会拒绝几乎覆盖整页的“裁图”。生成后必须查看实际裁图，确认没有漏面板、切断坐标轴/图例或保留无关正文，再进入素材联系表。
+   `--box` 使用 0–1 归一化坐标。扫描 PDF 追加 `--ocr-json materials/_work/<assignment>/_ocr/<paper>/page_NNN.json`。默认只裁视觉主体，排除论文页眉、正文、页码和长图注；图注在 HTML 层重写简短说明。命令会拒绝正文占比过高、page-like 或低分辨率结果，并默认把长边渲到至少 1400px、短边至少 600px。生成后核对 catalog 的 `render_source: source_pdf_clip / pixel_size / body_text_fraction`，再查看实际裁图，确认没有漏面板、切断坐标轴/图例或保留大段文字。
 3. 生成图片：主体先写，风格词收敛为 2–4 个视觉基因；每条 prompt 都复用同一视觉配方，并写明 `no text, no watermark`。多个互不依赖的生成请求放在同一个工具回合提交。
    `fetch_image` 与 `image_generate` 会把技术来源自动写入 `assets/catalog.json`；不要删除、重写或根据文件名猜来源。复用用户附件中的图片时运行：`python ${SKILL_DIR:-skills/mural-presenter}/scripts/deck.py asset-register . --path assets/<name> --origin material --source-path materials/_raw/<name>`；目标尚不存在时该命令会复制原件并完成登记。
 4. 需要作为人物、产品、物件剪影或拼贴元素悬浮在版面上时，取得候选后运行透明检查：
@@ -91,6 +92,7 @@ goal 会给出稳定的 `group_id`，以及每项素材的 `asset_id`、用途�
 - CSS `mask`、`mix-blend-mode`、`multiply`、白底遮盖或把背景调成同色都不能作为抠图替代；这些只能用于已经验收合格的透明素材之外的视觉处理。
 - 只返回工具实际产生的路径，不自造文件名；不为单张素材无限重试。
 - 命名论文 Figure 返回 `ready` 时，catalog 必须含 `derivative_kind: material_figure_crop`、`figure_id`、`source_page` 与 crop box；整页 PDF PNG、页面截图或仅靠 CSS `object-position` 的视觉裁切不能冒充 Figure 裁图。
+- 论文 Figure 还必须有 `render_source: source_pdf_clip`、满足最低 `pixel_size`，且 `body_text_fraction` 通过门；页图 raster 只用于定位，不能作为交付 Figure。`caption_mode: included` 只记录用户确实需要原图注外观的选择，且不会放宽正文/长图注占比门；普通演讲默认用 HTML 简短图注。
 - 不用 `mv` / `cp` 给 `image_generate` 或 `fetch_image` 的结果私自改名，这会让来源目录失效。优先直接使用工具返回路径；确需语义化派生名时，用 `deck.py asset-register` 登记并保留 parent asset。
 
 ## 6. 返回合同

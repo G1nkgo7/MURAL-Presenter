@@ -20,6 +20,22 @@ form.
 - `renders/render.json`;
 - `plan/deck.md` and relevant `plan/slide_NN.md`;
 - `speech.md`.
+- Harness-generated `_trace/review-issues.json` when present.
+
+When the revision goal contains `mode=simple_edit`, this role also owns the sole
+quick-fix path. Inspect the target pages' current PNGs, inventory the requested
+changes once, and modify only their plans/HTML/speech plus strictly necessary
+page-local style. Do not expand the narrative, add Research/Image work, or remake
+unrelated pages. Finalize once after the coordinated patch, inspect the changed
+pages' fresh final pixels, and return the structured status. No second Review is
+started in this mode.
+
+When `_trace/review-issues.json` exists, read it first. Every
+`required_review_pages` entry is an unresolved Slide handoff: open that page's
+current `renders/slide_NN.png` rather than returning `ready` from contact sheets
+alone. If you edit it, reopen the current PNG after `finalize`. Return `ready`
+only after every ledger page is closed. This is targeted repair, not permission
+to reopen every unflagged page.
 
 Inspect the whole-deck contact sheet once, then the special-page contact sheet
 once. Mark suspect pages during those passes. Open an individual PNG or HTML only
@@ -143,7 +159,15 @@ status: ready | needs_orchestrator
 issue_type: none | page_authoring | shared_system | render_capture
 pages: ...
 evidence: ...
+blocking: yes | no
 final_pixels_inspected: yes | no
 ```
 
 Include only modified pages or the issue that cannot be solved safely in Review.
+`needs_orchestrator` is a recoverable routing state, not final Deck failure. Only
+hard failures such as missing pages, non-renderable output, incomplete dependencies,
+or an unusable delivery artifact block the whole Deck.
+Use `blocking: yes` only for those hard failures. A Deck that still plays and
+exports but retains a small-image, whitespace, or hierarchy defect is
+`blocking: no`. The Harness first permits bounded repair; if the issue remains at
+that ceiling, it delivers the Deck as `needs_improvement` rather than failing it.

@@ -1,17 +1,22 @@
 # MURAL Presenter v0.2 Harness
 
-This Harness pairs exactly two behaviorally equivalent instruction editions:
+This Harness exposes two ownership variants, each with behaviorally equivalent
+Chinese and English instruction editions:
 
-- Chinese: `../../skills/mural-presenter-v0.2/mural-presenter-v0-2-zh`
-- English: `../../skills/mural-presenter-v0.2/mural-presenter-v0-2-en`
+- Single: `mural-presenter-v0-2-zh` / `mural-presenter-v0-2-en`
+- Grouped: `mural-presenter-v0-2-grouped-zh` / `mural-presenter-v0-2-grouped-en`
 
 By default `CLEAN_MODEL_SELECT_SKILL=1`: both paths are exposed to the
 Orchestrator, which selects one by its first `SKILL.md` read and then locks that
 edition for the Deck. The selected instruction language does not determine the
 presentation's delivery language.
 
-v0.2 keeps the v0.1 training-compatible topology: every `Slide NN:` is an
-independent child task and SlideGroup is rejected. It adds deterministic PDF
+Both variants use the same v0.2 Research, planning, Image, Review, revision,
+tool, and delivery contracts. The only intentional production difference is
+ownership topology: Single delegates one `Slide NN:` per page, while Grouped
+delegates adjacent 2–4-page `SlideGroup GROUP [NN,NN]:` responsibility units.
+This keeps inference prompts close to the v0.2 trajectory distribution while
+making grouping a controlled variable. v0.2 also adds deterministic PDF
 text/page extraction, optional OCR for scanned pages, correct image-service
 routing, and a recoverable visual-repair ceiling. Document pixels are evidence
 only: Image cannot inspect/crop `inputs/`, `material-figure` is blocked, and the
@@ -55,7 +60,7 @@ uv run --no-project python infer.py \
 ```
 
 `--batch` names the output namespace. `--workers 1` runs one top-level Deck at a
-time; the page-level child wave still uses `CLEAN_CHILD_CONCURRENCY` (default 4).
+time; the page-level child wave still uses `CLEAN_CHILD_CONCURRENCY` (default 12).
 
 ## Run JSONL batches and attachments
 
@@ -104,8 +109,8 @@ v0.2 uses the same explicit dual-mode contract as `../mural-presenter`:
   `multimodal-manifest.json`; the sample is rejected if any referenced snapshot
   is missing.
 
-Both modes run the same Skill, one-Slide-per-Agent topology, prompts, tools,
-model settings, and delivery acceptance gates. They differ only in runtime
+Both modes run the selected Single or Grouped Skill with the same prompts,
+tools, model settings, and delivery acceptance gates. They differ only in runtime
 context retention and trajectory completeness. In particular, synthesis does
 not use shorter prompts, fewer turns, smaller token limits, or compressed model
 responses.
@@ -144,9 +149,16 @@ skills/mural-presenter-v0.2/mural-presenter-v0-2-en
 harnesses/mural-presenter-v0.2/infer.py
 ```
 
+For grouped ownership, set:
+
+```dotenv
+CLEAN_SKILL_NAME_ZH=mural-presenter-v0-2-grouped-zh
+CLEAN_SKILL_NAME_EN=mural-presenter-v0-2-grouped-en
+```
+
 Override packaged deployments with `CLEAN_SKILLS_DIR`,
-`CLEAN_SKILL_NAME_ZH`, and `CLEAN_SKILL_NAME_EN`. Do not pair this Harness with
-the grouped successor Skill: v0.2 deliberately enforces one Slide Agent per page.
+`CLEAN_SKILL_NAME_ZH`, and `CLEAN_SKILL_NAME_EN`. Do not mix one language edition
+from Single with the other language edition from Grouped in the same runtime.
 
 ## Images, search, and Vision
 
@@ -159,6 +171,24 @@ IMAGE_BASE_URL=https://your-openai-compatible-image-endpoint/v1
 IMAGE_MODEL=gpt-image-2
 SERPER_API_KEY=...                       # optional web/image search
 ```
+
+Before the first model request, the Harness writes
+`_trace/runtime-capabilities.json` and injects the same immutable capability
+overlay into the Orchestrator. Optional stages are removed rather than merely
+described as unavailable:
+
+- no attachments: omit Material;
+- no `SERPER_API_KEY`: omit Research and both web tools (there is no hidden
+  Wikipedia/Wikimedia fallback);
+- no image-generation credential: omit `image_generate`;
+- neither search nor image generation: omit Image and require `code_only/none`
+  visual plans.
+
+The profile also checks the renderer, portable-font sources and real font
+weight range, Python dependencies, Office/OCR helpers, and model configuration.
+Missing optional services produce a degraded profile; missing final-delivery
+prerequisites stop before model tokens are spent. The trace records booleans and
+paths only, never credential values.
 
 `OPENAI_API_KEY`/`OPENAI_BASE_URL` are accepted as image-service fallbacks.
 When the main model natively accepts image inputs, keep
@@ -180,7 +210,7 @@ and auxiliary Vision proxy capabilities are separated correctly.
 
 ## Thinking and runtime limits
 
-Default runtime limits are 4 parallel child Agents, 240/80 main/child turns,
+Default runtime limits are 12 parallel child Agents, 240/80 main/child turns,
 40,960 output tokens per request, 600 seconds per model request, and 2,400
 seconds of child wall time. All remain environment-overridable.
 
@@ -192,7 +222,7 @@ CLEAN_EFFORT=high
 CLEAN_MAX_TOKENS=40960
 CLEAN_MAX_TURNS=240
 CLEAN_CHILD_MAX_TURNS=80
-CLEAN_CHILD_CONCURRENCY=4
+CLEAN_CHILD_CONCURRENCY=12
 CLEAN_REMOTE_TOOL_CONCURRENCY=4
 CLEAN_MODEL_TIMEOUT=600
 CLEAN_CHILD_WALL_TIMEOUT=2400

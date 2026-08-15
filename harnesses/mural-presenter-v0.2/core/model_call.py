@@ -34,6 +34,11 @@ def _client(base_url: str | None = None) -> anthropic.Anthropic:
         client = anthropic.Anthropic(
             api_key=os.environ["ANTHROPIC_API_KEY"],
             base_url=resolved_base_url,
+            # Gate raw capture requires one recorder attempt per physical HTTP
+            # request.  SDK-internal retries are opaque to the recorder and can
+            # also multiply a 1200s timeout.  All retries therefore belong to
+            # call_with_tools' explicit, append-only attempt loop.
+            max_retries=0,
             http_client=httpx.Client(trust_env=False, timeout=config.MODEL_TIMEOUT_S),
         )
         clients[resolved_base_url] = client
@@ -71,6 +76,12 @@ def call_with_tools(
         # requested explicitly. Effort belongs to output_config, not thinking.
         kwargs["thinking"] = {"type": "adaptive", "display": "summarized"}
         kwargs["output_config"] = {"effort": effort}
+    elif "deepseek" in model.lower():
+        # TokenHub's DeepSeek V4 routes think by default even when the field is
+        # omitted.  An explicit disabled value is therefore required for a
+        # genuinely no-thinking rollout; other Anthropic-compatible models keep
+        # their existing omit-the-field behavior.
+        kwargs["thinking"] = {"type": "disabled"}
 
     invocation_id = (
         nova_recorder.new_invocation_id(request_kind)

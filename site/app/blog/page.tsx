@@ -1,12 +1,5 @@
-import { BlogPage } from "../BlogPage";
-import { createPageMetadata } from "../metadata";
+import { redirect } from "next/navigation";
 
-export const metadata = createPageMetadata(
-  "A presentation is not a stack of slides — MURAL",
-  "Introducing MURAL-Presenter, a Skill-driven multi-agent framework for long-horizon presentation authoring and revision.",
-  "en_US",
-);
-
-export default function EnglishBlog() {
-  return <BlogPage language="en" />;
+export default function LegacyEnglishBlog() {
+  redirect("/");
 }

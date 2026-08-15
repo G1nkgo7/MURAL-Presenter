@@ -19,6 +19,7 @@ import shlex
 import subprocess
 import tempfile
 from html import unescape
+from pathlib import Path
 
 import requests
 
@@ -28,10 +29,15 @@ IMG_EXT = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 _SCRATCH_SUFFIXES = (".new", ".tmp", ".bak", ".orig", ".rej")
 _MODEL_OUTPUT_DIRS = {"research", "plan", "slides", "assets", "checks"}
 _MODEL_OUTPUT_FILES = {"base.css", "speech.md"}
-_GROUPED_SKILL_NAMES = {
+_LEGACY_GROUPED_SKILL_NAMES = {
     "long-horizon-html-ppt-grouped",
     "long-horizon-html-ppt-grouped-inline-image",
 }
+_V02_GROUPED_SKILL_NAMES = {
+    "mural-presenter-v0-2-grouped-zh",
+    "mural-presenter-v0-2-grouped-en",
+}
+_GROUPED_SKILL_NAMES = _LEGACY_GROUPED_SKILL_NAMES | _V02_GROUPED_SKILL_NAMES
 _INLINE_IMAGE_SKILL = "long-horizon-html-ppt-grouped-inline-image"
 
 
@@ -43,8 +49,22 @@ def _is_grouped_skill(agent) -> bool:
     return _skill_name(agent) in _GROUPED_SKILL_NAMES
 
 
+def _uses_legacy_grouped_contract(agent) -> bool:
+    return _skill_name(agent) in _LEGACY_GROUPED_SKILL_NAMES
+
+
 def _is_inline_image_skill(agent) -> bool:
     return _skill_name(agent) == _INLINE_IMAGE_SKILL
+
+
+def _is_v02_skill(agent) -> bool:
+    return _skill_name(agent) in {
+        config.SKILL_NAME,
+        config.SKILL_NAME_ZH,
+        config.SKILL_NAME_EN,
+        "mural-presenter-v0-2-grouped-zh",
+        "mural-presenter-v0-2-grouped-en",
+    }
 
 
 def _grouped_allowed_skill_reads(agent) -> set[str]:
@@ -54,7 +74,7 @@ def _grouped_allowed_skill_reads(agent) -> set[str]:
     read every allowed file. Read-to-EOF applies only after a file is opened.
     """
     skill = _skill_name(agent)
-    if skill not in _GROUPED_SKILL_NAMES:
+    if skill not in _LEGACY_GROUPED_SKILL_NAMES:
         return set()
     prefix = f"skills/{skill}"
     role = str(getattr(agent, "role", "") or "")
@@ -144,7 +164,7 @@ def _noncanonical_write_error(path: str) -> str | None:
 
 def _grouped_unresolved_asset_pages(agent) -> list[int]:
     """Return assigned preferred/required pages whose asset handoff is unfinished."""
-    if not _is_grouped_skill(agent) or _is_inline_image_skill(agent):
+    if not _uses_legacy_grouped_contract(agent) or _is_inline_image_skill(agent):
         return []
     workspace = str(getattr(agent, "ws", "") or "")
     pages = sorted(
@@ -232,13 +252,26 @@ def _model_write_error(agent, path: str) -> str | None:
 
     role = str(getattr(agent, "role", "") or "")
     label = str(getattr(agent, "label", "") or "")
-    grouped_skill = _is_grouped_skill(agent)
     inline_image_skill = _is_inline_image_skill(agent)
+    if (
+        role == "slide"
+        and int(getattr(agent, "slide_pixel_inspections", 0) or 0) >= 2
+    ):
+        reason = (
+            "Slide 已完成首稿检查与一次合并修复检查；后续页面修改转交 Review，"
+            "不要在当前 Agent 中开始第三轮。"
+        )
+        agent.repair_required_reason = reason
+        return f"repair_required：{reason}"
     if role == "material" and normalized != "research/material.md":
         return "Material 只能写 research/material.md。"
     if role == "research" and normalized != "research/knowledge-brief.md":
         return "Research 只能写唯一正式交接 research/knowledge-brief.md。"
-    if grouped_skill and normalized == "research/knowledge-brief.md" and role != "research":
+    if (
+        _uses_legacy_grouped_contract(agent)
+        and normalized == "research/knowledge-brief.md"
+        and role != "research"
+    ):
         return (
             "research/knowledge-brief.md 由 Research 独占。"
             "请委派 Research 并传入原始 query；Orchestrator 不得代写证据简报。"
@@ -246,7 +279,7 @@ def _model_write_error(agent, path: str) -> str | None:
     if role == "image" and normalized != "assets/catalog.md":
         return "Image 只能写唯一素材登记 `assets/catalog.md`。"
     if (
-        grouped_skill
+        _uses_legacy_grouped_contract(agent)
         and role == "orchestrator"
         and top == "slides"
         and not bool(getattr(agent, "revision_mode", False))
@@ -255,6 +288,17 @@ def _model_write_error(agent, path: str) -> str | None:
             "Grouped Orchestrator 不直接改写 Slide HTML。"
             "锁定骨架错误只运行 deck.py repair-contract；页面内容由 Slide Group，"
             "最终像素修复由 Review 负责。"
+        )
+    if (
+        role == "orchestrator"
+        and bool(getattr(agent, "revision_mode", False))
+        and _is_v02_skill(agent)
+        and top == "slides"
+    ):
+        return (
+            "v0.2 编辑路由不允许 Orchestrator 直接修改 Slide HTML。"
+            "简单编辑交给唯一 `Review: mode=simple_edit`；复杂编辑先写 "
+            "plan/revision-impact.md，再把受影响页面按当前 Single/Grouped 所有权委派。"
         )
     if role == "slide":
         assigned_pages = tuple(getattr(agent, "assigned_slide_pages", ()) or ())
@@ -459,6 +503,25 @@ def read_file(agent, path, offset=1, limit=500):
     while normalized.startswith("./"):
         normalized = normalized[2:]
     normalized = normalized.rstrip("/")
+    role = str(getattr(agent, "role", "") or "")
+    if (
+        role == "orchestrator"
+        and (normalized == "inputs" or normalized.startswith("inputs/"))
+        and bool(getattr(agent, "material_required", False))
+        and not bool(getattr(agent, "material_completed", False))
+    ):
+        return (
+            "read_file 错误：附件尚未完成 Material 交接。Orchestrator 不得直接读取 "
+            "inputs/**；请先委派唯一 Material Agent，之后只读取 research/material.md。"
+        )
+    if role == "research" and (
+        normalized == "inputs" or normalized.startswith("inputs/")
+    ):
+        return (
+            "read_file 错误：Research 不直接重读原始附件或附件派生文件。"
+            "请以 research/material.md 作为附件证据真源；解析缺口应由 Material "
+            "结构化报告，不能由 Research 绕过交接。"
+        )
     if (
         getattr(agent, "role", "") == "image"
         and (normalized == "inputs" or normalized.startswith("inputs/"))
@@ -468,9 +531,9 @@ def read_file(agent, path, offset=1, limit=500):
             "请只使用 research/material.md 与 research/knowledge-brief.md 中的 OCR/提取稿"
             "事实，重新搜索、生成概念图，或把数据/关系交给 Slide 忠实重绘。"
         )
-    is_grouped_skill = _is_grouped_skill(agent)
+    uses_legacy_grouped_contract = _uses_legacy_grouped_contract(agent)
     if (
-        is_grouped_skill
+        uses_legacy_grouped_contract
         and getattr(agent, "role", "") == "slide"
         and normalized == "assets/catalog.md"
         and not hasattr(agent, "_grouped_asset_pending_pages")
@@ -482,7 +545,7 @@ def read_file(agent, path, offset=1, limit=500):
         agent._grouped_asset_pending_pages = tuple(
             _grouped_unresolved_asset_pages(agent)
         )
-    if is_grouped_skill and normalized.startswith("skills/"):
+    if uses_legacy_grouped_contract and normalized.startswith("skills/"):
         allowed_skill_reads = _grouped_allowed_skill_reads(agent)
         if normalized not in allowed_skill_reads:
             role = str(getattr(agent, "role", "") or "当前角色")
@@ -514,12 +577,12 @@ def read_file(agent, path, offset=1, limit=500):
                 "read_file 错误：Slide 不列举全册计划或页面目录；"
                 "只读取本组 plan/slide_NN.md 与 slides/slide_NN.html。"
             )
-        if is_grouped_skill and normalized == "assets":
+        if uses_legacy_grouped_contract and normalized == "assets":
             return (
                 "read_file 错误：Slide 不列举整个 assets 目录；"
                 "只读取全局 catalog、本组 catalog，并使用工具返回的精确素材路径。"
             )
-        if is_grouped_skill and normalized.startswith("assets/catalog-"):
+        if uses_legacy_grouped_contract and normalized.startswith("assets/catalog-"):
             own_group = str(getattr(agent, "slide_group_id", "") or "").strip()
             own_catalog = f"assets/catalog-{own_group}.md" if own_group else ""
             if normalized != own_catalog:
@@ -527,7 +590,7 @@ def read_file(agent, path, offset=1, limit=500):
                     "read_file 错误：SlideGroup 不能读取其他页组的素材登记；"
                     f"当前只允许 `{own_catalog or 'assets/catalog-GROUP.md'}`。"
                 )
-        if is_grouped_skill and (
+        if uses_legacy_grouped_contract and (
             normalized == "research" or normalized.startswith("research/")
         ):
             return (
@@ -579,6 +642,38 @@ def read_file(agent, path, offset=1, limit=500):
 
 
 def write_file(agent, path, content):
+    normalized = str(path or "").replace("\\", "/").lstrip("./")
+    if (
+        getattr(agent, "role", "") == "orchestrator"
+        and _is_v02_skill(agent)
+        and not bool(getattr(agent, "revision_mode", False))
+        and re.fullmatch(r"plan/slide_\d+\.md", normalized)
+    ):
+        deck_path = os.path.join(agent.ws, "plan", "deck.md")
+        expected = 0
+        try:
+            deck_text = open(deck_path, encoding="utf-8").read()
+            match = re.search(
+                r"(?mi)^\s*-\s*page_count\s*:\s*(\d+)\s*$", deck_text
+            )
+            expected = int(match.group(1)) if match else 0
+        except OSError:
+            pass
+        existing = {
+            int(match.group(1))
+            for name in os.listdir(os.path.join(agent.ws, "plan"))
+            if (match := re.fullmatch(r"slide_(\d+)\.md", name))
+            and os.path.getsize(os.path.join(agent.ws, "plan", name)) > 0
+        }
+        target = int(re.search(r"(\d+)", normalized).group(1))
+        missing = set(range(1, expected + 1)).difference(existing) if expected else set()
+        if missing != {target}:
+            return (
+                "write_file 错误：v0.2 首次规划不得逐页串行写 plan/slide_NN.md。"
+                "请用标准 write_file 一次写 plan/plan-batch.json，再运行 "
+                "deck.py apply-plan-batch .；一批放连续 4–6 页，8 页 Deck 用 1–2 批。"
+                "只有全册最后一个缺页可单独恢复。"
+            )
     error = _write_policy_error(agent, path)
     if error:
         return f"write_file 错误：{error}"
@@ -724,7 +819,7 @@ def _bash_mutation_error(agent, cmd: str) -> str | None:
                 action = (
                     tokens[2]
                     if len(tokens) > 2 and tokens[2] in {
-                        "restore-base", "validate-plans", "scaffold-from-plans",
+                        "restore-base", "apply-plan-batch", "validate-plans", "scaffold-from-plans",
                         "repair-contract", "sync-speech", "build", "render", "render-group", "finalize", "clean",
                         "audit", "fetch-images", "assets-resolve-group", "assets-finalize", "inspect-image",
                         "remove-checkerboard",
@@ -737,7 +832,7 @@ def _bash_mutation_error(agent, cmd: str) -> str | None:
                     "禁止 -c、其他脚本或临时辅助程序。"
                 )
             if tokens[2] not in {
-                "restore-base", "validate-plans", "scaffold-from-plans", "repair-contract", "sync-speech",
+                "restore-base", "apply-plan-batch", "validate-plans", "scaffold-from-plans", "repair-contract", "sync-speech",
                 "build", "render", "render-group", "finalize", "clean", "audit", "fetch-images",
                 "assets-resolve-group", "assets-finalize", "inspect-image", "remove-checkerboard",
             }:
@@ -758,6 +853,17 @@ def terminal(agent, command, timeout=None):
     if incomplete_read:
         return f"terminal 错误：{incomplete_read}"
     cmd = command.strip()
+    if (
+        getattr(agent, "role", "") == "slide"
+        and int(getattr(agent, "slide_pixel_inspections", 0) or 0) >= 2
+        and re.search(r"deck\.py\s+(?:render|render-group|repair-contract)\b", cmd)
+    ):
+        reason = (
+            "Slide 已用完首稿检查与一次合并修复检查；保留当前已验证像素，"
+            "把仍存在的具体缺陷以 repair_required 交给 Review。"
+        )
+        agent.repair_required_reason = reason
+        return f"terminal repair_required：{reason}"
     if getattr(agent, "role", "") == "slide" and "--review-repair" in cmd:
         return (
             "terminal 错误：--review-repair 只供最终 Review 对已确认硬伤做受控复验；"
@@ -765,7 +871,7 @@ def terminal(agent, command, timeout=None):
         )
     is_grouped_slide = (
         getattr(agent, "role", "") == "slide"
-        and _is_grouped_skill(agent)
+        and _uses_legacy_grouped_contract(agent)
     )
     if is_grouped_slide:
         expected_script = re.escape(str(getattr(agent, "render_script", "") or ""))
@@ -802,7 +908,7 @@ def terminal(agent, command, timeout=None):
             )
     is_grouped_orchestrator = (
         getattr(agent, "role", "") == "orchestrator"
-        and _is_grouped_skill(agent)
+        and _uses_legacy_grouped_contract(agent)
     )
     if is_grouped_orchestrator:
         deck_actions = re.findall(r"deck\.py\s+([a-z-]+)", cmd)
@@ -1009,6 +1115,23 @@ def _gemini_vision_analysis(data: bytes, media_type: str, question: str) -> str:
 
 def vision_analyze(agent, image_url, question="", _parent_tool_use_id=""):
     """返回图片像素让模型看见截图，并同时满足像素与请求体积限制。"""
+    if config.VISION_BACKEND == "disabled":
+        return (
+            "vision_analyze 不可用：当前主模型是文本接口，不能接收 image_url。"
+            "Harness 已阻止把图片误送入同模型并触发 HTTP 400。Material 应使用确定性 "
+            "OCR/Office companion，并把无法确认的视觉语义列为 unresolved；制作与 Review "
+            "必须改用真正支持图像输入的主模型。"
+        )
+    if (
+        getattr(agent, "role", "") == "slide"
+        and int(getattr(agent, "slide_pixel_inspections", 0) or 0) >= 2
+    ):
+        reason = (
+            "Slide 已完成两次像素检查；不要开始第三轮复看。若仍有可见缺陷，"
+            "返回 repair_required、页码、证据与最小修复建议，由 Review 继续。"
+        )
+        agent.repair_required_reason = reason
+        return f"vision_analyze repair_required：{reason}"
     path = image_url
     normalized_path = str(path).replace("\\", "/").lstrip("./")
     if (
@@ -1020,7 +1143,7 @@ def vision_analyze(agent, image_url, question="", _parent_tool_use_id=""):
             "请从 OCR/提取稿视觉替代 brief 重新搜索或生成；数据与关系使用代码视觉。"
         )
     if (
-        _is_grouped_skill(agent)
+        _uses_legacy_grouped_contract(agent)
         and getattr(agent, "role", "") == "orchestrator"
         and not bool(getattr(agent, "revision_mode", False))
         and normalized_path.startswith("renders/")
@@ -1171,7 +1294,8 @@ def vision_analyze(agent, image_url, question="", _parent_tool_use_id=""):
     if question:
         summary += f" 检查清单：{question}"
     return {"image_b64": base64.b64encode(data).decode(), "media_type": media_type,
-            "path": os.path.relpath(fp, agent.ws), "summary": summary}
+            "path": os.path.relpath(fp, agent.ws), "summary": summary,
+            "vision_backend": "same_model_native"}
 
 
 def image_generate(agent, prompt, aspect_ratio="landscape"):
@@ -1218,63 +1342,43 @@ def image_generate(agent, prompt, aspect_ratio="landscape"):
     return rel
 
 
+def _external_evidence_gate(agent) -> str:
+    scope = str(getattr(agent, "evidence_scope", "") or "open_research")
+    if scope == "attachment_only":
+        return (
+            "当前 evidence_scope=attachment_only，Harness 已禁止外部检索。只能使用 "
+            "raw_user_query 与 research/material.md；把材料缺口如实写入 brief。"
+        )
+    if scope != "verify_external":
+        return ""
+    material_path = Path(str(getattr(agent, "ws", ""))) / "research" / "material.md"
+    try:
+        material = material_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return (
+            "evidence_scope=verify_external 但 research/material.md 不可读；"
+            "不能绕过 Material 直接外搜。"
+        )
+    match = re.search(r"(?mi)^\s*(?:[-*]\s*)?unresolved_items\s*:\s*(.+?)\s*$", material)
+    empty_values = {"", "[]", "none", "null", "无", "无。", "n/a", "no"}
+    if match and match.group(1).strip().lower() not in empty_values:
+        return ""
+    return (
+        "evidence_scope=verify_external 仅允许核验 Material 结构化列出的 unresolved_items；"
+        "当前没有可核验项，因此 Harness 已阻止百科式外部扩展。"
+    )
+
+
 def web_search(agent, query, limit=5, search_type="search"):
-    """Search with Serper, with keyless Wikimedia/Wikipedia fallbacks."""
+    """Search with the configured Serper service."""
+    if not bool(getattr(agent, "search_enabled", True)):
+        return "web_search 错误：本任务启动前未检测到搜索服务，工具未注入。"
+    gate = _external_evidence_gate(agent)
+    if gate:
+        return f"web_search 错误：{gate}"
     key = os.environ.get("SERPER_API_KEY", "").strip()
     if not key:
-        api = "https://commons.wikimedia.org/w/api.php"
-        if search_type == "images":
-            response = requests.get(
-                api,
-                params={
-                    "action": "query",
-                    "format": "json",
-                    "generator": "search",
-                    "gsrsearch": f"filetype:bitmap {query}",
-                    "gsrnamespace": 6,
-                    "gsrlimit": max(1, min(int(limit), 10)),
-                    "prop": "imageinfo",
-                    "iiprop": "url|extmetadata",
-                    "iiurlwidth": 1600,
-                    "origin": "*",
-                },
-                headers={"User-Agent": "CleanPresentationImage/1.0"},
-                timeout=45,
-            )
-            response.raise_for_status()
-            rows = []
-            for item in response.json().get("query", {}).get("pages", {}).values():
-                info = (item.get("imageinfo") or [{}])[0]
-                rows.append({
-                    "title": item.get("title"),
-                    "url": info.get("thumburl") or info.get("url"),
-                    "source": info.get("descriptionurl"),
-                    "snippet": (
-                        (info.get("extmetadata") or {}).get("ImageDescription", {}).get("value")
-                    ),
-                })
-            return json.dumps(rows[: int(limit)], ensure_ascii=False, indent=2)
-        response = requests.get(
-            "https://en.wikipedia.org/w/api.php",
-            params={
-                "action": "query",
-                "format": "json",
-                "list": "search",
-                "srsearch": query,
-                "srlimit": max(1, min(int(limit), 10)),
-                "origin": "*",
-            },
-            headers={"User-Agent": "CleanPresentationResearch/1.0"},
-            timeout=45,
-        )
-        response.raise_for_status()
-        rows = [{
-            "title": item.get("title"),
-            "url": "https://en.wikipedia.org/wiki/" + str(item.get("title", "")).replace(" ", "_"),
-            "source": "Wikipedia fallback",
-            "snippet": re.sub(r"<[^>]+>", "", item.get("snippet", "")),
-        } for item in response.json().get("query", {}).get("search", [])]
-        return json.dumps(rows, ensure_ascii=False, indent=2)
+        return "web_search 错误：SERPER_API_KEY 未配置；Harness 不使用隐式公共站点回退。"
     endpoint = "images" if search_type == "images" else "search"
     serper_base = os.environ.get("SERPER_BASE_URL", "https://google.serper.dev").rstrip("/")
     serper_url = serper_base if serper_base.endswith(f"/{endpoint}") else f"{serper_base}/{endpoint}"
@@ -1348,6 +1452,11 @@ def _document_extract_guidance() -> str:
 
 def web_extract(agent, url, max_chars=12000):
     """Fetch a public webpage and return readable plain text."""
+    if not bool(getattr(agent, "search_enabled", True)):
+        return "web_extract 错误：本任务启动前未检测到搜索服务，工具未注入。"
+    gate = _external_evidence_gate(agent)
+    if gate:
+        return f"web_extract 错误：{gate}"
     if _DIRECT_IMAGE_URL_RE.search(str(url)):
         return _image_download_guidance(agent)
     if _DIRECT_DOCUMENT_URL_RE.search(str(url)):
@@ -1406,6 +1515,7 @@ _DECK_SCRIPT_PLACEHOLDER = "__CURRENT_DECK_SCRIPT__"
 _TERMINAL = {
     "name": "terminal",
     "description": ("在工作区目录下执行前台命令。主流程只使用当前角色需要的确定性 deck 命令：\n"
+                    f"  python {_DECK_SCRIPT_PLACEHOLDER} apply-plan-batch .\n"
                     f"  python {_DECK_SCRIPT_PLACEHOLDER} scaffold-from-plans . --expected N\n"
                     f"  python {_DECK_SCRIPT_PLACEHOLDER} assets-finalize .\n"
                     f"  python {_DECK_SCRIPT_PLACEHOLDER} render . --page N\n"
@@ -1487,9 +1597,12 @@ def _terminal_schema(render_script: str = "") -> dict:
 def agent_tools(
     role: str,
     enable_image_gen: bool = True,
+    enable_web_search: bool = True,
+    enable_vision: bool = True,
     render_script: str = "",
     skill_name: str = "",
     revision_mode: bool = False,
+    evidence_scope: str = "open_research",
 ) -> list[dict]:
     """Return the small tool surface appropriate for one role."""
     names_by_role = {
@@ -1506,13 +1619,19 @@ def agent_tools(
         "review": ["read_file", "patch", "terminal", "vision_analyze"],
     }
     names = names_by_role.get(role, names_by_role["orchestrator"]).copy()
+    if not enable_vision:
+        names = [name for name in names if name != "vision_analyze"]
+    if not enable_web_search:
+        names = [name for name in names if name not in {"web_search", "web_extract"}]
+    if role == "research" and evidence_scope == "attachment_only":
+        names = [name for name in names if name not in {"web_search", "web_extract"}]
     if (
         role == "orchestrator"
         and revision_mode
         and skill_name in _GROUPED_SKILL_NAMES
     ):
         names.append("vision_analyze")
-    if role == "slide" and skill_name == _INLINE_IMAGE_SKILL:
+    if role == "slide" and skill_name == _INLINE_IMAGE_SKILL and enable_web_search:
         names.extend(["web_search", "web_extract"])
     if role == "image" and enable_image_gen:
         names.append("image_generate")

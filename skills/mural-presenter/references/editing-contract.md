@@ -99,7 +99,7 @@ Review 不扩写事实、不创建新素材、不重排全册叙事、不修改�
    - 页面重做 → 受影响页各一个 Slide。
 3. 先更新 `grounded-knowledge.md`、Style Lock、deck/slide plan，再启动下游生产。
 4. 复用未失效的 HTML、素材、讲稿和渲染图；禁止“为了省判断”从头覆盖全册。
-5. 局部变化只重渲变化页；若改变 bookends/dividers 或内容组的跨页关系，重做受影响的完整页组；base.css、字体或全局骨架变化才全册 batch。
+5. 局部变化只重渲变化页；若改变 `bookend_system` / `divider_system`，逐页重做受影响的单页特殊组；若改变普通内容组的跨页关系，重做受影响的完整小组；base.css、字体或全局骨架变化才全册 batch。
 6. 最后由唯一 Review 看全册一致性、集中修复并收口讲稿。
 
 ## 5. 编辑验收

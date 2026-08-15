@@ -1293,11 +1293,23 @@ class OrchestratorToolSurfaceTest(unittest.TestCase):
         self.assertNotIn("final_pixels_inspected", review)
         english = agent_core._role_card_context("/tmp/skills", "image", "en")
         self.assertIn("Your only role-card path", english)
-        self.assertIn("skills/mural-presenter/subagents/image.md", english)
+        self.assertIn("skills/mural-presenter/subagents/image.en.md", english)
         self.assertNotIn("你的唯一角色卡", english)
         self.assertNotIn("必须读取 `skills/mural-presenter/SKILL.md`", infer.SUBAGENT_SYSTEM)
         self.assertIn("不要通读根 SKILL.md", infer.SUBAGENT_SYSTEM)
         self.assertIn("Do not scan the root SKILL.md", infer.SUBAGENT_SYSTEM_EN)
+
+    def test_english_role_card_falls_back_for_legacy_frozen_snapshot(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            cards = root / "mural-presenter/subagents"
+            cards.mkdir(parents=True)
+            (cards / "review.md").write_text("legacy", encoding="utf-8")
+            context = agent_core._role_card_context(
+                str(root), "review", "en", "mural-presenter"
+            )
+            self.assertIn("subagents/review.md", context)
+            self.assertNotIn("subagents/review.en.md", context)
 
     def test_query_language_selects_frozen_skill_package(self):
         self.assertEqual(
@@ -1310,6 +1322,9 @@ class OrchestratorToolSurfaceTest(unittest.TestCase):
             ],
             "mural-presenter",
         )
+        self.assertEqual(infer.SKILL_ENTRY_BY_LANGUAGE["zh"], "SKILL.md")
+        self.assertEqual(infer.SKILL_ENTRY_BY_LANGUAGE["en"], "SKILL.en.md")
+        self.assertIn("skills/mural-presenter/SKILL.en.md", infer.BASE_SYSTEM_EN)
 
     def test_child_language_contract_is_explicit_and_plan_owned(self):
         chinese = agent_core._child_language_contract("zh")
@@ -2002,6 +2017,60 @@ class OrchestratorToolSurfaceTest(unittest.TestCase):
             )
             self.assertIn("Original directives", by_label["slide_group_bookends"]["goal"])
 
+    def test_creative_profile_rejects_multi_page_production_groups(self):
+        class Parent:
+            def __init__(self, root):
+                self.ws = str(root)
+                self.cfg = {"_authoring_profile": "creative"}
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "plan").mkdir()
+            for page in (1, 2):
+                (root / f"plan/slide_{page:02d}.md").write_text(
+                    f"# Slide {page:02d}\n- production_group: repeated-content\n",
+                    encoding="utf-8",
+                )
+            tasks = [
+                agent_core._normalize_task({
+                    "goal": f"Slide {page}: complete the page",
+                    "label": f"slide_{page:02d}",
+                })
+                for page in (1, 2)
+            ]
+            canonical, error = agent_core._canonicalize_slide_tasks(Parent(root), tasks)
+
+            # Canonicalization is non-destructive on rejection: the caller
+            # receives the original tasks plus an explicit contract error.
+            self.assertEqual(len(canonical), 2)
+            self.assertIn("一页一个 Slide Agent", error)
+            self.assertIn("'repeated-content': [1, 2]", error)
+
+    def test_creative_profile_rejects_plans_without_production_groups(self):
+        class Parent:
+            def __init__(self, root):
+                self.ws = str(root)
+                self.cfg = {"_authoring_profile": "creative"}
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "plan").mkdir()
+            for page in (1, 2):
+                (root / f"plan/slide_{page:02d}.md").write_text(
+                    f"# Slide {page:02d}\n- title: Page {page}\n",
+                    encoding="utf-8",
+                )
+            tasks = [agent_core._normalize_task({
+                "goal": "Slide Group all [01,02]: build",
+                "label": "slide_group_all",
+            })]
+
+            canonical, error = agent_core._canonicalize_slide_tasks(Parent(root), tasks)
+
+            self.assertEqual(canonical, tasks)
+            self.assertIn("未声明 production_group", error)
+            self.assertIn("一页一个 Slide Agent", error)
+
     def test_frozen_group_id_can_restore_pages_when_prose_omits_them(self):
         class Parent:
             def __init__(self, root):
@@ -2206,6 +2275,30 @@ class OrchestratorToolSurfaceTest(unittest.TestCase):
                 infer._slide_assignment_acceptance(root, records),
                 (True, "ok"),
             )
+
+    def test_creative_final_acceptance_rejects_missing_production_groups(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "plan").mkdir()
+            (root / "_trace").mkdir()
+            for page in (1, 2):
+                (root / f"plan/slide_{page:02d}.md").write_text(
+                    f"# Slide {page:02d}\n- title: Page {page}\n",
+                    encoding="utf-8",
+                )
+            (root / "_trace/skill-snapshot.json").write_text(
+                json.dumps({"authoring_profile": "creative"}),
+                encoding="utf-8",
+            )
+            records = [
+                {"label": "slide_01", "kind": "slide", "assigned_pages": [1]},
+                {"label": "slide_02", "kind": "slide", "assigned_pages": [2]},
+            ]
+
+            accepted, detail = infer._slide_assignment_acceptance(root, records)
+
+            self.assertFalse(accepted)
+            self.assertIn("未声明 production_group", detail)
 
     def test_worker_crash_is_persisted_as_blocked_record(self):
         import threading
@@ -3871,6 +3964,7 @@ class OrchestratorToolSurfaceTest(unittest.TestCase):
                 skill = source_root / "mural-presenter"
                 skill.mkdir(parents=True)
                 (skill / "SKILL.md").write_text("version one", encoding="utf-8")
+                (skill / "SKILL.en.md").write_text("english one", encoding="utf-8")
                 run = root / "run"
                 run.mkdir()
                 infer.SKILLS_DIR = str(source_root)
@@ -3883,6 +3977,7 @@ class OrchestratorToolSurfaceTest(unittest.TestCase):
                 )
                 self.assertEqual(manifest["skill"], "mural-presenter")
                 self.assertEqual(manifest["language"], "zh")
+                self.assertEqual(manifest["entry"], "SKILL.md")
                 first_hash = manifest["tree_sha256"]
                 (skill / "SKILL.md").write_text("version two", encoding="utf-8")
                 infer._snapshot_skill(str(run))
@@ -3901,7 +3996,8 @@ class OrchestratorToolSurfaceTest(unittest.TestCase):
                 root = Path(temporary)
                 source = root / "source/mural-presenter"
                 source.mkdir(parents=True)
-                (source / "SKILL.md").write_text("English contract", encoding="utf-8")
+                (source / "SKILL.md").write_text("Chinese contract", encoding="utf-8")
+                (source / "SKILL.en.md").write_text("English contract", encoding="utf-8")
                 run = root / "run"
                 run.mkdir()
                 infer.SKILLS_DIR = str(root / "source")
@@ -3911,11 +4007,78 @@ class OrchestratorToolSurfaceTest(unittest.TestCase):
                     )
                 )
                 self.assertTrue((skills_root / "mural-presenter/SKILL.md").is_file())
+                self.assertTrue((skills_root / "mural-presenter/SKILL.en.md").is_file())
                 manifest = json.loads(
                     (run / "_trace/skill-snapshot.json").read_text(encoding="utf-8")
                 )
                 self.assertEqual(manifest["skill"], "mural-presenter")
                 self.assertEqual(manifest["language"], "en")
+                self.assertEqual(manifest["entry"], "SKILL.en.md")
+                self.assertEqual(manifest["requested_entry"], "SKILL.en.md")
+        finally:
+            infer.SKILLS_DIR = previous
+
+    def test_creative_skill_snapshot_and_system_use_creative_entry(self):
+        previous = infer.SKILLS_DIR
+        try:
+            with tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                source = root / "source/mural-presenter"
+                source.mkdir(parents=True)
+                for name in (
+                    "SKILL.md", "SKILL.en.md",
+                    "SKILL.creative.md", "SKILL.creative.en.md",
+                ):
+                    (source / name).write_text(name, encoding="utf-8")
+                run = root / "run"
+                run.mkdir()
+                infer.SKILLS_DIR = str(root / "source")
+                skills_root = infer._snapshot_skill(
+                    str(run), "mural-presenter", language="en",
+                    authoring_profile="creative",
+                )
+                manifest = json.loads(
+                    (run / "_trace/skill-snapshot.json").read_text(encoding="utf-8")
+                )
+                self.assertEqual(manifest["authoring_profile"], "creative")
+                self.assertEqual(manifest["entry"], "SKILL.creative.en.md")
+                system = infer._orchestrator_system(
+                    "en", skills_root, "mural-presenter", "creative"
+                )
+                self.assertIn(
+                    "skills/mural-presenter/SKILL.creative.en.md", system
+                )
+        finally:
+            infer.SKILLS_DIR = previous
+
+    def test_english_revision_keeps_legacy_snapshot_and_records_fallback(self):
+        previous = infer.SKILLS_DIR
+        try:
+            with tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                source = root / "source/mural-presenter"
+                source.mkdir(parents=True)
+                (source / "SKILL.md").write_text("Chinese", encoding="utf-8")
+                (source / "SKILL.en.md").write_text("English", encoding="utf-8")
+                run_skill = root / "run/skills/mural-presenter"
+                run_skill.mkdir(parents=True)
+                (run_skill / "SKILL.md").write_text("Frozen legacy", encoding="utf-8")
+                infer.SKILLS_DIR = str(root / "source")
+                infer._snapshot_skill(
+                    str(root / "run"), "mural-presenter", language="en"
+                )
+                manifest = json.loads(
+                    (root / "run/_trace/skill-snapshot.json").read_text(encoding="utf-8")
+                )
+                self.assertEqual(manifest["language"], "en")
+                self.assertEqual(manifest["requested_entry"], "SKILL.en.md")
+                self.assertEqual(manifest["entry"], "SKILL.md")
+                self.assertFalse((run_skill / "SKILL.en.md").exists())
+                system = infer._orchestrator_system(
+                    "en", str(root / "run/skills"), "mural-presenter"
+                )
+                self.assertIn("skills/mural-presenter/SKILL.md", system)
+                self.assertNotIn("SKILL.en.md", system)
         finally:
             infer.SKILLS_DIR = previous
 

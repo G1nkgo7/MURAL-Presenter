@@ -124,10 +124,11 @@ boundary, resume rules, output tree, integrity gates, and environment overrides.
 
 The recommended inference pair is:
 
-- Skill: [`skills/mural-presenter-v0.2/`](skills/mural-presenter-v0.2/) with behaviorally
-  equivalent Chinese and English instruction editions;
-- Harness: [`harnesses/mural-presenter-v0.2/`](harnesses/mural-presenter-v0.2/), using one
-  independent `Slide NN` Agent per page (no SlideGroup).
+- Skill: [`skills/mural-presenter-v0.2/`](skills/mural-presenter-v0.2/) with bilingual
+  Single and Grouped editions built from the same v0.2 contract;
+- Harness: [`harnesses/mural-presenter-v0.2/`](harnesses/mural-presenter-v0.2/), shared by
+  one-page `Slide NN` ownership and adjacent 2–4-page `SlideGroup` ownership. Grouping is
+  the only intentional production variable.
 
 The Orchestrator selects an instruction edition on its first `SKILL.md` read and locks it for the
 deck. This routing does **not** determine the output language; the query or a JSONL row's `lang`

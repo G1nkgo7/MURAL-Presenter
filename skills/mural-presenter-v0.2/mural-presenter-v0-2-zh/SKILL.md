@@ -7,37 +7,44 @@ description: 面向听众制作 1600×900 静态 HTML 演示文稿的中文说�
 
 制作适合现场讲述、证据清楚、整册统一但不显得机械套模板的演示文稿。
 
+Harness 启动前注入的运行时能力合同决定本次启用哪些可选阶段与工具；合同未列出的
+Material、Research、Image 既不委派也不伪执行，按合同指定的直接交接路线继续。
+
 ## 角色与唯一产物
 
 | 角色 | 正式产物 |
 |---|---|
 | Orchestrator | `plan/deck.md`、全部 `plan/slide_NN.md`、委派与交付 |
-| Material | 有附件时唯一的 `research/material.md` |
-| Research | 唯一的 `research/knowledge-brief.md` |
-| Image | 本地图片、唯一 `assets/catalog.md` 与素材联系表 |
+| Material | 有附件且运行时启用时，唯一的 `research/material.md` |
+| Research | 搜索服务可用且运行时启用时，唯一的 `research/knowledge-brief.md` |
+| Image | 搜索或生图路线可用且运行时启用时，本地图片、唯一 `assets/catalog.md` 与素材联系表 |
 | Slide | 一页 `slides/slide_NN.html` 及基于 PNG 的修订 |
 | Review | 整册最终像素与讲稿一致性结论 |
 
 ## 流程
 
 ```text
-有附件时 Material
-→ 单个 Research brief
+运行时启用时 Material
+→ 运行时启用时单个 Research brief
 → deck.md + slide_NN.md
 → validate-plans
 → scaffold-from-plans + sync-speech
-→ Image 与 code_only / none Slide 并行
-→ preferred 在 Image 给出“已解析/已跳过”决定后启动
-→ required 在素材就绪后启动
+→ Image 路线可用且需要位图时先单独完成 Image
+→ Image 交接后把全部单页 Slide 放入一个并行工作队列
 → finalize
 → Review；若有改动，再 finalize 并复看
 → 交付
 ```
 
-长 Deck 可以按连续的小组写逐页 Markdown；中断后直接检查缺哪一页、补哪一页。
+保留一页一个逐页 Markdown，但首次规划不能一页占用一个模型回合。8 页 Deck 用 1–2
+批完成；长 Deck 每批连续 4–6 页。每批在同一响应中用标准 `write_file` 写唯一
+`plan/plan-batch.json`（`{"files":[{"path","content"},...]}`），随即运行
+`deck.py apply-plan-batch .` 确定性拆分并删除批次文件。中断后仍有多页时继续批量；只有
+全册最后一个缺页允许直接写对应 `plan/slide_NN.md`。
 Research 只维护一份规范 brief：证据跨多个主题时尽早建立稳定章节，只补未完成章节，
 不在最后反复重写一份巨型文件，也不另建重复证据账本。
-生产阶段始终是一页一个 Slide Agent；全部 `Slide NN:` 可在同一个 wave 并行，但不得
+生产阶段始终是一页一个 Slide Agent；全部 `Slide NN:` 在 Image 交接后进入同一个
+工作队列并按可用槽位持续补位，但不得
 合并成 SlideGroup。v0.2 刻意与单页训练分布保持一致。
 除纯改写/虚构、用户禁止联网或附件已提供完整证据外，Research 首轮应实际并行检索，
 不能用模型记忆代替证据获取。
@@ -170,6 +177,24 @@ catalog 路径固定为工作区根目录相对的 `assets/NAME.ext`；被分配
 `required` 页面若没有已解析的本地位图路径，或 HTML 没有真实引用该路径，不能 build
 通过。透明背景先检查；只有脚本确认是烘焙进去的浅色棋盘格时才使用保守去除脚本。
 
+## 编辑现有 PPT
+
+续编先只读检查现有 plan、HTML、素材、讲稿和渲染，按影响范围锁定一条路由。
+
+**简单编辑**要求核心论点、页序、页面职责、跨页叙事、事实证据、素材、整册样式、字体
+与共享结构全部继续有效，且修改边界明确。此时只委派唯一
+`Review: mode=simple_edit`；goal 写清用户原始修改要求、目标页和不可改变项。Review
+集中修改、同步计划与讲稿、finalize 并查看新鲜像素。不得再派 Research、Material、
+Image、Slide 或第二个 Review，Orchestrator 也不直接改 Slide HTML。
+
+任一条件不满足即为**复杂编辑**。主题或具名实体纠正、事实/证据变化、叙事/页序/页面
+职责变化、新素材需求、全局样式/字体/共享结构变化，以及影响范围不确定都强制走复杂
+路由。Orchestrator 修改前写 `plan/revision-impact.md`，分别记录事实、叙事、页序、全局
+样式、素材、页面和讲稿的影响；只复用仍有效的成果，只补需要的 Research/Material/
+Image，并把每个受影响页面分别委派为一个 `Slide NN:`。所有受影响页完成后 finalize，
+最后只委派一次 `Review: mode=final_review` 做整册一致性收口。未受影响页面和素材必须
+保持不变。
+
 ## Slide 修订
 
 Slide 先一次完成页面，再渲染真实 PNG，集中做一轮修复。首次成功 render 后必须先
@@ -202,6 +227,7 @@ Review 是最终像素负责人：整册联系表与特殊页联系表各检查�
 ## 命令
 
 ```bash
+python skills/mural-presenter-v0-2-zh/scripts/deck.py apply-plan-batch .
 python skills/mural-presenter-v0-2-zh/scripts/deck.py validate-plans . --expected N
 python skills/mural-presenter-v0-2-zh/scripts/deck.py scaffold-from-plans . --expected N
 python skills/mural-presenter-v0-2-zh/scripts/deck.py sync-speech . --expected N

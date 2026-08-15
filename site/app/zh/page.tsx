@@ -1,4 +1,4 @@
-import { MuralSite } from "../MuralSite";
+import { BlogPage } from "../BlogPage";
 import { createPageMetadata } from "../metadata";
 
 export const metadata = createPageMetadata(
@@ -8,5 +8,5 @@ export const metadata = createPageMetadata(
 );
 
 export default function ChineseHome() {
-  return <MuralSite language="zh" />;
+  return <BlogPage language="zh" />;
 }

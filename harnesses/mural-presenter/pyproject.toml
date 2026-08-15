@@ -13,6 +13,8 @@ dependencies = [
     "opencv-python-headless>=4.8,<4.11",
     "python-pptx>=1.0.2",
     "pymupdf>=1.28.0",
+    "pypdf>=5,<7",
+    "rapidocr-onnxruntime>=1.4,<2",
     "fonttools[woff]>=4.56",
 ]
 

@@ -30,7 +30,7 @@ goal 会给出：`assignment_id`、deck 主题、确切附件路径、独立工�
    | 输入 | 正常产物与读取方式 |
    | --- | --- |
    | Markdown/TXT/RST、CSV/TSV、JSON/JSONL、YAML、HTML/XML、日志与常见代码文本 | 原样解码、全文分块，逐块读完 |
-   | PDF | 全文分块；同时把页面光栅化，扫描版或含图表页面必须结合页图查看 |
+   | PDF | 文本层全文分块；同时把页面光栅化。扫描版自动生成 `_ocr/<附件名>/fulltext.md`、逐页 OCR JSON/文本和 `coverage.json`，OCR 全文或逐页文本必须按序读完；混合 PDF 只 OCR 缺少文本层的页面；含图表页面仍须结合页图查看 |
    | DOCX/PPTX/XLSX/XLSM | 提取正文/表格/讲者备注，分离内嵌图片；环境有 LibreOffice 时再提供真实页面/幻灯片/工作表渲染图 |
    | DOC/PPT/XLS、RTF、ODT/ODS/ODP | 优先使用现有 LibreOffice 转成可读文本或页面图；ODF/简单 RTF 同时有内置文本兜底 |
    | PNG/JPG/WebP/GIF/BMP/TIFF/HEIC/SVG | 规范化为 vision 可读的 PNG/常见位图；多帧图逐帧登记并真实查看 |
@@ -42,6 +42,7 @@ goal 会给出：`assignment_id`、deck 主题、确切附件路径、独立工�
 
 2. 完整读取 `catalog.json`，按条目分流：
    - `kind: doc` 且有 `text_chunks`：严格按 `start_char` 顺序读取全部 chunk；核对区间从 0 连续覆盖到 `coverage.total`，不得只读 `text` 或首块；
+   - 扫描 PDF 还必须核对 `ocr_coverage.status: complete`、`covered == total`，并按 `ocr_pages` 逐页确认状态；OCR 提供可搜索全文，Vision 负责核验图表、版式和识别疑点，二者缺一时不得声称完整覆盖；
    - 单块短文档也走同一协议；`text` 是完整解析文本的兼容入口，不替代 chunk coverage；
    - `kind: image`：用视觉能力真实查看；多帧图、文档内嵌图和视频代表帧按 catalog 逐项看；
    - PDF、PPT、Word、Excel 同时存在文本与 rendered/page/embedded image 条目时，两类都要消费：文本负责事实，页图负责图表、版式、空间关系和图像内容；
@@ -56,12 +57,20 @@ goal 会给出：`assignment_id`、deck 主题、确切附件路径、独立工�
    ## Coverage ledger
    - <附件名> | coverage_id: <从 catalog 原样复制> | complete | <chunks/pages 数>
    ## 关键事实与数据（逐条标来源、单位、时间）
+   ## Attachment priority ledger
+   priority_ledger: complete
+   - priority_id: <assignment_id-PNN>
+     screen_priority: must_present | supporting | speech_only
+     source_locator: <附件 + 页/段/表/Figure>
+     content: <必须保真的结论、数字、关系或对象>
+     fidelity_form: exact-copy | chart | figure | diagram | visual-identity
+     reason: <为什么必须上屏、可辅助或只适合口头展开>
    ## 可引用原话
    ## 材料结构与用户约束
    ## 可复用视觉证据
    - <页图/内嵌图路径> | <真实内容与用途> | must-show / reusable / reference-only / unreadable
-   ## 论文 Figure 定位（存在命名 Figure 时）
-   - <Figure 1> | source_page: <页码> | page_visual: <整页 PNG> | crop_box_normalized: <x0,y0,x1,y1> | caption: <原始图注或摘要> | panels: <A/B/... 或 none>
+   ## 论文 Figure 定位（只列主结果、方法关键图或计划可能使用的命名 Figure）
+   - <Figure 1> | source_pdf: <原 PDF> | source_page: <页码> | page_visual: <整页 PNG，仅定位> | visual_subject_box: <x0,y0,x1,y1，不含正文/长图注> | ocr_json: <扫描页 OCR JSON 或 none> | caption: <原始图注或摘要> | panels: <A/B/... 或 none> | reuse_value: must-show / candidate / reference-only / omit
    ## 原材料视觉语言
    - <版式、色彩、图表或图像处理的客观描述；只描述，不决定新 deck 必须沿用>
    ## 推断（必须显式标注）
@@ -75,9 +84,11 @@ goal 会给出：`assignment_id`、deck 主题、确切附件路径、独立工�
 - 材料与用户 brief 冲突时两边都保留并标明冲突。
 - 图片必须真看；解析失败必须如实记录。
 - 同一未变化页面最多用于完整阅读与一次确认；需要核对局部时生成明确裁图再看，不反复查看同一整页，也不要求父级读取本角色的完整轨迹。
-- 论文中的 `Figure/Fig./图 N` 必须先定位到页内边界。整页 PDF 光栅图只标 `reference-only`；除非用户明确要求展示论文页面原貌，不得把含页眉、正文、页码和大面积页边距的整页标成该 Figure 的 `must-show/reusable`。Figure 定位应保留完整面板、图内标签与必要图例；长篇正文和论文页眉页脚不属于 Figure。无法可靠判断边界时标 `unreadable` 或请求后续 Image 复核，不猜坐标。
+- 论文中的 `Figure/Fig./图 N` 先按 deck 论点筛选：优先定位摘要/结论反复引用的主结果图、方法总览与用户点名图，不要求枚举或展示论文全部 Figure。整页 PDF 光栅图只标 `reference-only`；Figure 的 `visual_subject_box` 保留完整面板、坐标轴、图内标签与必要图例，但默认排除长图注、正文、页眉页脚和页码。无法可靠判断主体边界时标 `unreadable` 或请求 Image 复核，不用“大框先裁下来”逃避定位。
+- 需要把论文图或页内照片上屏时，唯一合规路径是使用 `deck.py material-figure --source-pdf <原 PDF> --source-page <N>` 直接从原 PDF 高分辨率重渲；整页 PNG 只负责选框。扫描 PDF 同时提供该页 `--ocr-json`，让脚本拒绝正文占比过高的裁区。命令拒绝 page-like、低分辨率和大段文字裁图后，回到页图收紧 `visual_subject_box`，不能降低质量门或改走整页截图。只有页面原貌本身就是证据时才可登记 `page-facsimile`。
 - 若工具明确提示已进入停滞收口，立即停止继续读取或看图；用现有证据写正式分片摘要，并按实际覆盖返回 `partial` 或 `blocked` 合同，不能无文本退出。
-- 当用户明确围绕某张附件图制作、图片本身就是产品/人物/地点/作品/流程总图/前后对比或不可替代的证据时，标为 `must-show`；不要因为后续可以重绘、概括或借用配色，就把原图降成只读参考。复杂流程图可以“原图总览一次 + 后续分步重绘”，两者并不冲突。
+- 附件图是候选证据，不是必须全用的配额。用户点名，或图片本身是不可替代的产品/人物/地点/作品/主结果 Figure/流程总图/前后对比时标为 `must-show`；其他图按清晰度、信息增量和投影可读性标 candidate / reference-only / omit。低清、文字密集、重复或不适合演讲的图可以不展示，后续另取更合适图片或用 SVG/Canvas/ECharts 表达；但附件事实不能因此丢失。
+- 每项主结论、关键数字/关系、用户点名内容和决策所需证据必须进入 priority ledger 并标 `must_present`；不能因为讲稿可以解释而降为 `speech_only`。`speech_only` 只用于背景、例证、口头过渡与细节展开。
 - 附件事实是证据边界，附件排版不是默认模板。除非用户明确要求复刻或延续品牌视觉，只客观记录其设计语言，不把原文档的信息密度、小字号、表格结构或低质量版式升级成新 deck 的视觉约束。
 - 单个附件失败时继续处理同组其他附件，但本分片最终返回 blocked；不得用部分成功掩盖 coverage 缺口。
 - 不生成共享的 `research/materials.md`，不覆盖其他 Material 的文件。

@@ -533,15 +533,15 @@ _COLLISION_JS = r"""
 
 
 # 布局护栏:补 OVERLAP 只看文字↔文字的盲区,把常见的「下方遮盖 / 装饰压字 /
-# 大型 SVG 媒介策略 / 旧 SVG 过小或标签互撞 / 绕开标准骨架变成可见 warning。report-only。
+# SVG 概念图体量与标签互撞 / 绕开标准骨架变成可见 warning。report-only。
 _LAYOUT_GUARD_JS = r"""
 (() => {
   const root = document.querySelector('.slide') || document.body;
   const W = window.innerWidth, H = window.innerHeight;
   const DECOR = /decor|deco|doodle|blob|ornament|watermark|sticker|shape|star|sparkle|badge|stamp|seal|aura|glow|texture|pattern/i;
   const OK = /overlap-ok|allow-overlap|scrim|text-plate|overlay|bleed|backdrop/i;
-  const SKIP_SVG = /icon|logo|mark|brand|page-no|pageno|qr|spark|decor|deco|watermark|ornament|bleed|svg-allowed|vector-asset/i;
-  const out = {decor: [], footer: [], svgLarge: [], svgSmall: [], svgLabel: [], abs: [], customBody: [],
+  const SKIP_SVG = /icon|logo|mark|brand|page-no|pageno|qr|spark|decor|deco|watermark|ornament|bleed|vector-asset/i;
+  const out = {decor: [], footer: [], svgSmall: [], svgLabel: [], abs: [], customBody: [],
                footerPushed: null, widow: [], imgLonely: [], coverOOB: []};
 
   function cls(el){ return ('' + ((el.className && (el.className.baseVal ?? el.className)) || '')).trim(); }
@@ -744,7 +744,7 @@ _LAYOUT_GUARD_JS = r"""
     }
   }
 
-  // 新页面默认不用大型手写 SVG；旧 SVG 继续检查体量与标签互撞。
+  // SVG 可作为静态概念图主媒介；只检查它是否有足够体量、标签是否互撞。
   const bodyRect = (directBody || root).getBoundingClientRect();
   for(const svg of root.querySelectorAll('svg')){
     if(!visible(svg) || declaredOk(svg) || isDecor(svg)) continue;
@@ -757,10 +757,6 @@ _LAYOUT_GUARD_JS = r"""
     const r = svg.getBoundingClientRect();
     const area = r.width * r.height;
     const bodyArea = Math.max(1, bodyRect.width * bodyRect.height);
-    const tooLargeForIcon = r.width > 160 || r.height > 160 || area > 0.06 * bodyArea;
-    if(tooLargeForIcon){
-      out.svgLarge.push({cls: c.slice(0, 32), size: `${Math.round(r.width)}×${Math.round(r.height)}`});
-    }
     const tooSmall = r.width < 0.52 * bodyRect.width || r.height < 0.42 * bodyRect.height || area < 0.28 * bodyArea;
     if(tooSmall){
       out.svgSmall.push({cls: c.slice(0, 32), size: `${Math.round(r.width)}×${Math.round(r.height)}`,
@@ -782,7 +778,6 @@ _LAYOUT_GUARD_JS = r"""
     }
   }
   out.abs = out.abs.slice(0, 6);
-  out.svgLarge = out.svgLarge.slice(0, 6);
   out.svgSmall = out.svgSmall.slice(0, 6);
   out.svgLabel = out.svgLabel.slice(0, 6);
   out.customBody = out.customBody.slice(0, 6);
@@ -918,12 +913,15 @@ _CJK_TYPOGRAPHY_JS = r"""
   const cjk=/[\u3400-\u9fff\uf900-\ufaff]/;
   const mono=/(?:ibm\s*plex\s*mono|\bmono\b|monospace|consolas|courier)/i;
   const expressive=/(?:smiley\s*sans|zcool\s*kuai\s*le|zcool\s*qingke\s*huangyou|xiaolai|ma\s*shan\s*zheng|zhi\s*mang\s*xing|liu\s*jian\s*mao\s*cao|long\s*cang|ruanmeng|软萌|行书|草书)/i;
+  const presentationTitle=/(?:smiley\s*sans)/i;
   const visible=(el,cs) => {
     const r=el.getBoundingClientRect();
     return cs.display!=='none' && cs.visibility!=='hidden' && Number(cs.opacity||1)>0.01 && r.width>1 && r.height>1;
   };
   const family=(cs) => (cs.fontFamily||'').split(',')[0].replace(/["']/g,'').trim().toLowerCase();
   const declared=(el) => !!el.closest('.is-expressive-type,[data-type-intent="expressive"]');
+  const approvedPresentationTitle=(el,cs,fs) => presentationTitle.test(cs.fontFamily||'') && fs>=40 &&
+    !!el.closest('h1,h2,.slide-title,.sec-name,.headline,.title,.hero-title,.cover-title,.quote-tagline');
   const push=(el,text,cs,kinds,extra={}) => {
     if(!kinds.length) return;
     issues.push({
@@ -941,7 +939,7 @@ _CJK_TYPOGRAPHY_JS = r"""
     const kinds=[];
     if(mono.test(cs.fontFamily||'')) kinds.push('cjk-in-mono');
     if(ls > fs*0.08+0.2) kinds.push('cjk-tracking-too-wide');
-    if(expressive.test(cs.fontFamily||'') && !declared(el)) kinds.push('expressive-cjk-without-intent');
+    if(expressive.test(cs.fontFamily||'') && !declared(el) && !approvedPresentationTitle(el,cs,fs)) kinds.push('expressive-cjk-without-intent');
     push(el,direct,cs,kinds);
   }
   for(const el of document.querySelectorAll('.slide h1,.slide h2,.slide h3,.slide h4,.slide h5,.slide h6,.slide p,.slide blockquote,.slide .slide-title,.slide .sec-name,.slide .headline,.slide .title,.slide .subtitle,.slide .kicker')){
@@ -1207,7 +1205,7 @@ def _batch_warning_summary(report):
     counts = {key: len(report.get(key) or []) for key in keys}
     layout = report.get("layout") or {}
     counts.update({key: len(layout.get(key) or [])
-                   for key in ("customBody", "abs", "decor", "footer", "svgLarge")})
+                   for key in ("customBody", "abs", "decor", "footer")})
     counts["contrast"] = len((report.get("contrast") or {}).get("low") or [])
     counts["onimg"] = len((report.get("contrast") or {}).get("onimg") or [])
     counts["cjkTypography"] = len(report.get("cjkTypography") or [])
@@ -1697,24 +1695,17 @@ def main():
                             if e.get(k, 0) > 2:
                                 _sides.append("%s越%spx" % (lbl, e[k]))
                         print("   · %s %s" % (e.get("sel"), " ".join(_sides)))
-                large_svg = lg.get("svgLarge") or []
-                if large_svg:
-                    print("⚠ SVG-LARGE: %d 个 SVG 超出 icon/标记尺度——新页面的大型流程、架构、机制图"
-                          "默认改用 Canvas 几何 + HTML 标签，或图片 + HTML 标注；仅用户要求矢量或复用准确矢量资产时"
-                          "给 class `svg-allowed`/`vector-asset` 豁免:" % len(large_svg))
-                    for e in large_svg:
-                        print("   · svg class=\"%s\" 大小 %s" % (e.get("cls"), e.get("size")))
                 small = lg.get("svgSmall") or []
                 if small:
-                    print("⚠ SVG-SMALL: %d 个旧式大型 SVG 相对 `.slide-body` 过小——若是概念图,"
-                          "优先迁移为 Canvas/图片 + HTML 标签并让主视觉吃满正文区;若必须保留矢量,放大图框:" % len(small))
+                    print("⚠ SVG-SMALL: %d 个 SVG 概念图相对 `.slide-body` 过小——"
+                          "放大图框、调整 viewBox/布局，让图解成为正文区主视觉:" % len(small))
                     for e in small:
                         print("   · svg class=\"%s\" 大小 %s, body %s"
                               % (e.get("cls"), e.get("size"), e.get("body")))
                 slabel = lg.get("svgLabel") or []
                 if slabel:
-                    print("⚠ SVG-LABEL-OVERLAP: %d 处旧 SVG 标签互相遮盖——优先把准确文字迁到 HTML 层;"
-                          "必须保留时重排标签、扩大节点间距:" % len(slabel))
+                    print("⚠ SVG-LABEL-OVERLAP: %d 处 SVG 标签互相遮盖——"
+                          "重排标签、扩大节点间距或用 leader line 引出:" % len(slabel))
                     for e in slabel:
                         print("   · 「%s」撞「%s」约 %s%%"
                               % (e.get("a"), e.get("b"), e.get("pct")))
@@ -1756,7 +1747,7 @@ def main():
                         print("   · 「%s」<%s> 字号 %spx" % (e.get("txt"), e.get("cls"), e.get("fs")))
                 cjk_typography = rep.get("cjkTypography") or []
                 if cjk_typography:
-                    print("⚠ CJK-TYPE: %d 处中文字体语义错误——同一句中文必须保持同一字体家族；强调只改颜色/字重/字号。中文不得误用 mono 或拉丁式疏字距；卡通/手写体只有合题且加 `.is-expressive-type` 才允许：" % len(cjk_typography))
+                    print("⚠ CJK-TYPE: %d 处中文字体语义错误——同一句中文必须保持同一字体家族；强调只改颜色/字重/字号。中文不得误用 mono 或拉丁式疏字距；除 ≥40px 的默认 Smiley Sans 演讲标题外，卡通/手写体只有合题且加 `.is-expressive-type` 才允许：" % len(cjk_typography))
                     for e in cjk_typography:
                         print("   · 「%s」<%s> %s, letter-spacing=%spx"
                               % (e.get("text"), e.get("cls"), "/".join(e.get("kinds") or []), e.get("letterSpacing")))

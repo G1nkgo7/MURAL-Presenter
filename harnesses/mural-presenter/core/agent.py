@@ -184,16 +184,53 @@ def blocks_to_dicts(content):
             out.append({"type": "tool_use", "id": b.id, "name": b.name, "input": b.input})
         elif b.type == "thinking":
             sig = getattr(b, "signature", None)
-            # 无签名的 thinking 块(签名被上游代理剥离,或 max_tokens 在 thinking 中途截断未生成签名)
-            # 一旦发回 API 必触发 400 "signature: Field required" → 不重试 → api_failed → 整条 deck 被拒。
-            # 这种块本就不可回传(API 强制要签名),丢弃它严格不劣于现状:常规有签名块完全不变,
-            # 同一 assistant 轮里的 tool_use/text 仍保留(不会产生空 content);只有被拒轨迹会少一段截断思考。
-            if not sig:
-                continue
-            out.append({"type": "thinking", "thinking": b.thinking, "signature": sig})
+            # OpenAI-compatible reasoning_content (DeepSeek/Qwen) has no
+            # Anthropic signature but is still real model output and must stay
+            # in messages.json / synthesis data.  Replay safety is handled only
+            # in _messages_for_model(), which removes unsigned blocks from the
+            # next API request without mutating this durable trajectory.
+            block = {"type": "thinking", "thinking": b.thinking}
+            if sig:
+                block["signature"] = sig
+            out.append(block)
         elif b.type == "redacted_thinking":
             out.append({"type": "redacted_thinking", "data": b.data})
     return out
+
+
+def _messages_for_model(messages):
+    """Return a replay-safe copy while preserving the durable trajectory.
+
+    Anthropic rejects an assistant ``thinking`` block without ``signature``.
+    OpenAI-compatible backends return useful unsigned ``reasoning_content``.
+    Keep that output in the active/trace history, but omit it from subsequent
+    requests. Signed Anthropic thinking is replayed unchanged so its signature
+    contract and prompt-cache behavior remain valid.
+    """
+    changed = False
+    out = []
+    for message in messages:
+        content = message.get("content") if isinstance(message, dict) else None
+        if not isinstance(content, list):
+            out.append(message)
+            continue
+        filtered = []
+        removed = False
+        for block in content:
+            if (
+                isinstance(block, dict)
+                and block.get("type") == "thinking"
+                and not block.get("signature")
+            ):
+                removed = True
+                continue
+            filtered.append(block)
+        if removed:
+            out.append({**message, "content": filtered})
+            changed = True
+        else:
+            out.append(message)
+    return out if changed else messages
 
 
 def _canonical_agent_label(role, label):
@@ -421,6 +458,11 @@ class Agent:
             "tools": tool_names,
             "vision_available": "vision_analyze" in tool_names,
             "run_mode": self.run_mode,
+            "authoring_profile": str(
+                self.cfg.get("_authoring_profile")
+                or self.cfg.get("authoring_profile")
+                or "stable"
+            ),
             "run_profile": {
                 "release_consumed_images": self.profile.release_consumed_images,
                 "compact_active_history": self.profile.compact_active_history,
@@ -532,8 +574,15 @@ def _model_call(agent, messages):
         if os.environ.get("CACHE_USER_ID", ""):
             extra_body["metadata"] = {"user_id": os.environ["CACHE_USER_ID"]}
         extra_body = extra_body or None                                       # 位置①:顶层
-    # 位置③:messages 历史断点(多轮命中率优化,见 _msgs_with_cache_bp)
-    send_messages = _msgs_with_cache_bp(messages) if (PROMPT_CACHE and CACHE_MESSAGES) else messages
+    # 位置③:messages 历史断点(多轮命中率优化,见 _msgs_with_cache_bp)。DeepSeek/Qwen
+    # 返回的无签名 reasoning_content 已在轨迹中保留，但发送副本必须删掉它，
+    # 否则 Anthropic 兼容入口会因缺 signature 拒绝整个下一轮请求。
+    replay_safe_messages = _messages_for_model(messages)
+    send_messages = (
+        _msgs_with_cache_bp(replay_safe_messages)
+        if (PROMPT_CACHE and CACHE_MESSAGES)
+        else replay_safe_messages
+    )
     kwargs = dict(model=agent.model, max_tokens=agent.max_tokens, system=system, messages=send_messages,
                   tools=[_anthropic_tool(t) for t in agent.tools])
     if extra_body:
@@ -1675,7 +1724,9 @@ def _task_kind(label, goal):
     return "other"
 
 
-def _role_card_context(skills_root, kind, prompt_language="zh", skill_name=""):
+def _role_card_context(
+    skills_root, kind, prompt_language="zh", skill_name="", authoring_profile="stable"
+):
     """Point a child at exactly one role card; the child reads it autonomously."""
     if kind not in {"research", "material", "image", "slide", "review"}:
         return ""
@@ -1683,8 +1734,29 @@ def _role_card_context(skills_root, kind, prompt_language="zh", skill_name=""):
         "mural-presenter" if str(prompt_language or "").lower() == "en"
         else "mural-presenter"
     )
-    path = f"skills/{selected_skill}/subagents/{kind}.md"
-    if str(prompt_language or "").lower() == "en":
+    english = str(prompt_language or "").lower() == "en"
+    creative_role = (
+        str(authoring_profile or "").lower() == "creative"
+        and kind in {"slide", "review"}
+    )
+    if creative_role:
+        role_entry = f"{kind}.creative.en.md" if english else f"{kind}.creative.md"
+    else:
+        role_entry = f"{kind}.en.md" if english else f"{kind}.md"
+    localized_root = os.path.join(
+        str(skills_root or ""), selected_skill, "subagents"
+    )
+    if (
+        english
+        and os.path.isdir(localized_root)
+        and not os.path.isfile(os.path.join(localized_root, role_entry))
+    ):
+        # Existing Decks keep immutable Skill snapshots.  If one predates the
+        # bilingual release, use its frozen Chinese role contract while keeping
+        # the child's visible response language English.
+        role_entry = f"{kind}.md"
+    path = f"skills/{selected_skill}/subagents/{role_entry}"
+    if english:
         return (
             f"Your only role-card path is {path}. Before taking any task action, "
             "read the whole file yourself with read_file. If the result provides a "
@@ -2046,6 +2118,7 @@ def _build_child(parent, task):
         kind,
         prompt_language,
         parent.cfg.get("_selected_skill_name"),
+        parent.cfg.get("_authoring_profile") or parent.cfg.get("authoring_profile"),
     )
     initial = ident + _child_language_contract(prompt_language) + role_card + task["goal"] + (
         f"\n\n{context_label}:\n{context}" if context else ""
@@ -2832,12 +2905,35 @@ def _canonicalize_slide_tasks(parent, tasks):
     """
     if bool((getattr(parent, "cfg", {}) or {}).get("_revision_mode")):
         return tasks, None
+    authoring_profile = str(
+        (getattr(parent, "cfg", {}) or {}).get("_authoring_profile")
+        or (getattr(parent, "cfg", {}) or {}).get("authoring_profile")
+        or "stable"
+    ).lower()
     try:
         planned_groups = _planned_production_groups(parent.ws)
     except ValueError as error:
         return tasks, str(error)
     if not planned_groups:
+        if authoring_profile == "creative" and glob.glob(
+            os.path.join(parent.ws, "plan", "slide_*.md")
+        ):
+            return tasks, (
+                "Creative profile 要求每份逐页计划声明唯一 production_group，"
+                "且一页一个 Slide Agent；当前计划未声明 production_group"
+            )
         return tasks, None
+    if authoring_profile == "creative":
+        grouped = {
+            group_id: sorted(pages)
+            for group_id, pages in planned_groups.items()
+            if len(pages) != 1
+        }
+        if grouped:
+            return tasks, (
+                "Creative profile 要求一页一个 Slide Agent；"
+                f"multi_page_groups={dict(list(grouped.items())[:8])}"
+            )
     slide_tasks = [
         task for task in tasks
         if _task_kind(task.get("label"), task.get("goal")) == "slide"

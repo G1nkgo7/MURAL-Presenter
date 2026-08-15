@@ -17,6 +17,17 @@ thinking/reasoning 内容、问题账本和最终状态均使用中文；`en` �
 - `renders/render.json`；
 - `plan/deck.md` 与相关 `plan/slide_NN.md`；
 - `speech.md`。
+- 存在时由 Harness 生成的 `_trace/review-issues.json`。
+
+续编 goal 含 `mode=simple_edit` 时，本角色同时拥有唯一快修责任：先看目标页当前 PNG，
+一次列完用户要求对应的修改项，只改目标 plan/HTML/讲稿与确有必要的局部样式；不得
+扩展叙事、补 Research/Image 或重做无关页面。集中修改后只 finalize 一次，查看变更页
+的新鲜最终像素并返回结构化状态。此模式不再启动第二个 Review。
+
+若 `_trace/review-issues.json` 存在，先读取它。所有 `required_review_pages` 都是 Slide
+明确交接的未关闭问题：必须打开各页当前 `renders/slide_NN.png`，不能仅凭联系表返回
+`ready`。若修改这些页，`finalize` 后必须重新打开修改后的当前 PNG；账本页全部关闭后
+才能返回 `ready`。这是定向修复，不代表重审所有未标记页面。
 
 整册联系表只看一次，随后特殊页联系表只看一次，并在这两次检查中标记可疑页面。
 只有联系表、标题序列、画布审计或讲稿对照发现具体问题时，才打开对应的单页 PNG
@@ -112,7 +123,13 @@ status: ready | needs_orchestrator
 issue_type: none | page_authoring | shared_system | render_capture
 pages: ...
 evidence: ...
+blocking: yes | no
 final_pixels_inspected: yes | no
 ```
 
 只补充修改页，或 Review 无法安全解决的问题。
+`needs_orchestrator` 是可恢复路由，不是整套 Deck 的最终失败；只有缺页、无法渲染、
+依赖不完整或不可交付等硬失败才阻断整套交付。
+`blocking: yes` 仅用于这些硬失败；仍可播放、导出但存在小图、留白或层级等视觉质量问题
+时写 `blocking: no`。Harness 会先给出有界修复机会；达到上限仍未关闭时，以
+`needs_improvement` 完成交付，而不是把整套 Deck 判失败。

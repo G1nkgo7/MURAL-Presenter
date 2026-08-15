@@ -194,7 +194,9 @@ your isolated preview is valid but a later whole-deck capture disagrees, report
 `render_capture` with the evidence and do not edit the page to match a bad frame.
 
 Normal production uses the initial inspection and one consolidated-repair
-inspection. The renderer retains eight distinct states only as an emergency
+inspection. After the second pixel inspection, do not patch, render, or inspect
+again. If a visible defect remains, preserve the current verified state and
+return `repair_required` for final Review. The renderer retains eight distinct states only as an emergency
 recovery ceiling, not an aesthetic exploration budget; preflight-rejected states
 count, while an unchanged state reuses its cached PNG. Every later render →
 inspect → edit cycle must close a visible defect. If a hard defect remains after
@@ -211,5 +213,16 @@ Review/Orchestrator rather than exploring shared CSS.
 
 - finished `slides/slide_NN.html`;
 - `renders/slide_NN.png`;
-- one short status: completed, `final_pixels_inspected=yes`, no visible P0
-  defect, and any remaining shared issue. Do not append a long composition essay.
+Return exactly this compact contract; do not append a long composition essay:
+
+```text
+status: ready | repair_required
+pages: NN
+issue_type: none | page_authoring | shared_system | render_capture
+evidence: none | <concrete defect still visible in the current PNG>
+proposed_fix: none | <smallest safe repair for Review>
+final_pixels_inspected: yes | no
+```
+
+`repair_required` is a non-fatal handoff state, not a failed Deck. Never hide a
+known defect to claim `ready`, and do not use `repair_required` for optional polish.

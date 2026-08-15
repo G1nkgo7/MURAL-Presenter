@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <style>
+    :root { color-scheme: light; }
+    * { box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: transparent; }
+    body { cursor: none; user-select: none; -webkit-user-select: none; }
+    canvas { width: 100%; height: 100%; display: block; touch-action: pan-y; }
+    .brush {
+      width: 44px;
+      height: 58px;
+      position: fixed;
+      z-index: 4;
+      left: 0;
+      top: 0;
+      opacity: 0;
+      pointer-events: none;
+      transform: translate(-10px, -44px) rotate(-34deg);
+      transition: opacity 120ms ease;
+      filter: drop-shadow(0 7px 5px rgba(22, 47, 40, .28));
+    }
+    .brush.is-visible { opacity: 1; }
+    .brush::before {
+      content: "";
+      width: 27px;
+      height: 20px;
+      position: absolute;
+      left: 1px;
+      bottom: 0;
+      border-radius: 3px 3px 8px 8px;
+      background:
+        repeating-linear-gradient(90deg, rgba(4, 73, 69, .9) 0 3px, rgba(32, 145, 133, .88) 3px 6px),
+        #0c7771;
+      box-shadow: inset 0 6px 0 #d7ab69;
+      clip-path: polygon(0 0, 100% 0, 88% 100%, 8% 92%);
+    }
+    .brush::after {
+      content: "";
+      width: 8px;
+      height: 43px;
+      position: absolute;
+      left: 10px;
+      top: 0;
+      border-radius: 6px;
+      background: linear-gradient(90deg, #895124, #d9903b 48%, #75421d);
+      box-shadow: inset 1px 0 0 rgba(255,255,255,.3);
+    }
+    .hint {
+      padding: 10px 12px;
+      position: fixed;
+      top: 16px;
+      right: 18px;
+      z-index: 3;
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      color: #17383a;
+      border: 1px solid rgba(23, 56, 58, .18);
+      border-radius: 999px;
+      background: rgba(238, 226, 201, .82);
+      box-shadow: 0 10px 28px rgba(27, 58, 50, .09);
+      font: 800 9px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      pointer-events: none;
+      backdrop-filter: blur(12px);
+      transition: opacity .3s ease, transform .3s ease;
+    }
+    .hint i { width: 8px; height: 8px; border-radius: 50%; background: #dc8515; box-shadow: 0 0 0 5px rgba(220,133,21,.14); }
+    .hint.is-quiet { opacity: .44; transform: translateY(-3px); }
+    .meter {
+      height: 3px;
+      position: fixed;
+      right: 18px;
+      bottom: 17px;
+      left: 18px;
+      z-index: 3;
+      overflow: hidden;
+      border-radius: 999px;
+      background: rgba(23, 56, 58, .13);
+      pointer-events: none;
+    }
+    .meter > i { width: 0; height: 100%; display: block; border-radius: inherit; background: linear-gradient(90deg, #0c7771, #42c6b6 72%, #dd8617); transition: width .25s ease; }
+    .reset {
+      padding: 8px 10px;
+      position: fixed;
+      right: 18px;
+      bottom: 27px;
+      z-index: 5;
+      color: rgba(23, 56, 58, .74);
+      border: 0;
+      border-radius: 7px;
+      background: rgba(238, 226, 201, .78);
+      font: 800 8px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+      letter-spacing: .08em;
+      cursor: pointer;
+      opacity: 0;
+      transform: translateY(5px);
+      transition: opacity .2s ease, transform .2s ease, background .2s ease;
+      backdrop-filter: blur(10px);
+    }
+    .reset.is-visible { opacity: 1; transform: none; }
+    .reset:hover { background: #f3e8d1; }
+    @media (max-width: 760px) {
+      body { cursor: auto; }
+      .brush, .hint, .meter, .reset { display: none; }
+      canvas { touch-action: pan-y; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .brush, .hint, .meter > i, .reset { transition: none; }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="plaster" aria-label="Interactive painted wall"></canvas>
+  <div class="brush" aria-hidden="true"></div>
+  <div class="hint"><i></i><span>Move the brush to reveal</span></div>
+  <button class="reset" type="button">Reset wall</button>
+  <div class="meter" aria-hidden="true"><i></i></div>
+  <script>
+    (() => {
+      const canvas = document.querySelector('#plaster');
+      const context = canvas.getContext('2d', { alpha: true });
+      const brush = document.querySelector('.brush');
+      const hint = document.querySelector('.hint');
+      const hintText = hint.querySelector('span');
+      const meter = document.querySelector('.meter > i');
+      const resetButton = document.querySelector('.reset');
+      const isZh = new URLSearchParams(location.search).get('lang') === 'zh';
+      const points = [];
+      let previous = null;
+      let latest = null;
+      let frame = 0;
+      let coverage = 0;
+      let drawingTouch = false;
+
+      document.documentElement.lang = isZh ? 'zh-CN' : 'en';
+      hintText.textContent = isZh ? '移动画笔，让壁画浮现' : 'Move the brush to reveal';
+      resetButton.textContent = isZh ? '重新粉刷' : 'Reset wall';
+      canvas.setAttribute('aria-label', isZh ? '移动鼠标显露壁画' : 'Move the pointer to reveal the mural');
+
+      function fit() {
+        const ratio = Math.min(devicePixelRatio || 1, 2);
+        canvas.width = Math.round(innerWidth * ratio);
+        canvas.height = Math.round(innerHeight * ratio);
+        context.setTransform(ratio, 0, 0, ratio, 0, 0);
+        repaint();
+      }
+
+      function plaster() {
+        context.globalCompositeOperation = 'source-over';
+        context.clearRect(0, 0, innerWidth, innerHeight);
+        const wash = context.createLinearGradient(0, 0, innerWidth, innerHeight);
+        wash.addColorStop(0, 'rgba(234, 223, 198, .82)');
+        wash.addColorStop(.48, 'rgba(232, 221, 197, .75)');
+        wash.addColorStop(1, 'rgba(226, 211, 182, .68)');
+        context.fillStyle = wash;
+        context.fillRect(0, 0, innerWidth, innerHeight);
+        context.fillStyle = 'rgba(95, 78, 54, .055)';
+        const total = Math.min(1300, Math.round(innerWidth * innerHeight / 780));
+        for (let i = 0; i < total; i += 1) {
+          const x = (i * 73.37) % innerWidth;
+          const y = (i * 41.91 + (i % 7) * 19) % innerHeight;
+          const radius = .35 + (i % 4) * .22;
+          context.beginPath();
+          context.arc(x, y, radius, 0, Math.PI * 2);
+          context.fill();
+        }
+      }
+
+      function eraseSegment(a, b) {
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const angle = Math.atan2(dy, dx);
+        context.save();
+        context.globalCompositeOperation = 'destination-out';
+        context.lineCap = 'round';
+        context.lineJoin = 'round';
+        [[76, .22], [58, .48], [42, .78], [27, .98]].forEach(([width, alpha]) => {
+          context.lineWidth = width;
+          context.strokeStyle = `rgba(0,0,0,${alpha})`;
+          context.beginPath();
+          context.moveTo(a.x, a.y);
+          context.lineTo(b.x, b.y);
+          context.stroke();
+        });
+        context.strokeStyle = 'rgba(0,0,0,.72)';
+        context.lineWidth = 5;
+        [-17, -8, 8, 17].forEach((offset) => {
+          const ox = Math.cos(angle + Math.PI / 2) * offset;
+          const oy = Math.sin(angle + Math.PI / 2) * offset;
+          context.beginPath();
+          context.moveTo(a.x + ox, a.y + oy);
+          context.lineTo(b.x + ox, b.y + oy);
+          context.stroke();
+        });
+        context.restore();
+      }
+
+      function replay() {
+        if (points.length < 2) return;
+        for (let i = 1; i < points.length; i += 1) {
+          eraseSegment(
+            { x: points[i - 1].x * innerWidth, y: points[i - 1].y * innerHeight },
+            { x: points[i].x * innerWidth, y: points[i].y * innerHeight }
+          );
+        }
+      }
+
+      function repaint() { plaster(); replay(); }
+
+      function paint(point) {
+        if (!previous) previous = point;
+        const distance = Math.hypot(point.x - previous.x, point.y - previous.y);
+        eraseSegment(previous, point);
+        if (distance > 1) {
+          coverage = Math.min(100, coverage + distance * 56 / Math.max(1, innerWidth * innerHeight) * 100);
+          meter.style.width = `${coverage}%`;
+          points.push({ x: point.x / innerWidth, y: point.y / innerHeight });
+        }
+        previous = point;
+        if (points.length > 1) {
+          hint.classList.add('is-quiet');
+          resetButton.classList.add('is-visible');
+        }
+      }
+
+      function flush() {
+        frame = 0;
+        if (!latest) return;
+        paint(latest);
+        latest = null;
+      }
+
+      function queue(point) {
+        latest = point;
+        if (!frame) frame = requestAnimationFrame(flush);
+      }
+
+      canvas.addEventListener('pointerenter', (event) => {
+        if (event.pointerType === 'mouse') brush.classList.add('is-visible');
+      });
+      canvas.addEventListener('pointerleave', () => {
+        brush.classList.remove('is-visible');
+        previous = null;
+      });
+      canvas.addEventListener('pointermove', (event) => {
+        brush.style.left = `${event.clientX}px`;
+        brush.style.top = `${event.clientY}px`;
+        if (event.pointerType === 'mouse' || drawingTouch) queue({ x: event.clientX, y: event.clientY });
+      });
+      canvas.addEventListener('mousemove', (event) => {
+        brush.classList.add('is-visible');
+        brush.style.left = `${event.clientX}px`;
+        brush.style.top = `${event.clientY}px`;
+        queue({ x: event.clientX, y: event.clientY });
+      });
+      window.addEventListener('mousemove', (event) => {
+        brush.classList.add('is-visible');
+        brush.style.left = `${event.clientX}px`;
+        brush.style.top = `${event.clientY}px`;
+        queue({ x: event.clientX, y: event.clientY });
+      });
+      window.addEventListener('mouseover', () => brush.classList.add('is-visible'));
+      canvas.addEventListener('mouseenter', () => brush.classList.add('is-visible'));
+      canvas.addEventListener('mouseleave', () => { brush.classList.remove('is-visible'); previous = null; });
+      canvas.addEventListener('pointerdown', (event) => {
+        if (event.pointerType !== 'mouse') drawingTouch = true;
+        previous = { x: event.clientX, y: event.clientY };
+        queue(previous);
+      });
+      canvas.addEventListener('pointerup', () => { drawingTouch = false; previous = null; });
+      canvas.addEventListener('pointercancel', () => { drawingTouch = false; previous = null; });
+      resetButton.addEventListener('pointerenter', () => brush.classList.remove('is-visible'));
+      resetButton.addEventListener('click', () => {
+        points.length = 0;
+        previous = null;
+        coverage = 0;
+        meter.style.width = '0%';
+        hint.classList.remove('is-quiet');
+        resetButton.classList.remove('is-visible');
+        repaint();
+      });
+      addEventListener('resize', fit, { passive: true });
+      fit();
+    })();
+  </script>
+</body>
+</html>

@@ -11,8 +11,8 @@ export const metadata: Metadata = {
   description:
     "Multi-Agent Unified Revision-Aware Authoring for Long-Horizon Presentations.",
   icons: {
-    icon: "/favicon.png",
-    shortcut: "/favicon.png",
+    icon: "/favicon-v2.png",
+    shortcut: "/favicon-v2.png",
   },
   openGraph: {
     title: "MURAL Presenter — A presentation is not a stack of slides",

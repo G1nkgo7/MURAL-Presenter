@@ -5,7 +5,6 @@ type Language = "en" | "zh";
 const copy = {
   en: {
     home: "Project home",
-    blog: "Launch article",
     language: "中文",
     languageHref: "/zh/paper",
     eyebrow: "MURAL Presenter · Research manuscript",
@@ -31,7 +30,6 @@ const copy = {
   },
   zh: {
     home: "项目主页",
-    blog: "宣传文章",
     language: "English",
     languageHref: "/paper",
     eyebrow: "MURAL Presenter · 论文工作稿",
@@ -60,7 +58,6 @@ export function PaperPage({ language }: { language: Language }) {
   const t = copy[language];
   const isZh = language === "zh";
   const homeHref = isZh ? "/zh" : "/";
-  const blogHref = isZh ? "/zh/blog" : "/blog";
   const pdfHref = isZh ? "/mural-paper-zh.pdf" : "/mural-paper.pdf";
   const coverHref = isZh ? "/mural-paper-cover-zh.png" : "/mural-paper-cover-en.png";
 
@@ -72,7 +69,6 @@ export function PaperPage({ language }: { language: Language }) {
         </a>
         <nav aria-label={isZh ? "论文导航" : "Paper navigation"}>
           <a href={homeHref}>{t.home}</a>
-          <a href={blogHref}>{t.blog}</a>
           <a href="https://github.com/G1nkgo7/MURAL-Presenter" target="_blank" rel="noreferrer">GitHub ↗</a>
         </nav>
         <a className="language-link" href={t.languageHref}>{t.language}</a>

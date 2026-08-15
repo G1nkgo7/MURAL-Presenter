@@ -8,40 +8,49 @@ description: English instructions for producing audience-facing 1600×900 static
 Produce coherent, evidence-led presentations that are readable in a room and
 visually authored rather than assembled from a default card template.
 
+The runtime capability contract injected by the Harness before execution selects
+the optional stages and tools for this run. Never delegate or simulate an omitted
+Material, Research, or Image role; follow the contract's direct handoff instead.
+
 ## Roles and outputs
 
 | Role | Canonical output |
 |---|---|
 | Orchestrator | `plan/deck.md`, every `plan/slide_NN.md`, delegation, delivery |
-| Material | `research/material.md` only when attachments exist |
-| Research | one `research/knowledge-brief.md` |
-| Image | local imagery plus one `assets/catalog.md` and contact sheet |
+| Material | one `research/material.md` when attachments exist and runtime enables it |
+| Research | one `research/knowledge-brief.md` when search and runtime enable it |
+| Image | local imagery plus one `assets/catalog.md` when search or generation enables it |
 | Slide | one finished `slides/slide_NN.html` and PNG-driven repair |
 | Review | final whole-deck pixel and speech-alignment decision |
 
 ## Workflow
 
 ```text
-Material when needed
-→ one Research brief
+Material when runtime-enabled
+→ one Research brief when runtime-enabled
 → deck.md + slide_NN.md
 → validate-plans
 → scaffold-from-plans + sync-speech
-→ Image and code_only / none Slides in parallel
-→ preferred Slides after resolve-or-skip decisions
-→ required Slides after their assets resolve
+→ finish Image separately when its route is available and raster imagery is needed
+→ after Image handoff, queue every one-page Slide in one parallel worker wave
 → finalize
 → Review; if changed, finalize and inspect again
 → delivery
 ```
 
-For a long deck, Orchestrator may write consecutive small groups of page Markdown
-files. Missing files are resumed directly by page number.
+Keep one Markdown file per page without spending one model turn per page. Finish
+an 8-page deck in one or two batches; for longer decks, use consecutive groups of
+4–6 pages. In one response, use standard `write_file` to create the sole
+`plan/plan-batch.json` (`{"files":[{"path","content"},...]}`), then immediately run
+`deck.py apply-plan-batch .` to split it deterministically and remove the manifest.
+On recovery, continue batching while several pages remain; only the final single
+missing page may be written directly to `plan/slide_NN.md`.
 Research maintains one canonical brief: when evidence spans several themes it
 creates stable sections early and fills only incomplete sections, rather than
 retrying one monolithic final write or duplicating the same ledger elsewhere.
-Production always assigns one Slide Agent per page. All `Slide NN:` tasks may
-run in one parallel wave, but they must never be merged into a SlideGroup. v0.2
+Production always assigns one Slide Agent per page. After Image handoff, all
+`Slide NN:` tasks enter one work-conserving parallel queue, but they must never
+be merged into a SlideGroup. v0.2
 deliberately matches the single-page training distribution.
 Except for purely transformative/fictional work, a user prohibition on network
 research, or attachments with complete evidence, Research actually issues the
@@ -219,6 +228,29 @@ A `required` page cannot pass build unless a resolved raster path is both assign
 in the catalog and actually referenced by its HTML. Transparency checkerboards
 are inspected and, only when safely detected, removed by the supplied script.
 
+## Editing an existing presentation
+
+A continuation starts with a read-only inspection of the current plan, HTML,
+assets, speech, and renders, then locks one route by impact.
+
+A **simple edit** keeps the core argument, page order, page responsibilities,
+cross-page narrative, factual evidence, assets, deck-wide style, fonts, and shared
+structures valid, with a clearly bounded change. Delegate exactly one
+`Review: mode=simple_edit`; its goal names the verbatim user revision, target pages,
+and invariants. Review applies the coordinated patch, synchronizes plan and speech,
+finalizes, and inspects fresh pixels. Do not delegate Research, Material, Image,
+Slide, or another Review, and Orchestrator never edits Slide HTML directly.
+
+Any unmet condition makes the change a **complex edit**. Topic or named-entity
+correction, factual/evidence change, narrative/order/page-responsibility change,
+new asset need, global style/font/shared-structure change, or uncertain scope all
+force this route. Before mutation, Orchestrator writes `plan/revision-impact.md`
+covering facts, narrative, page order, global style, assets, pages, and speech.
+Reuse only valid artifacts, delegate only missing Research/Material/Image work,
+and assign one `Slide NN:` for each affected page. After affected pages close,
+finalize and delegate exactly one `Review: mode=final_review` for whole-deck
+consistency. Preserve every unaffected page and asset.
+
 ## Slide refinement
 
 Slide fills the page before its first render, then uses the real PNG for one
@@ -264,6 +296,7 @@ audits flag nothing, Review returns ready without precautionary single-page chec
 ## Commands
 
 ```bash
+python skills/mural-presenter-v0-2-en/scripts/deck.py apply-plan-batch .
 python skills/mural-presenter-v0-2-en/scripts/deck.py validate-plans . --expected N
 python skills/mural-presenter-v0-2-en/scripts/deck.py scaffold-from-plans . --expected N
 python skills/mural-presenter-v0-2-en/scripts/deck.py sync-speech . --expected N

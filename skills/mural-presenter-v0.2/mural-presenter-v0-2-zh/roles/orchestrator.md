@@ -5,11 +5,17 @@
 把用户需求与 Research brief 组织成一套完整 Deck：确定面向听众的论证和视觉语法，
 定版标题序列，写全局与逐页计划，协调 Image/Slide，并交付 Review 通过的结果。
 
+Harness 会在每次任务开始前注入运行时能力合同。该合同决定本次实际存在的角色和工具，
+优先于下文对完整能力形态的描述：未列出的 Material、Research 或 Image 不得委派，
+也不得用文字假装执行；直接沿合同指定的交接路径继续。
+
 所有子任务 goal 使用原始 query 在 `Resolved deck brief` 中锁定的语言。
 
 ## 任务解析
 
 - 用户明确指定语言、页数、受众或图片偏好时严格遵从。
+- Research 前不得删除、替换或泛化原始 query 的中心实体与类型词。委派给 Research 的
+  goal 只是待核验假设；Research 返回的实体消歧结论优先于该假设。
 - 未指定时，根据请求的主要语言、受众、主题复杂度和汇报场景判断；说明版语言与成品
   语言无关。
 - 不因 query 简短就推断成一套很小、很薄的 Deck。一句话请求应视为尚未展开的 brief：
@@ -17,26 +23,34 @@
 - Research 后，在 `plan/deck.md` 的 `## Resolved deck brief` 中写入
   `language`、`page_count`、`audience`、`image_mode` 和一行 `rationale`。
 - 后续逐页计划与所有角色都以此为内部真相，不再漂移页数、语言或视觉媒介策略。
-- 没有附件时直接进入 Research，不创建 Material，也不花回合解释为何跳过。
+- 没有附件时不创建 Material；Research 仅在运行时能力合同启用时执行，否则直接基于
+  原始 query 规划，并把无法核实的实体或事实明确保留为边界。
 
 ## 顺序
 
-1. 有附件时委派一个 `Material:`。
-2. 委派一个聚焦的 `Research:`，读取 `research/knowledge-brief.md`。
+1. 运行时合同启用 Material 时委派一个 `Material:`。Material 完成前不得读取 `inputs/**`；完成后只读取
+   `research/material.md`。把用户指定或 Harness 推导的 `evidence_scope` 原样传给
+   Material/Research；`attachment_only` 绝不能被改成开放检索。
+2. 运行时合同启用 Research 时委派一个聚焦的 `Research:`。Harness 会独立附带未经
+   改写的 `raw_user_query`；读取 `research/knowledge-brief.md` 并以其中的实体消歧
+   结论锁定主题。Research 被省略且已有 Material 时，直接读取 `research/material.md`。
 3. 读取 `references/plan-contract.md` 与 `references/page-patterns.md`；图片、字体或
    图表参考只在本案例需要时读取。
 4. 写 `plan/deck.md`。
-5. 写全部 `plan/slide_NN.md`。长 Deck 可以分批写计划并从缺页续写，但生产委派仍
-   必须是一页一个 `Slide NN:`，不创建 SlideGroup。
+5. 写全部 `plan/slide_NN.md`。首次规划使用标准 `write_file` 写
+   `plan/plan-batch.json`，再运行 `deck.py apply-plan-batch .`：8 页用 1–2 批，长 Deck
+   每批连续 4–6 页；不得逐页制造串行模型回合。中断后多页缺失仍批量补，只有最后一个
+   缺页可直接写入。生产委派仍必须是一页一个 `Slide NN:`，不创建 SlideGroup。
 6. 运行 `validate-plans`，一次修完完整报错集合，再运行 `scaffold-from-plans`。
    脚本会应用 Theme Tokens、生成轻 HTML 骨架并汇总初版 `speech.md`。
-7. 若需要位图，把一个 `Image:` 与视觉需求为 `code_only` 或 `none` 的 Slide 放在
-   同一个 `delegate_task` 批次并行；每个 Slide task 只拥有一页。
+7. 若需要位图，先在一个独立 `delegate_task` 中完成唯一 `Image:`。不要把 Image 与
+   `code_only` / `none` Slide 放进同一个同步批次；否则一个慢页面会阻塞已经完成的
+   Image 交接。
 8. Image 对每个 `preferred` 返回已解析或已跳过、对每个 `required` 返回就绪或失败后，
-   统一委派全部 `preferred` 和已就绪的 `required` Slide。已解析的 `preferred` 使用
-   catalog 素材；已跳过的采用逐页计划中已有的降级方案。`required` 失败时，先委派一次
-   定向 Image 修复，再启动对应 Slide。若不需要 Image，一次委派全部 Slide；此处不要
-   重读 `base.css` 或重新整理一遍 Image 的 catalog 工作。
+   把全部单页 Slide 一次性放入同一个工作队列。已解析的 `preferred` 使用 catalog
+   素材；已跳过的采用逐页计划中的降级方案。`required` 失败时先定向修复 Image，
+   再提交全部可启动 Slide。若不需要 Image，直接一次提交全部 Slide；每个 task 只拥有
+   一页。此处不要重读 `base.css` 或重新整理 Image 的 catalog 工作。
 9. `finalize` 前读取精简的 Slide 状态。若多张特殊页报告同一个共享结构问题，
    先修一次共享 plan/token 并只重跑受影响 Slide，不要等整册 Review 再发现。
 10. 直接运行一次 `finalize`。Slide 完成到这一步之间不要另跑 `build`、逐页
@@ -77,6 +91,14 @@ Review goal 只要求审查刚完成的整册并返回结构化状态；不要�
 文件。读取 brief 后，把有用证据分配进具体逐页计划，不要让它们停留在
 `knowledge-brief.md` 中无人使用。
 附件承担的核心论点、定义、方法与结果必须进入对应页的屏显证据包，不能只进入讲稿。
+
+## 续编编辑路由
+
+续编时先只读检查，按入口 Skill 的“编辑现有 PPT”锁定 `simple_edit` 或
+`complex_edit`。简单编辑不自行改页，只委派唯一 Review。复杂编辑必须先写
+`plan/revision-impact.md`，再按影响图调度必要证据/素材角色与受影响的单页 Slide；
+不得因为用户指令很短就把主题实体纠正降级为换字。最终 Review 必须显式使用
+`mode=final_review`。
 
 ## 全局计划
 

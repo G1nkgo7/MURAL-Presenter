@@ -20,7 +20,7 @@
 | --- | --- | --- |
 | `--font-sans` | Noto Sans SC | 正文、表格、图表标注；Google Fonts / OFL |
 | `--font-serif` | Noto Serif SC，Spectral | 中文编辑标题与拉丁衬线补充；Google Fonts / OFL |
-| `--font-hei-heavy` | Noto Sans SC 900 | 超粗 hero；需要窄斜展示效果时可显式选 Smiley Sans（官方项目 / OFL） |
+| `--font-title` / `--font-hei-heavy` | Smiley Sans，Noto Sans SC | 默认演讲标题与短 hero 先走 Smiley Sans；正式/严谨场景回到 Noto Sans SC 或 Noto Serif SC；官方项目 / OFL |
 | `--font-brush` | Ma Shan Zheng | 书法主标题、金句；Google Fonts / OFL |
 | `--font-kai` | Xiaolai，LXGW WenKai | 清晰硬笔感章节、引言和人文标题；官方项目 / OFL |
 | `--font-write` | Xiaolai | 工整批注、引语和短标题；官方项目 / OFL |
@@ -51,14 +51,16 @@
 
 ## 3. 使用规则
 
+- **默认按“投影演讲”而不是“屏幕文档”路由标题**：普通演讲、产品、品牌、课程、叙事与大众传播场景，短标题默认使用 `--font-title` / `--font-hei-heavy` 的 Smiley Sans 首选栈，正文继续使用 Noto Sans SC。Smiley Sans 在这里是全册稳定的标题声部，不等同于卡通点缀，标题元素无需额外添加 `.is-expressive-type`；它不承担正文、表格、脚注或长段落。政务、法律、医疗、正式学术答辩与其他严谨场合必须在 Style Lock 中改写为 Noto Sans SC / Noto Serif SC。
+- Style Lock 必须显式填写 `title_voice`、`title_scale`、`title_treatment`、`body_voice`、`numeric_voice` 与 `font_roles`。默认 `title_voice` 应与正文形成可见反差；除正式/严谨场景外，不得无理由让标题和正文都落在同一套 Noto Sans SC 常规字阶上。
 - 正文、表格和图表标注固定用 `--font-sans`；代码与技术编号才用 `--font-mono`。
 - `--font-number` 按语义选择：报告用 sans/grotesque，编辑叙事用 serif/display-serif，海报用 heavy/playful，工程读数才用 mono。
 - 中文信息标题先服从 Style Lock 与场合：严谨报告使用 Noto Sans/Serif SC，表达型人文、课堂、手作或文旅页面可使用 Xiaolai / LXGW WenKai 承担章节、引言或短标题。不要因题材里出现“科技”“数据”就机械切成卡通黑体，也不要把硬笔体用于党政、法律、医疗等严肃信息正文。草书只用于 ≥48px 且足够短、且主题确实需要书写性的封面、hero 或金句。
 - 中文眉签、页脚、部门名、元数据和短标签默认使用 `--font-sans` 或 `--font-serif`，字距为 `0–0.03em`，允许范围 `-0.01–0.06em`；不得使用 `--font-mono`、`--tracking-caps` 或超过 `0.08em` 的字距。只有纯拉丁 ALL CAPS、代码、API、坐标和真实编号可使用 mono 与疏字距。
 - 同一句中文标题、结论、按钮或标签只用一个字体家族。局部强调只改颜色、字重、字号或装饰线，不把强调词换成另一套字体；“普通黑体 + 卡通强调字”属于硬伤。
-- 卡通、圆趣、手写、书法字体是场景化角色，不是全局默认，也不是全局禁用。童趣、漫画、手作、课堂、私人手账、文旅与明确书写性主题可以主动选择；政务、法律、医疗、严谨学术与正式商务通常不选。使用时在元素上添加 `.is-expressive-type` 或 `data-type-intent="expressive"`；没有声明时渲染器会判为字体语义错误。
+- 卡通、圆趣、手写、书法字体是场景化角色，不是全局默认，也不是全局禁用。童趣、漫画、手作、课堂、私人手账、文旅与明确书写性主题可以主动选择；政务、法律、医疗、严谨学术与正式商务通常不选。除作为默认短标题声部的 Smiley Sans 外，使用时在元素上添加 `.is-expressive-type` 或 `data-type-intent="expressive"`；没有声明时渲染器会判为字体语义错误。
 - 连笔签名字体只承担短语和名字；马克笔/板书体适合教学提示和海报批注，均不承担长正文。
-- **全册字体家族总数 ≤ 3(硬约束)**：整册（跨全部页面）最多出现 **3 个**字体家族，且必须全册统一——同一角色在每一页都用同一家族，不因页面题材临时换字体。典型的三族分工：中文标题/正文一族（Noto Sans SC 或按场合的中文展示体）+ 拉丁/数字一族（如 Archivo / IBM Plex Sans）+ 至多一个合题点缀族（书法/手写/展示，仅在主题真正需要时）。严谨型 deck 收敛到 **1–2 族**即可。字体数量不是质量目标：宁可少而统一，也不要每页换花样。
+- **字体角色按场景收放，硬上限为 4 族**：严谨型 deck 收敛到 **1–2 族**；常规演讲使用 **2–3 个稳定角色**（标题、正文、数字/拉丁）；明确表达型演讲可使用 **3–4 个稳定角色**，第 4 族只能承担一次明确的手写/书法/展示点缀。家族数不是质量目标；同一角色跨页必须统一，同一句中文仍只用一个家族，禁止逐页换花样。
 - 中文正文、表格、图表标注、页脚、眉签、页码一律用 `--font-sans`（严谨衬线场景可用 `--font-serif`），**绝不用 `--font-mono` 承载中文**——IBM Plex Mono 无中文字形，中文落进去会回退成系统里的卡通/手写体。`--font-mono` 只服务纯拉丁代码、坐标、API、真实编号。
 - 中文必须保留 Noto Sans/Serif SC 兜底，避免拉丁展示体缺中文字形时出现豆腐块。
 
@@ -68,9 +70,10 @@
 
 | 预设 | 中文标题 | 正文 | 英文 / 数字 | 可选点缀 |
 | --- | --- | --- | --- | --- |
+| `presentation-default` 普通演讲、课程、叙事 | Smiley Sans | Noto Sans SC | Archivo | 无或一个合题点缀 |
 | `formal-business` 政务、管理、销售 | Noto Sans SC 800/900 | Noto Sans SC | Archivo | 无；中文眉签仍用 Noto Sans SC |
 | `academic-editorial` 学术、人文 | Noto Serif SC 700/900 | Noto Sans SC | Spectral / Archivo | LXGW WenKai 短引言 |
-| `tech-product` 科技、产品、工程 | Noto Sans SC 800/900 | Noto Sans SC | Sora / Space Grotesk / Archivo | IBM Plex Mono 仅代码与接口 |
+| `tech-product` 科技、产品、工程 | Smiley Sans / Noto Sans SC 900 | Noto Sans SC | Sora / Space Grotesk / Archivo | IBM Plex Mono 仅代码与接口 |
 | `brand-editorial` 品牌、杂志、奢华 | Noto Serif SC / ZCOOL XiaoWei | Noto Sans SC | Playfair Display / Fraunces | 无或一次短引语 |
 | `culture-travel` 文旅、文化 | Noto Serif SC / ZCOOL XiaoWei | Noto Sans SC | Archivo | LXGW WenKai；Ma Shan Zheng 仅一次短大字 |
 | `children-comic` 儿童、漫画、手作 | ZCOOL KuaiLe | Noto Sans SC | Patrick Hand | Xiaolai 短批注 |

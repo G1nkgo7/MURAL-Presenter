@@ -37,6 +37,13 @@ SKILL_NAME_EN = os.environ.get("CLEAN_SKILL_NAME_EN", f"{SKILL_NAME}-en")
 
 ANTHROPIC_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-opus-4-7-thinking")
 NOVA_RAW_V2 = os.environ.get("CLEAN_NOVA_RAW_V2", "0") == "1"
+# Frozen Gate compatibility profile from nova_vision_demo tag
+# ``sensenova-harness-vision-v1.1-20260815``.  The legacy exact-raw profile
+# remains the default; only the mainline launcher enables this explicitly.
+NOVA_GATE_V1 = os.environ.get("CLEAN_NOVA_GATE_V1", "0") == "1"
+NOVA_GATE_AGENT_MODEL = os.environ.get(
+    "CLEAN_NOVA_GATE_AGENT_MODEL", "claude-opus-5"
+).strip() or "claude-opus-5"
 NOVA_PROXY_BASE_URL = os.environ.get("NOVA_PROXY_BASE_URL", "").strip().rstrip("/")
 NOVA_VISION_PROXY_BASE_URL = os.environ.get(
     "NOVA_VISION_PROXY_BASE_URL", NOVA_PROXY_BASE_URL
@@ -88,6 +95,9 @@ MAX_HEALS = max(1, int(os.environ.get("CLEAN_MAX_HEALS", "4")))
 # work. There is no separate Slide deadline.
 DECK_TIMEOUT_S = int(os.environ.get("CLEAN_DECK_TIMEOUT", "86400"))
 CHILD_WALL_TIMEOUT_S = int(os.environ.get("CLEAN_CHILD_WALL_TIMEOUT", "2400"))
+REVIEW_MAX_ATTEMPTS = max(
+    1, int(os.environ.get("CLEAN_REVIEW_MAX_ATTEMPTS", "2"))
+)
 
 # Generic liveness guards. These do not constrain PPT content or design; they
 # only stop a role that is demonstrably repeating the same action/result or the
@@ -126,7 +136,7 @@ HISTORY_KEEP_RECENT_MESSAGES = max(
 # executor and are never cancelled or resized.
 CHILD_CONCURRENCY = max(
     1,
-    int(os.environ.get("CLEAN_CHILD_CONCURRENCY", "4")),
+    int(os.environ.get("CLEAN_CHILD_CONCURRENCY", "12")),
 )
 CHILD_POOL_MAX_WORKERS = max(
     CHILD_CONCURRENCY,
@@ -155,7 +165,24 @@ IMAGE_BASE_URL = os.environ.get("IMAGE_BASE_URL", OPENAI_BASE_URL)
 IMAGE_MODEL = os.environ.get("IMAGE_MODEL", "gpt-image-2-pro-all")
 BASH_TIMEOUT_S = int(os.environ.get("CLEAN_BASH_TIMEOUT", "300"))
 MAX_VISION_EDGE = int(os.environ.get("MAX_VISION_EDGE", "1600"))
-VISION_BACKEND = os.environ.get("VISION_BACKEND", "native").strip().lower()
+# v0.2 deliberately keeps pixel inspection on the same model as the acting
+# Agent.  The shared WebUI environment historically uses ``one_shot`` for the
+# older MURAL harness, but this clean harness must not silently imply that an
+# auxiliary model is active.  Treat those shared-environment aliases as an
+# explicit same-model/native request and expose both values in the trace.
+VISION_BACKEND_REQUESTED = os.environ.get("VISION_BACKEND", "native").strip().lower()
+VISION_BACKEND = (
+    "native"
+    if VISION_BACKEND_REQUESTED in {
+        "native",
+        "same_model",
+        "same-model",
+        "one_shot",
+        "oneshot",
+        "internal_one_shot",
+    }
+    else VISION_BACKEND_REQUESTED
+)
 VISION_GEMINI_MODEL = os.environ.get(
     "VISION_GEMINI_MODEL",
     "gemini-3.5-flash",

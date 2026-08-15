@@ -1619,13 +1619,14 @@ function renderHistoryRows() {
     button.setAttribute("aria-expanded", collapsed ? "false" : "true");
     setHistoryGroupCollapsed(section.dataset.historyGroup, collapsed);
   }));
-  $$("#deck-list .deck-item").forEach((a) =>
-    (a.onclick = (e) => {
-      if (e.target.classList.contains("del-btn")) return;
-      e.preventDefault(); a.dataset.kind === "dynamic" ? openDynamic(a.dataset.id) : openDeck(+a.dataset.id);
+  $$("#deck-list .deck-item").forEach((item) =>
+    (item.onclick = (event) => {
+      if (event.target.classList.contains("del-btn")) return;
+      event.preventDefault();
+      item.dataset.kind === "dynamic" ? openDynamic(item.dataset.id) : openDeck(+item.dataset.id);
     }));
-  $$("#deck-list .deck-item").forEach((a) => (a.oncontextmenu = trajectoryMode ? null : (event) => {
-    event.preventDefault(); event.stopPropagation(); openHistoryContextMenu(a, event.clientX, event.clientY);
+  $$("#deck-list .deck-item").forEach((item) => (item.oncontextmenu = trajectoryMode ? null : (event) => {
+    event.preventDefault(); event.stopPropagation(); openHistoryContextMenu(item, event.clientX, event.clientY);
   }));
   $$("#deck-list .del-btn").forEach((button) => {
     if (trajectoryMode) { button.hidden = true; return; }

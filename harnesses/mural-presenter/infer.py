@@ -52,6 +52,15 @@ SKILL_BY_LANGUAGE = {
     "zh": "mural-presenter",
     "en": "mural-presenter",
 }
+SKILL_ENTRY_BY_LANGUAGE = {
+    "zh": "SKILL.md",
+    "en": "SKILL.en.md",
+}
+CREATIVE_SKILL_ENTRY_BY_LANGUAGE = {
+    "zh": "SKILL.creative.md",
+    "en": "SKILL.creative.en.md",
+}
+AUTHORING_PROFILES = {"stable", "creative"}
 DELIVERY_REPAIR_ATTEMPTS = max(
     0, int(os.environ.get("DELIVERY_REPAIR_ATTEMPTS", "3") or "3")
 )
@@ -111,7 +120,7 @@ You are an autonomous creative agent that completes tasks through tools, the fil
 
 Fixed task identity (highest priority):
 - This invocation is always a **static HTML presentation production task**, not open-domain chat. Treat the first user message as the presentation brief.
-- You must read `skills/mural-presenter/SKILL.md`, use tools, and actually deliver per-slide HTML pages (1600×900, 16:9), rendered images, a page-aligned speaker script, and the portable player. Do not stop after a generic greeting or capability statement.
+- You must read `skills/mural-presenter/SKILL.en.md`, use tools, and actually deliver per-slide HTML pages (1600×900, 16:9), rendered images, a page-aligned speaker script, and the portable player. Do not stop after a generic greeting or capability statement.
 - Even if the brief is only `test`, `hello`, or another underspecified phrase, interpret it as a presentation workflow smoke test and autonomously create a short but complete sample deck with at least a cover, a content slide, and a closing slide. Do not ask a follow-up question or finish empty-handed.
 
 Working method:
@@ -123,7 +132,7 @@ Working method:
 - Every turn must end in either one tool call or a final prose summary. Thinking must lead immediately to an action or conclusion.
 
 Available Skill:
-- mural-presenter (`skills/mural-presenter/SKILL.md`): create or edit a complete static HTML presentation workflow.
+- mural-presenter (`skills/mural-presenter/SKILL.en.md`): create or edit a complete static HTML presentation workflow.
 """
 
 SUBAGENT_SYSTEM = """\
@@ -232,18 +241,49 @@ def _skill_tree_hash(skill_dir):
     return digest.hexdigest(), files
 
 
-def _snapshot_skill(run_dir, skill_name=None, language="zh"):
+def _normalize_authoring_profile(value=None):
+    profile = str(
+        value or os.environ.get("MURAL_AUTHORING_PROFILE") or "stable"
+    ).strip().lower()
+    if profile not in AUTHORING_PROFILES:
+        raise ValueError(
+            f"unsupported MURAL authoring profile {profile!r}; expected stable or creative"
+        )
+    return profile
+
+
+def _entry_for(language="zh", authoring_profile="stable"):
+    selected_language = "en" if str(language).lower() == "en" else "zh"
+    profile = _normalize_authoring_profile(authoring_profile)
+    entries = (
+        CREATIVE_SKILL_ENTRY_BY_LANGUAGE
+        if profile == "creative" else SKILL_ENTRY_BY_LANGUAGE
+    )
+    return entries[selected_language]
+
+
+def _snapshot_skill(
+    run_dir, skill_name=None, language="zh", authoring_profile="stable"
+):
     """Materialize the selected Skill into the Deck and record an immutable hash.
 
     A persisted Deck must never point at the mutable production checkout.  Revisions keep
     the snapshot already stored in the Deck; legacy symlinks are materialized once.
     """
-    skill_name = skill_name or SKILL_BY_LANGUAGE["zh"]
+    selected_language = "en" if str(language).lower() == "en" else "zh"
+    skill_name = skill_name or SKILL_BY_LANGUAGE[selected_language]
     if skill_name not in set(SKILL_BY_LANGUAGE.values()):
         raise ValueError(f"unsupported frozen Skill: {skill_name}")
     source = os.path.join(SKILLS_DIR, skill_name)
     if not os.path.isdir(source):
         raise FileNotFoundError(f"{skill_name} Skill 不存在: {source}")
+    selected_profile = _normalize_authoring_profile(authoring_profile)
+    selected_entry = _entry_for(selected_language, selected_profile)
+    source_entry = os.path.join(source, selected_entry)
+    if not os.path.isfile(source_entry):
+        raise FileNotFoundError(
+            f"{skill_name} Skill 缺少 {selected_language} 入口: {source_entry}"
+        )
     skills_root = os.path.join(run_dir, "skills")
     selected = os.path.join(skills_root, skill_name)
     legacy_symlink = os.path.islink(skills_root) or os.path.islink(selected)
@@ -259,12 +299,26 @@ def _snapshot_skill(run_dir, skill_name=None, language="zh"):
             selected,
             ignore=shutil.ignore_patterns("__pycache__", ".pytest_cache", "*.pyc"),
         )
+    actual_entry = selected_entry
+    if not os.path.isfile(os.path.join(selected, actual_entry)):
+        # Preserve immutable legacy Deck snapshots.  An old Chinese-only Deck
+        # can still receive an English revision: visible responses remain
+        # English, while the runtime falls back to its frozen Chinese contract
+        # instead of mutating the snapshot with current release files.
+        actual_entry = "SKILL.md"
+    if not os.path.isfile(os.path.join(selected, actual_entry)):
+        raise FileNotFoundError(
+            f"{skill_name} Deck 快照缺少可用入口: {selected}"
+        )
     tree_sha256, files = _skill_tree_hash(selected)
     trace_dir = os.path.join(run_dir, "_trace")
     os.makedirs(trace_dir, exist_ok=True)
     manifest = {
         "skill": skill_name,
-        "language": "en" if str(language).lower() == "en" else "zh",
+        "language": selected_language,
+        "authoring_profile": selected_profile,
+        "entry": actual_entry,
+        "requested_entry": selected_entry,
         "tree_sha256": tree_sha256,
         "files": files,
         "captured_at_epoch": time.time(),
@@ -280,6 +334,32 @@ def _snapshot_skill(run_dir, skill_name=None, language="zh"):
         os.fsync(stream.fileno())
     os.replace(temporary, target)
     return skills_root
+
+
+def _orchestrator_system(
+    language, skills_root, skill_name, authoring_profile="stable"
+):
+    """Select the localized system prompt without breaking legacy snapshots."""
+    entry = _entry_for(language, authoring_profile)
+    if str(language).lower() != "en":
+        return BASE_SYSTEM.replace("SKILL.md", entry)
+    english_entry = os.path.join(
+        str(skills_root or ""), str(skill_name or ""), entry
+    )
+    if os.path.isfile(english_entry):
+        return BASE_SYSTEM_EN.replace("SKILL.en.md", entry)
+    return BASE_SYSTEM_EN.replace("SKILL.en.md", "SKILL.md")
+
+
+def _workspace_authoring_profile(ws):
+    manifest_path = os.path.join(ws, "_trace", "skill-snapshot.json")
+    try:
+        with open(manifest_path, "r", encoding="utf-8") as stream:
+            return _normalize_authoring_profile(
+                json.load(stream).get("authoring_profile") or "stable"
+            )
+    except (OSError, ValueError, TypeError):
+        return "stable"
 
 
 # New decks snapshot canonical Skill names; older decks may carry legacy release
@@ -463,6 +543,28 @@ def _delivery_audit(ws, expected):
         detail = (proc.stderr or proc.stdout or f"exit={proc.returncode}").strip()
         return False, "交付依赖审计失败: " + detail[-1200:]
     return True, "ok"
+
+
+def _delivery_advisories(ws):
+    """Read non-blocking deterministic Skill findings emitted by deck.py audit."""
+    path = os.path.join(ws, "_trace", "delivery-warnings.json")
+    try:
+        payload = json.loads(open(path, encoding="utf-8").read())
+    except (OSError, ValueError, TypeError):
+        return []
+    items = payload.get("warnings") if isinstance(payload, dict) else None
+    if not isinstance(items, list):
+        return []
+    warnings = []
+    for item in items:
+        if isinstance(item, dict):
+            code = str(item.get("code") or "delivery_advisory")
+            message = str(item.get("message") or "").strip()
+            if message:
+                warnings.append(f"{code}: {message}")
+        elif str(item).strip():
+            warnings.append(str(item).strip())
+    return warnings
 
 
 def _ensure_present_html(ws, expected):
@@ -1089,6 +1191,22 @@ def _slide_assignment_acceptance(ws, worker_recs, *, allow_partial=False):
         planned_groups = _planned_production_groups(ws)
     except ValueError as error:
         return False, str(error)
+    if _workspace_authoring_profile(ws) == "creative":
+        if expected and not planned_groups:
+            return False, (
+                "Creative profile 要求每份逐页计划声明唯一 production_group，"
+                "且一页一个 Slide Agent；当前计划未声明 production_group"
+            )
+        grouped = {
+            group_id: sorted(pages)
+            for group_id, pages in planned_groups.items()
+            if len(pages) != 1
+        }
+        if grouped:
+            return False, (
+                "Creative profile 要求一页一个 Slide Agent；"
+                f"multi_page_groups={dict(list(grouped.items())[:8])}"
+            )
     if planned_groups:
         expected_sets = {
             frozenset(pages): group_id
@@ -1522,6 +1640,7 @@ def _accept(
     )
     if not delivery_ok:
         return False, delivery_reason
+    warnings.extend(_delivery_advisories(orch.ws))
     # Reconcile durable disk truth (late completions, repaired/interrupted
     # attempts) into memory before final acceptance snapshots the records, so the
     # research/slide/pixel consumers do not judge on a stale dirty timeout rec.
@@ -1680,12 +1799,31 @@ def run_sample(sample_id, seed, run_dir, config):
         else str(seed.get("query") or "")
     )
     config["_prompt_language"] = _infer_prompt_language(visible_query)
+    # A JSONL row may deliberately mix authoring profiles inside one batch.
+    # The per-sample value therefore takes precedence over the process default.
+    config["_authoring_profile"] = _normalize_authoring_profile(
+        seed.get("authoring_profile") or config.get("authoring_profile")
+    )
     config["_selected_skill_name"] = SKILL_BY_LANGUAGE[config["_prompt_language"]]
+    config["_selected_skill_entry"] = _entry_for(
+        config["_prompt_language"], config["_authoring_profile"]
+    )
     config["_revision_mode"] = bool(revision)
     workspace_skills = _snapshot_skill(
         run_dir,
         config["_selected_skill_name"],
         config["_prompt_language"],
+        config["_authoring_profile"],
+    )
+    requested_entry = _entry_for(
+        config["_prompt_language"], config["_authoring_profile"]
+    )
+    config["_selected_skill_entry"] = (
+        requested_entry
+        if os.path.isfile(os.path.join(
+            workspace_skills, config["_selected_skill_name"], requested_entry
+        ))
+        else "SKILL.md"
     )
     attachments = _attachment_list(seed)
     if not revision:
@@ -1713,7 +1851,10 @@ def run_sample(sample_id, seed, run_dir, config):
     orch = Agent(role="orchestrator", sid=sample_id, ws=run_dir, sub_dir="orchestrator",
                  tools_schema=tools.resolve_toolsets(ORCHESTRATOR_TOOLSETS), config=config,
                  initial_user=initial_user, label="orch",
-                 system=BASE_SYSTEM_EN if prompt_language == "en" else BASE_SYSTEM,
+                 system=_orchestrator_system(
+                     prompt_language, workspace_skills,
+                     config["_selected_skill_name"], config["_authoring_profile"]
+                 ),
                  skills_root=workspace_skills,
                  forbid_write_prefixes=["slides"])   # 红线:编排器不许写 slides/ 页面 HTML
     orch.child_system = SUBAGENT_SYSTEM_EN if orch.prompt_language == "en" else SUBAGENT_SYSTEM
@@ -1776,6 +1917,7 @@ def run_sample(sample_id, seed, run_dir, config):
         "orch_exit": orch.exit_reason, "workers": workers, "pid": os.getpid(),
         "nova_raw_precheck": nova_precheck,
         "run_mode": run_mode,
+        "authoring_profile": config.get("_authoring_profile", "stable"),
         "multimodal_trace": dict(getattr(orch, "trace_mode_status", {}) or {}),
         "revision_no": revision.get("revision_no") if revision else None,
         "parent_deck_id": revision.get("parent_deck_id") if revision else None,
@@ -2026,6 +2168,10 @@ def build_config(args):
         "openai_base_url": os.environ.get("OPENAI_BASE_URL", "https://tokenhub.sensetime.com/v1"),
         "image_model": os.environ.get("IMAGE_MODEL", "gpt-image-2"),
         "run_mode": getattr(args, "mode", os.environ.get("MURAL_RUN_MODE", "inference")),
+        "authoring_profile": _normalize_authoring_profile(
+            getattr(args, "authoring_profile", None)
+            or os.environ.get("MURAL_AUTHORING_PROFILE")
+        ),
         "max_turns": int(os.environ.get("MAX_TURNS", "120")),
         "max_tokens": int(os.environ.get("MAX_TOKENS", "16000")),
     }
@@ -2126,6 +2272,12 @@ def main():
         default=os.environ.get("MURAL_RUN_MODE", "inference"),
         help=("inference=交付优先，释放已消费图片并压缩旧上下文；"
               "synthesis=训练数据优先，禁用有损上下文维护并强制完整轨迹"),
+    )
+    ap.add_argument(
+        "--authoring-profile", choices=("stable", "creative"),
+        default=os.environ.get("MURAL_AUTHORING_PROFILE", "stable"),
+        help=("stable=默认稳态编排与同构页分组；"
+              "creative=强模型创作画像，一页一 Slide Agent 并恢复页面级文案与构图自主权"),
     )
     args = ap.parse_args()
 

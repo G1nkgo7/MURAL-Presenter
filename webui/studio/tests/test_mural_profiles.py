@@ -162,7 +162,7 @@ def test_second_deployment_model_uses_its_own_endpoint_and_thinking_transport(
     monkeypatch,
 ):
     prefix = "SENSENOVA_MODEL2"
-    monkeypatch.setenv(f"{prefix}_BASE_URL", "http://10.119.18.133:8000/v1/")
+    monkeypatch.setenv(f"{prefix}_BASE_URL", "https://model.example.test/v1/")
     monkeypatch.setenv(f"{prefix}_NAME", "pptagent-test")
     monkeypatch.setenv(f"{prefix}_DISPLAY_NAME", "PPTAgent 2")
     monkeypatch.setenv(f"{prefix}_SLIDE_CONCURRENCY", "4")
@@ -173,7 +173,7 @@ def test_second_deployment_model_uses_its_own_endpoint_and_thinking_transport(
     assert model is not None
     assert model["label"] == "PPTAgent 2"
     assert model["engine_model"] == "pptagent-test"
-    assert model["base_url"] == "http://10.119.18.133:8000/v1"
+    assert model["base_url"] == "https://model.example.test/v1"
     assert model["thinking_transport"] == "chat_template_kwargs"
     assert model["slide_concurrency"] == 4
 

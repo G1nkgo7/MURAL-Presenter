@@ -34,6 +34,16 @@
     </button>
     <button class="batch-open-btn" id="batch-open-btn" hidden>⇧ 批量生成与下载</button>
     <div class="rail-label" data-i18n="history">历史记录</div>
+    <div class="history-tools" id="history-tools">
+      <label class="history-search" for="history-search-input">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.25"></circle><path d="m12.4 12.4 4 4"></path></svg>
+        <input id="history-search-input" type="search" autocomplete="off" data-i18n-placeholder="history_search" placeholder="搜索历史记录">
+      </label>
+      <div class="history-filter-row">
+        <select id="history-skill-filter" aria-label="按 Skill 筛选"><option value="" data-i18n="all_skills">全部 Skill</option></select>
+        <select id="history-model-filter" aria-label="按模型筛选"><option value="" data-i18n="all_models">全部模型</option></select>
+      </div>
+    </div>
     <div class="convo-list" id="deck-list"><div class="muted small pad">加载中…</div></div>
     <div class="sidebar-foot">
       <div class="brand-slogan" aria-label="坚持原创，让 AI 引领人类进步">

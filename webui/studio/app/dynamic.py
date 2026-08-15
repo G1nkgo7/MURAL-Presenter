@@ -186,6 +186,11 @@ def conversations(user=Depends(_require_user), con=Depends(_get_db)):
     for item in items:
         meta = runtime._read_meta(item["conv_id"])
         item["display_title"] = titles.display_title(item.get("title"), meta.get("user_query") or "")
+        item["model"] = meta.get("model_key") or meta.get("model") or ""
+        item["model_label"] = meta.get("model_label") or item["model"]
+        item["skill_version"] = meta.get("skill_version") or "dazzle-deck"
+        skill = engine.SKILLS.get(item["skill_version"]) or {}
+        item["skill_label"] = skill.get("label") or item["skill_version"]
         item["pinned"] = prefs.get(str(item["conv_id"]), False)
     return {
         "items": items,

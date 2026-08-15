@@ -115,6 +115,27 @@ class ReleaseWebUIParityTests(unittest.TestCase):
         self.assertIn('"mural-presenter": "MURAL Presenter"', app)
         self.assertNotIn('"long-horizon-presenter": "Long-Horizon Presenter"', app)
 
+    def test_history_search_and_filters_use_list_metadata(self):
+        template = (ROOT / "studio/templates/app.html").read_text(encoding="utf-8")
+        app = (ROOT / "studio/static/app.js").read_text(encoding="utf-8")
+        main = (ROOT / "studio/app/main.py").read_text(encoding="utf-8")
+        dynamic = (ROOT / "studio/app/dynamic.py").read_text(encoding="utf-8")
+
+        for element_id in (
+            "history-search-input",
+            "history-skill-filter",
+            "history-model-filter",
+        ):
+            self.assertIn(f'id="{element_id}"', template)
+        self.assertIn("function filteredHistoryRows()", app)
+        self.assertIn("row.display_title || row.title", app)
+        self.assertIn("row.skill_version", app)
+        self.assertIn("row.model || row.model_key", app)
+        self.assertIn("model,skill_version,seed_json", main)
+        self.assertIn('item["model_label"]', main)
+        self.assertIn('meta.get("model_key")', dynamic)
+        self.assertIn('meta.get("skill_version")', dynamic)
+
 
 if __name__ == "__main__":
     unittest.main()

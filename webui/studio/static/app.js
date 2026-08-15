@@ -1016,6 +1016,7 @@ function setTheme(theme, { remember = true } = {}) {
 const UI_COPY = {
   zh: {
     new_chat: "新对话", history: "历史记录", theme: "主题", login_register: "登录 / 注册", new_presentation: "新建演示",
+    history_search: "搜索历史记录", all_skills: "全部 Skill", all_models: "全部模型", no_history_matches: "没有匹配的历史记录",
     batch: "批量生成与下载", add_model: "添加模型", static_presentation: "静态演示",
     dynamic_presentation: "动态演示", switch_account: "切换账号", logout: "退出登录",
     hero_title: "今天，你想展示什么？", start_inspiration: "从一个灵感开始", refresh: "换一批", prompt_placeholder: "描述你的主题、受众和想要的效果…",
@@ -1029,6 +1030,7 @@ const UI_COPY = {
   },
   en: {
     new_chat: "New chat", history: "History", theme: "Theme", login_register: "Sign in / Register", new_presentation: "New presentation",
+    history_search: "Search history", all_skills: "All skills", all_models: "All models", no_history_matches: "No matching history",
     batch: "Batch generation & download", add_model: "Add model", static_presentation: "Static presentation",
     dynamic_presentation: "Dynamic presentation", switch_account: "Switch account", logout: "Sign out",
     hero_title: "What would you like to present today?", start_inspiration: "Start with an idea", refresh: "Refresh", prompt_placeholder: "Describe your topic, audience, and desired outcome…",
@@ -1060,6 +1062,10 @@ function setLanguage(language, { remember = true } = {}) {
   });
   const selector = $("#settings-language");
   if (selector) selector.value = currentLanguage;
+  if (isAuthenticated && historyRows.length) {
+    updateHistoryFilterOptions();
+    renderHistoryRows();
+  }
   setCreationMode(creationMode, { remember: false });
   setSidebarCollapsed(document.querySelector(".layout")?.classList.contains("sidebar-collapsed"), { remember: false });
   if (remember) localStorage.setItem("studio_language", currentLanguage);
@@ -1354,6 +1360,60 @@ const HISTORY_GROUPS = [
   { key: "dynamic", label: "动态演示", icon: "dynamic" },
 ].filter((group) => dynamicEnabled || group.key !== "dynamic");
 let historyContextTarget = null;
+let historyRows = [];
+
+function historyTitle(row) {
+  return String(row.display_title || row.title || "未命名");
+}
+
+function historySkillKey(row) {
+  return String(row.skill_version || "");
+}
+
+function historyModelKey(row) {
+  return String(row.model || row.model_key || "");
+}
+
+function historySkillLabel(row) {
+  const key = historySkillKey(row);
+  return String(row.skill_label || SKILL_LABEL[key] || (key === "dazzle-deck" ? "Dazzle Deck" : key));
+}
+
+function historyModelLabel(row) {
+  const key = historyModelKey(row);
+  return String(row.model_label || modelLabel(key));
+}
+
+function updateHistoryFilterSelect(select, rows, keyFor, labelFor, allLabel) {
+  if (!select) return;
+  const selected = select.value;
+  const options = new Map();
+  rows.forEach((row) => {
+    const key = keyFor(row);
+    if (key) options.set(key, labelFor(row) || key);
+  });
+  select.innerHTML = `<option value="">${escapeHtml(allLabel)}</option>${[...options]
+    .sort((a, b) => a[1].localeCompare(b[1]))
+    .map(([key, label]) => `<option value="${escapeHtml(key)}">${escapeHtml(label)}</option>`)
+    .join("")}`;
+  select.value = options.has(selected) ? selected : "";
+}
+
+function updateHistoryFilterOptions() {
+  updateHistoryFilterSelect($("#history-skill-filter"), historyRows, historySkillKey, historySkillLabel, uiText("all_skills"));
+  updateHistoryFilterSelect($("#history-model-filter"), historyRows, historyModelKey, historyModelLabel, uiText("all_models"));
+}
+
+function filteredHistoryRows() {
+  const query = String($("#history-search-input")?.value || "").trim().toLowerCase();
+  const skill = $("#history-skill-filter")?.value || "";
+  const model = $("#history-model-filter")?.value || "";
+  return historyRows.filter((row) => (
+    (!query || historyTitle(row).toLowerCase().includes(query))
+    && (!skill || historySkillKey(row) === skill)
+    && (!model || historyModelKey(row) === model)
+  ));
+}
 
 function historyGroupState() {
   try { return JSON.parse(localStorage.getItem("studio_history_groups") || "{}"); }
@@ -1371,7 +1431,7 @@ function historyRow(d) {
   const kindLabel = visualKind === "dynamic" ? uiText("dynamic_presentation") : uiText("static_presentation");
   const statusLabel = STATUS_LABEL[d.status] || d.status;
   const markerLabel = `${kindLabel} · ${statusLabel}`;
-  const title = d.display_title || d.title || "未命名";
+  const title = historyTitle(d);
   const active = String(d.id) === String(ed.id) && d.kind === ed.kind;
   return `
     <a class="convo deck-item ${active ? "active" : ""}" data-id="${escapeHtml(String(d.id))}" data-kind="${d.kind}"
@@ -1532,9 +1592,62 @@ async function regenerateHistoryItem(target) {
   }
 }
 
+function renderHistoryRows() {
+  const box = $("#deck-list");
+  if (!box) return;
+  const rows = filteredHistoryRows();
+  const hasFilter = Boolean(
+    $("#history-search-input")?.value.trim()
+    || $("#history-skill-filter")?.value
+    || $("#history-model-filter")?.value
+  );
+  if (!rows.length && historyRows.length && hasFilter) {
+    box.innerHTML = `<div class="history-filter-empty">${escapeHtml(uiText("no_history_matches"))}</div>`;
+    return;
+  }
+  const state = historyGroupState();
+  const grouped = {
+    pinned: rows.filter((d) => d.pinned),
+    static: rows.filter((d) => !d.pinned && d.groupKind === "static"),
+    dynamic: dynamicEnabled ? rows.filter((d) => !d.pinned && d.groupKind === "dynamic") : [],
+  };
+  box.innerHTML = HISTORY_GROUPS.map((group) => historyGroupMarkup(group, grouped[group.key], !!state[group.key])).join("");
+  $$("#deck-list .history-group-head").forEach((button) => (button.onclick = () => {
+    const section = button.closest(".history-group");
+    const collapsed = !section.classList.contains("collapsed");
+    section.classList.toggle("collapsed", collapsed);
+    button.setAttribute("aria-expanded", collapsed ? "false" : "true");
+    setHistoryGroupCollapsed(section.dataset.historyGroup, collapsed);
+  }));
+  $$("#deck-list .deck-item").forEach((a) =>
+    (a.onclick = (e) => {
+      if (e.target.classList.contains("del-btn")) return;
+      e.preventDefault(); a.dataset.kind === "dynamic" ? openDynamic(a.dataset.id) : openDeck(+a.dataset.id);
+    }));
+  $$("#deck-list .deck-item").forEach((a) => (a.oncontextmenu = trajectoryMode ? null : (event) => {
+    event.preventDefault(); event.stopPropagation(); openHistoryContextMenu(a, event.clientX, event.clientY);
+  }));
+  $$("#deck-list .del-btn").forEach((button) => {
+    if (trajectoryMode) { button.hidden = true; return; }
+    button.onclick = (event) => {
+      event.preventDefault(); event.stopPropagation();
+      askDelete(button.closest(".deck-item"), button.dataset.id, button.dataset.kind);
+    };
+  });
+}
+
+function initHistoryFilters() {
+  $("#history-search-input")?.addEventListener("input", renderHistoryRows);
+  $("#history-skill-filter")?.addEventListener("change", renderHistoryRows);
+  $("#history-model-filter")?.addEventListener("change", renderHistoryRows);
+}
+
 async function loadDecks(active) {
   const box = $("#deck-list");
+  const tools = $("#history-tools");
+  if (tools) tools.hidden = !isAuthenticated;
   if (!isAuthenticated) {
+    historyRows = [];
     box.innerHTML = '<button type="button" class="guest-history" data-open-auth>登录后查看历史演示</button>';
     return;
   }
@@ -1559,35 +1672,9 @@ async function loadDecks(active) {
       })),
     ];
     if (!trajectoryMode) rows.sort((a, b) => String(b.sortAt).localeCompare(String(a.sortAt)));
-    const state = historyGroupState();
-    const grouped = {
-      pinned: rows.filter((d) => d.pinned),
-      static: rows.filter((d) => !d.pinned && d.groupKind === "static"),
-      dynamic: dynamicEnabled ? rows.filter((d) => !d.pinned && d.groupKind === "dynamic") : [],
-    };
-    box.innerHTML = HISTORY_GROUPS.map((group) => historyGroupMarkup(group, grouped[group.key], !!state[group.key])).join("");
-    $$("#deck-list .history-group-head").forEach((button) => (button.onclick = () => {
-      const section = button.closest(".history-group");
-      const collapsed = !section.classList.contains("collapsed");
-      section.classList.toggle("collapsed", collapsed);
-      button.setAttribute("aria-expanded", collapsed ? "false" : "true");
-      setHistoryGroupCollapsed(section.dataset.historyGroup, collapsed);
-    }));
-    $$("#deck-list .deck-item").forEach((a) =>
-      (a.onclick = (e) => {
-        if (e.target.classList.contains("del-btn")) return;
-        e.preventDefault(); a.dataset.kind === "dynamic" ? openDynamic(a.dataset.id) : openDeck(+a.dataset.id);
-      }));
-    $$("#deck-list .deck-item").forEach((a) => (a.oncontextmenu = trajectoryMode ? null : (event) => {
-      event.preventDefault(); event.stopPropagation(); openHistoryContextMenu(a, event.clientX, event.clientY);
-    }));
-    $$("#deck-list .del-btn").forEach((b) => {
-      if (trajectoryMode) { b.hidden = true; return; }
-      b.onclick = (e) => {
-      e.preventDefault(); e.stopPropagation();
-      askDelete(b.closest(".deck-item"), b.dataset.id, b.dataset.kind);
-      };
-    });
+    historyRows = rows;
+    updateHistoryFilterOptions();
+    renderHistoryRows();
   } catch { box.innerHTML = '<div class="muted small pad">加载失败</div>'; }
 }
 
@@ -7544,6 +7631,7 @@ document.addEventListener("keydown", (event) => {
 setTheme(document.documentElement.dataset.theme || "dark", { remember: false });
 setLanguage(currentLanguage, { remember: false });
 setTopbar();
+initHistoryFilters();
 const initialParams = new URLSearchParams(location.search);
 if (initialParams.get("mode") === "dynamic") setCreationMode("dynamic", { remember: false });
 if (["login", "register"].includes(initialParams.get("auth"))) {

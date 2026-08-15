@@ -53,6 +53,14 @@ class DeepSeekThinkingTests(unittest.TestCase):
             "api_key_enc": "encrypted",
         })["multimodal"])
 
+    def test_tokenhub_v4_is_not_mislabeled_as_multimodal(self):
+        row = {
+            "model_id": "deepseek-v4-flash",
+            "base_url": "https://tokenhub.sensetime.com/v1",
+            "vision_enabled": 1,
+        }
+        self.assertFalse(custom_models.vision_capability(row))
+
     def test_available_harnesses_send_official_deepseek_thinking_fields(self):
         for index, path in enumerate(BACKENDS):
             with self.subTest(path=path):

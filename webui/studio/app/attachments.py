@@ -298,7 +298,7 @@ def _extract_xlsx(path: Path, data: bytes, outdir: Path, stem: str) -> tuple[str
     return text, images, notes
 
 
-def _extract_pdf_text(data: bytes) -> list[str]:
+def _extract_pdf_text_pypdf(data: bytes) -> list[str]:
     from pypdf import PdfReader
 
     reader = PdfReader(io.BytesIO(data))
@@ -308,6 +308,42 @@ def _extract_pdf_text(data: bytes) -> list[str]:
         if text.strip():
             pages.append(f"[Page {i}]\n{text.strip()}")
     return pages
+
+
+def _extract_pdf_text_pymupdf(data: bytes) -> list[str]:
+    """Extract PDF text with PyMuPDF when pypdf is unavailable or rejects a file."""
+    import fitz
+
+    doc = fitz.open(stream=data, filetype="pdf")
+    try:
+        pages = []
+        for i, page in enumerate(doc, 1):
+            text = page.get_text("text") or ""
+            if text.strip():
+                pages.append(f"[Page {i}]\n{text.strip()}")
+        return pages
+    finally:
+        doc.close()
+
+
+def _extract_pdf_text(data: bytes) -> list[str]:
+    """Prefer pypdf and deterministically fall back to the bundled PyMuPDF."""
+    try:
+        pages = _extract_pdf_text_pypdf(data)
+        if pages:
+            return pages
+    except Exception as pypdf_error:
+        primary_error = pypdf_error
+    else:
+        primary_error = RuntimeError("pypdf extracted no text")
+    try:
+        return _extract_pdf_text_pymupdf(data)
+    except Exception as pymupdf_error:
+        raise RuntimeError(
+            "PDF text extraction failed with both pypdf "
+            f"({type(primary_error).__name__}: {primary_error}) and PyMuPDF "
+            f"({type(pymupdf_error).__name__}: {pymupdf_error})"
+        ) from pymupdf_error
 
 
 def _render_pdf_pages(data: bytes, outdir: Path, stem: str) -> list[dict]:

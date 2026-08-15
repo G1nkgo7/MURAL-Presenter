@@ -317,6 +317,20 @@ def _ensure_static_delivery(row, run_dir: Path) -> str | None:
     if not slide_files:
         return "最终交付物缺少 present.html，且没有可用于重建的页面 HTML"
 
+    def formal_delivery_is_fresh() -> bool:
+        """Return whether the formal player includes the latest authored pages."""
+        try:
+            if not present.is_file() or present.stat().st_size == 0:
+                return False
+            present_stamp = present.stat().st_mtime_ns
+            sources = list(slide_files)
+            css_path = run_dir / "base.css"
+            if css_path.is_file():
+                sources.append(css_path)
+            return all(path.stat().st_mtime_ns <= present_stamp for path in sources)
+        except OSError:
+            return False
+
     scripts: list[tuple[str, Path]] = []
     for path in sorted((run_dir / "skills").glob("*/scripts/deck.py")):
         scripts.append(("deck", path))
@@ -334,10 +348,58 @@ def _ensure_static_delivery(row, run_dir: Path) -> str | None:
     attempts: list[str] = []
     delivery_python = engine._engine_python() or sys.executable
 
+    # Role-split MURAL editions intentionally have no public deck.py. Recover
+    # through their frozen Orchestrator entry while keeping the same portable
+    # delivery audit used by the generating Harness.
+    if skill_key in {"mural-presenter-v0.3", "mural-presenter-v0.4"}:
+        role_scripts = sorted(
+            (run_dir / "skills").glob("*/scripts/orchestrator.py")
+        )
+        source_role_script = skill_root / "scripts" / "orchestrator.py"
+        if source_role_script.is_file() and source_role_script not in role_scripts:
+            role_scripts.append(source_role_script)
+        if not role_scripts:
+            return f"最终交付依赖不完整：{skill_key} Orchestrator 入口缺失"
+        role_script = role_scripts[0]
+        expected = str(len(slide_files))
+
+        def run_v03(action: str):
+            command = [delivery_python, str(role_script), action, str(run_dir)]
+            if action == "finalize":
+                command.extend(["--expected", expected])
+            return _run_noninteractive(
+                command,
+                cwd=run_dir,
+                text=True,
+                capture_output=True,
+                timeout=300,
+                check=False,
+            )
+
+        try:
+            audit = run_v03("audit") if formal_delivery_is_fresh() else None
+            if audit is not None and audit.returncode == 0:
+                return None
+            finalized = run_v03("finalize")
+            audit = run_v03("audit") if finalized.returncode == 0 else audit
+            if (
+                finalized.returncode == 0
+                and audit is not None
+                and audit.returncode == 0
+                and formal_delivery_is_fresh()
+            ):
+                return None
+            detail_result = audit if audit is not None and audit.returncode else finalized
+            detail = (detail_result.stderr or detail_result.stdout or "v0.3 finalize failed").strip()
+            return "最终交付依赖不完整，自动修复失败：" + detail[-1200:]
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            return f"最终交付依赖审计失败：{type(exc).__name__}: {exc}"
+
     # Presenter 交付必须通过其自身的 portable dependency audit。先审计已有
     # present；若失败则由 build 原子补齐/规范运行时资产，再审一次。
     if skill_key in {
-        "sn-ppt-web", "mural-presenter", "mural-presenter-v0.2", "mural-next"
+        "sn-ppt-web", "mural-presenter", "mural-presenter-v0.2",
+        "mural-presenter-v0.3", "mural-next"
     } and deck_script.is_file():
         expected = str(len(slide_files))
 
@@ -352,13 +414,13 @@ def _ensure_static_delivery(row, run_dir: Path) -> str | None:
             )
 
         try:
-            audit = run_deck("audit") if present.is_file() and present.stat().st_size else None
+            audit = run_deck("audit") if formal_delivery_is_fresh() else None
             if audit is not None and audit.returncode == 0:
                 return None
             built = run_deck("build")
             if built.returncode == 0:
                 audit = run_deck("audit")
-                if audit.returncode == 0:
+                if audit.returncode == 0 and formal_delivery_is_fresh():
                     try:
                         with engine.log_path(int(row["id"])).open("a", encoding="utf-8") as log:
                             log.write("\n[studio] 已校验 present.html 并补齐 Deck 本地运行时依赖\n")
@@ -373,7 +435,7 @@ def _ensure_static_delivery(row, run_dir: Path) -> str | None:
         except (OSError, subprocess.TimeoutExpired) as exc:
             return f"最终交付依赖审计失败：{type(exc).__name__}: {exc}"
 
-    if present.is_file() and present.stat().st_size:
+    if formal_delivery_is_fresh():
         return None
     for kind, script in scripts:
         try:
@@ -400,7 +462,7 @@ def _ensure_static_delivery(row, run_dir: Path) -> str | None:
         except (OSError, subprocess.TimeoutExpired) as exc:
             attempts.append(f"{script.name}: {exc}")
             continue
-        if result.returncode == 0 and present.is_file() and present.stat().st_size:
+        if result.returncode == 0 and formal_delivery_is_fresh():
             try:
                 with engine.log_path(int(row["id"])).open("a", encoding="utf-8") as log:
                     log.write("\n[studio] 已补齐最终 present.html 与便携字体资源\n")
@@ -473,10 +535,16 @@ def _finalize(deck_id, run_dir: Path, rc=None):
         engine_status == "rejected"
         and any(marker in rejection_text for marker in delivery_blocking_markers)
     )
-    succeeded = (
-        engine_status == "completed"
-        or (not is_revision and rendered > 0 and not delivery_blocked)
+    # A hard engine failure is not a completed Deck merely because an earlier
+    # render exists. Keep the artifact-only fallback solely for non-delivery
+    # ``rejected`` results (for example trace/SFT eligibility rejection).
+    artifact_fallback = (
+        engine_status == "rejected"
+        and not is_revision
+        and rendered > 0
+        and not delivery_blocked
     )
+    succeeded = engine_status in {"completed", "needs_improvement"} or artifact_fallback
     if succeeded:
         delivery_error = _ensure_static_delivery(row, run_dir)
         if delivery_error:
@@ -557,6 +625,9 @@ async def _process(deck_id):
         "STUDIO_EFFECTIVE_THINKING",
         "STUDIO_ENABLE_THINKING",
         "THINKING",
+        # Authoring profile is a per-job Skill choice.  Never let an ambient
+        # launcher value turn the stable public profile into creative.
+        "MURAL_AUTHORING_PROFILE",
     )
     child_env = {k: v for k, v in os.environ.items() if k not in _DROP}
     child_env.update(engine.selection_env(

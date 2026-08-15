@@ -61,6 +61,40 @@ _BUNDLED_SN_PPT_WEB_SUITE_ROOT = (
 )
 _MURAL_REPOSITORY_ROOT = PROJECT_ROOT.parent
 _MURAL_RESEARCH_ROOT = PROJECT_ROOT.parent / "research" / "mural-next"
+SENSE_PRESENT_SUITE_ROOT = Path(
+    os.environ.get(
+        "PPTAGENT_SENSE_PRESENT_SUITE_ROOT",
+        _MURAL_REPOSITORY_ROOT / "skills" / "sense-present-ppt-skill",
+    )
+)
+SENSE_PRESENT_SUITE_SKILLS_ROOT = SENSE_PRESENT_SUITE_ROOT / "skills"
+SENSE_PRESENT_SUITE_HARNESS_ENTRY = "sense_present_suite.py"
+VISUAL_CRAFT_V3_PRE_SPEECH_SKILL_ROOT = Path(
+    os.environ.get(
+        "PPTAGENT_VISUAL_CRAFT_V3_PRE_SPEECH_SKILL_ROOT",
+        _MURAL_REPOSITORY_ROOT / "skills" / "visual-craft-v3-pre-speech",
+    )
+)
+VISUAL_CRAFT_V3_PRE_SPEECH_HARNESS_ROOT = Path(
+    os.environ.get(
+        "PPTAGENT_VISUAL_CRAFT_V3_PRE_SPEECH_HARNESS_ROOT",
+        _MURAL_REPOSITORY_ROOT / "harnesses" / "visual-craft-v3-pre-speech",
+    )
+)
+VISUAL_CRAFT_V3_SPEECH_SKILL_ROOT = Path(
+    os.environ.get(
+        "PPTAGENT_VISUAL_CRAFT_V3_SPEECH_SKILL_ROOT",
+        _MURAL_REPOSITORY_ROOT / "skills" / "visual-craft-v3-speech",
+    )
+)
+VISUAL_CRAFT_V3_SPEECH_HARNESS_ROOT = Path(
+    os.environ.get(
+        "PPTAGENT_VISUAL_CRAFT_V3_SPEECH_HARNESS_ROOT",
+        _MURAL_REPOSITORY_ROOT / "harnesses" / "visual-craft-v3-speech",
+    )
+)
+VISUAL_CRAFT_V3_HARNESS_ENTRY = "distill_ppt.py"
+VISUAL_CRAFT_V3_MOUNT_ROOT = DATA_DIR / "skill-mounts"
 # Legacy compatibility only. Keep this path local so a consolidated checkout
 # never silently reaches into another editable suite on AFS.
 _DEFAULT_SN_PPT_WEB_SUITE_ROOT = _BUNDLED_SN_PPT_WEB_SUITE_ROOT
@@ -114,6 +148,36 @@ MURAL_V02_HARNESS_ROOT = Path(
 )
 MURAL_V02_HARNESS_ENTRY = os.environ.get(
     "PPTAGENT_MURAL_V02_HARNESS_ENTRY", "infer.py"
+)
+MURAL_V03_SKILLS_ROOT = Path(
+    os.environ.get(
+        "PPTAGENT_MURAL_V03_SKILLS_ROOT",
+        _MURAL_REPOSITORY_ROOT / "skills" / "mural-presenter-v0.3",
+    )
+)
+MURAL_V03_HARNESS_ROOT = Path(
+    os.environ.get(
+        "PPTAGENT_MURAL_V03_HARNESS_ROOT",
+        _MURAL_REPOSITORY_ROOT / "harnesses" / "mural-presenter-v0.3",
+    )
+)
+MURAL_V03_HARNESS_ENTRY = os.environ.get(
+    "PPTAGENT_MURAL_V03_HARNESS_ENTRY", "infer.py"
+)
+MURAL_V04_SKILLS_ROOT = Path(
+    os.environ.get(
+        "PPTAGENT_MURAL_V04_SKILLS_ROOT",
+        _MURAL_REPOSITORY_ROOT / "skills" / "mural-presenter-v0.4",
+    )
+)
+MURAL_V04_HARNESS_ROOT = Path(
+    os.environ.get(
+        "PPTAGENT_MURAL_V04_HARNESS_ROOT",
+        _MURAL_REPOSITORY_ROOT / "harnesses" / "mural-presenter-v0.4",
+    )
+)
+MURAL_V04_HARNESS_ENTRY = os.environ.get(
+    "PPTAGENT_MURAL_V04_HARNESS_ENTRY", "infer.py"
 )
 LONG_HORIZON_PRESENTER_SKILL_ROOT = Path(
     os.environ.get(
@@ -432,6 +496,113 @@ def _visual_craft_skill(
     }
 
 
+def _visual_craft_v3_mount(skill_key: str, skill_root: Path) -> tuple[Path, str]:
+    """Mount one V3 snapshot at the legacy Harness path ``ppt-skill-html``."""
+    mount_root = VISUAL_CRAFT_V3_MOUNT_ROOT / skill_key
+    link = mount_root / "ppt-skill-html"
+    try:
+        mount_root.mkdir(parents=True, exist_ok=True)
+        if os.path.lexists(link):
+            if link.is_symlink() and link.resolve(strict=False) == skill_root.resolve(strict=False):
+                return mount_root, ""
+            if not link.is_symlink():
+                return mount_root, f"Skill 挂载点已被其他文件占用：{link}"
+            link.unlink()
+        link.symlink_to(skill_root, target_is_directory=True)
+        return mount_root, ""
+    except OSError as exc:
+        return mount_root, f"无法创建 Skill 挂载点：{exc}"
+
+
+def _visual_craft_v3_skill(*, speech: bool) -> dict:
+    """Register the paired pre-speech or speech V3 snapshot."""
+    skill_key = "visual-craft-v3-speech" if speech else "visual-craft-v3-pre-speech"
+    label = "Visual Craft V3 · Speech" if speech else "Visual Craft V3 · Pre-Speech"
+    skill_root = (
+        VISUAL_CRAFT_V3_SPEECH_SKILL_ROOT
+        if speech else VISUAL_CRAFT_V3_PRE_SPEECH_SKILL_ROOT
+    )
+    harness_root = (
+        VISUAL_CRAFT_V3_SPEECH_HARNESS_ROOT
+        if speech else VISUAL_CRAFT_V3_PRE_SPEECH_HARNESS_ROOT
+    )
+    required_skill = [
+        "SKILL.md",
+        "agents/openai.yaml",
+        "references/base-template.css",
+        "references/design-rules.md",
+        "references/design-styles.md",
+        "references/fonts.md",
+        "references/layout-patterns.md",
+        "references/quality-checklist.md",
+        "scripts/build_player.py",
+        "scripts/render.py",
+        "scripts/stage_materials.py",
+        "subagents/research.md",
+        "subagents/material.md",
+        "subagents/image.md",
+        "subagents/slide.md",
+        "subagents/review.md",
+    ]
+    if speech:
+        required_skill.extend([
+            "scripts/build_review_contact.py",
+            "scripts/font_bundle.py",
+            "scripts/sync_speech.py",
+        ])
+    required_harness = [
+        VISUAL_CRAFT_V3_HARNESS_ENTRY,
+        "core/__init__.py",
+        "core/agent.py",
+        "core/openai_backend.py",
+        "core/tools.py",
+        "core/trace.py",
+    ]
+    missing_skill = [path for path in required_skill if not (skill_root / path).is_file()]
+    missing_harness = [path for path in required_harness if not (harness_root / path).is_file()]
+    mount_root, mount_reason = _visual_craft_v3_mount(skill_key, skill_root)
+    reasons = []
+    if missing_skill:
+        reasons.append("Skill 缺少：" + ", ".join(missing_skill))
+    if missing_harness:
+        reasons.append("Harness 缺少：" + ", ".join(missing_harness))
+    if mount_reason:
+        reasons.append(mount_reason)
+    digest = hashlib.sha256()
+    if not missing_skill:
+        for path in sorted(
+            (item for item in skill_root.rglob("*") if item.is_file()),
+            key=lambda item: item.relative_to(skill_root).as_posix(),
+        ):
+            if any(part in {".venv", "__pycache__", ".pytest_cache"} for part in path.parts):
+                continue
+            relative = path.relative_to(skill_root).as_posix()
+            digest.update(relative.encode("utf-8"))
+            digest.update(path.read_bytes())
+    ready = not missing_skill and not missing_harness and not mount_reason
+    return {
+        "label": label,
+        "path": str(skill_root),
+        "skills_root": str(mount_root),
+        "name": "ppt-skill-html",
+        "language": "zh",
+        "deck_language": "auto",
+        "force_skill_language": "",
+        "mode": skill_key,
+        "status": "current" if ready else "unavailable",
+        "ready": ready,
+        "unavailable_reason": "；".join(reasons),
+        "required_files": required_skill,
+        "source_revision": digest.hexdigest()[:12] if ready else "",
+        "pipeline": f"{skill_key}-harness",
+        "harness_path": str(harness_root),
+        "harness_entry": VISUAL_CRAFT_V3_HARNESS_ENTRY,
+        "harness_required_files": required_harness,
+        "pairing": f"{skill_key}-paired",
+        "caps": ["attachments", "revision", "static_html"] + (["speech"] if speech else []),
+    }
+
+
 def _sn_ppt_web_skill(
     skill_root: Path = SN_PPT_WEB_SKILL_ROOT,
     harness_root: Path = SN_PPT_WEB_HARNESS_ROOT,
@@ -593,6 +764,9 @@ def _mural_presenter_skill(
     """Register the frozen paper/release MURAL Presenter pair."""
     required_files = (
         "SKILL.md",
+        "SKILL.en.md",
+        "SKILL.creative.md",
+        "SKILL.creative.en.md",
         "agents/openai.yaml",
         "references/base-template.css",
         "references/design-rules.md",
@@ -602,16 +776,27 @@ def _mural_presenter_skill(
         "references/layout-patterns.md",
         "references/planning-contract.md",
         "references/quality-checklist.md",
+        "references/creative-direction.md",
+        "references/creative-direction.en.md",
         "scripts/deck.py",
         "scripts/font_bundle.py",
         "scripts/image_cutout.py",
         "scripts/render.py",
         "scripts/stage_materials.py",
         "subagents/image.md",
+        "subagents/image.en.md",
         "subagents/material.md",
+        "subagents/material.en.md",
         "subagents/research.md",
+        "subagents/research.en.md",
         "subagents/review.md",
+        "subagents/review.en.md",
+        "subagents/review.creative.md",
+        "subagents/review.creative.en.md",
         "subagents/slide.md",
+        "subagents/slide.en.md",
+        "subagents/slide.creative.md",
+        "subagents/slide.creative.en.md",
     )
     harness_required = (
         MURAL_PRESENTER_HARNESS_ENTRY,
@@ -641,7 +826,12 @@ def _mural_presenter_skill(
         "path": str(skill_root),
         "skills_root": str(skill_root.parent),
         "name": "mural-presenter",
+        # The MURAL Harness owns first-turn language detection internally.
+        # Keep this compatibility field concrete so Studio does not invoke the
+        # unrelated clean-Harness ``select_skill`` adapter.
         "language": "zh",
+        "supported_languages": ["zh", "en"],
+        "agent_language_routing": "query-auto",
         "deck_language": "auto",
         "force_skill_language": "",
         "mode": "mural-presenter",
@@ -659,15 +849,47 @@ def _mural_presenter_skill(
     }
 
 
+def _mural_presenter_creative_skill() -> dict:
+    """Expose the strong-model authoring profile on the same paired runtime."""
+    skill = dict(_mural_presenter_skill())
+    skill.update({
+        "label": os.environ.get(
+            "PPTAGENT_MURAL_CREATIVE_DISPLAY_NAME",
+            "MURAL Presenter · Creative",
+        ),
+        # The runtime snapshots the canonical mural-presenter tree and selects
+        # the creative localized entry from this per-job environment value.
+        "name": "mural-presenter",
+        "mode": "mural-presenter-creative",
+        "pairing": "mural-presenter-creative-v1",
+        "runtime_env": {"MURAL_AUTHORING_PROFILE": "creative"},
+        "authoring_profile": "creative",
+    })
+    return skill
+
+
 def _mural_v02_skill(
     skills_root: Path = MURAL_V02_SKILLS_ROOT,
     harness_root: Path = MURAL_V02_HARNESS_ROOT,
+    *,
+    grouped: bool = False,
 ) -> dict:
-    """Register the bilingual, single-page-parallel v0.2 pair."""
+    """Register one bilingual v0.2 ownership topology on the shared Harness."""
+    suffix = "-grouped" if grouped else ""
     names = {
-        "zh": "mural-presenter-v0-2-zh",
-        "en": "mural-presenter-v0-2-en",
+        "zh": f"mural-presenter-v0-2{suffix}-zh",
+        "en": f"mural-presenter-v0-2{suffix}-en",
     }
+    pipeline_key = (
+        "mural-presenter-v0.2-grouped-harness"
+        if grouped
+        else "mural-presenter-v0.2-harness"
+    )
+    pairing = (
+        "mural-presenter-v0.2-grouped"
+        if grouped
+        else "mural-presenter-v0.2-single-slide"
+    )
     required_per_edition = (
         "SKILL.md",
         "agents/openai.yaml",
@@ -726,7 +948,11 @@ def _mural_v02_skill(
         _hash_runtime_tree(digest, harness_root, prefix="harness/")
     ready = not missing_skill and not missing_harness
     return {
-        "label": "MURAL Presenter v0.2 · Slide Parallel",
+        "label": (
+            "MURAL Presenter v0.2 · Grouped"
+            if grouped
+            else "MURAL Presenter v0.2 · Single"
+        ),
         "path": str(skills_root),
         "instruction_paths": {
             language: str(skills_root / name)
@@ -739,8 +965,12 @@ def _mural_v02_skill(
         "agent_language_routing": "first-skill-read-lock",
         "deck_language": "auto",
         "force_skill_language": "",
-        "mode": "mural-presenter-v0.2-bilingual",
-        "status": "current" if ready else "unavailable",
+        "mode": (
+            "mural-presenter-v0.2-grouped-bilingual"
+            if grouped
+            else "mural-presenter-v0.2-bilingual"
+        ),
+        "status": "candidate" if ready else "unavailable",
         "ready": ready,
         "unavailable_reason": "；".join(reasons),
         "required_files": [
@@ -749,20 +979,260 @@ def _mural_v02_skill(
             for relative in required_per_edition
         ],
         "source_revision": digest.hexdigest()[:12] if ready else "",
-        "pipeline": "mural-presenter-v0.2-harness",
+        "pipeline": pipeline_key,
         "harness_path": str(harness_root),
         "harness_entry": MURAL_V02_HARNESS_ENTRY,
         "harness_required_files": list(harness_required),
-        "pairing": "mural-presenter-v0.2-single-slide",
+        "pairing": pairing,
         "caps": ["attachments", "revision", "static_html", "custom_fonts"],
         "runtime_env": {
             "CLEAN_MODEL_SELECT_SKILL": "1",
             "MURAL_RUN_MODE": "inference",
-            "CLEAN_SKILL_NAME": "mural-presenter-v0-2",
+            "CLEAN_SKILL_NAME": f"mural-presenter-v0-2{suffix}",
             "CLEAN_SKILL_NAME_ZH": names["zh"],
             "CLEAN_SKILL_NAME_EN": names["en"],
-            "CLEAN_CHILD_CONCURRENCY": "4",
-            "CLEAN_CHILD_POOL_MAX_WORKERS": "4",
+            "CLEAN_CHILD_CONCURRENCY": "12",
+            "CLEAN_CHILD_POOL_MAX_WORKERS": "12",
+            "CLEAN_REMOTE_TOOL_CONCURRENCY": "4",
+            "CLEAN_MAX_TURNS": "240",
+            "CLEAN_CHILD_MAX_TURNS": "80",
+            "CLEAN_MAX_TOKENS": "40960",
+            "CLEAN_MODEL_TIMEOUT": "600",
+            "CLEAN_CHILD_WALL_TIMEOUT": "2400",
+        },
+    }
+
+
+def _mural_v03_skill(
+    skills_root: Path = MURAL_V03_SKILLS_ROOT,
+    harness_root: Path = MURAL_V03_HARNESS_ROOT,
+) -> dict:
+    """Register the single bilingual v0.3 Skill with adaptive page ownership."""
+    name = "mural-presenter-v0-3"
+    required = (
+        "SKILL.md",
+        "agents/openai.yaml",
+        "assets/base.css",
+        "references/creative-direction.md",
+        "references/design-rules.md",
+        "references/design-styles.md",
+        "references/layout-patterns.md",
+        "references/quality-checklist.md",
+        "references/plan-contract.md",
+        "references/materials-and-images.md",
+        "references/html-contract.md",
+        "roles/image.md",
+        "roles/material.md",
+        "roles/orchestrator.md",
+        "roles/research.md",
+        "roles/review.md",
+        "roles/slide.md",
+        "scripts/orchestrator.py",
+        "scripts/image.py",
+        "scripts/slide.py",
+        "scripts/review.py",
+        "scripts/_internal/__init__.py",
+        "scripts/_internal/bootstrap.py",
+        "scripts/_internal/planning.py",
+        "scripts/_internal/delivery.py",
+        "scripts/_internal/assets.py",
+        "scripts/_internal/renderer.py",
+        "scripts/_internal/deck_core.py",
+        "scripts/_internal/font_bundle.py",
+        "scripts/_internal/image_background.py",
+        "scripts/_internal/render_deck.py",
+        "scripts/_internal/workspace_policy.py",
+    )
+    missing_skill = [
+        f"{name}/{relative}"
+        for relative in required
+        if not (skills_root / name / relative).is_file()
+    ]
+    harness_required = (
+        MURAL_V03_HARNESS_ENTRY,
+        "core/__init__.py",
+        "core/agent_loop.py",
+        "core/config.py",
+        "core/language.py",
+        "core/model_call.py",
+        "core/render_broker.py",
+        "core/run_profiles.py",
+        "core/runtime_capabilities.py",
+        "core/run_batch.py",
+        "core/trace_mode.py",
+        "core/tools.py",
+    )
+    missing_harness = [
+        relative for relative in harness_required
+        if not (harness_root / relative).is_file()
+    ]
+    reasons = []
+    if missing_skill:
+        reasons.append("MURAL Presenter v0.3 Skill 缺少：" + ", ".join(missing_skill))
+    if missing_harness:
+        reasons.append("MURAL Presenter v0.3 Harness 缺少：" + ", ".join(missing_harness))
+    digest = hashlib.sha256()
+    if not missing_skill:
+        _hash_runtime_tree(digest, skills_root, prefix="skills/")
+    if not missing_harness:
+        _hash_runtime_tree(digest, harness_root, prefix="harness/")
+    ready = not missing_skill and not missing_harness
+    return {
+        "label": "MURAL Presenter v0.3 · Adaptive Ownership",
+        "path": str(skills_root / name),
+        "instruction_paths": {
+            "zh": str(skills_root / name),
+            "en": str(skills_root / name),
+        },
+        "skills_root": str(skills_root),
+        "name": name,
+        "language": "auto",
+        "supported_languages": ["zh", "en"],
+        "agent_language_routing": "resolved-deck-brief",
+        "deck_language": "auto",
+        "force_skill_language": "",
+        "mode": "mural-presenter-v0.3-adaptive",
+        "status": "candidate" if ready else "unavailable",
+        "ready": ready,
+        "unavailable_reason": "；".join(reasons),
+        "required_files": [f"{name}/{relative}" for relative in required],
+        "source_revision": digest.hexdigest()[:12] if ready else "",
+        "pipeline": "mural-presenter-v0.3-harness",
+        "harness_path": str(harness_root),
+        "harness_entry": MURAL_V03_HARNESS_ENTRY,
+        "harness_required_files": list(harness_required),
+        "pairing": "mural-presenter-v0.3-adaptive",
+        "caps": ["attachments", "revision", "static_html", "custom_fonts"],
+        "runtime_env": {
+            "CLEAN_MODEL_SELECT_SKILL": "0",
+            "MURAL_RUN_MODE": "inference",
+            "CLEAN_SKILL_NAME": name,
+            "CLEAN_SKILL_NAME_ZH": name,
+            "CLEAN_SKILL_NAME_EN": name,
+            "CLEAN_CHILD_CONCURRENCY": "12",
+            "CLEAN_CHILD_POOL_MAX_WORKERS": "12",
+            "CLEAN_REMOTE_TOOL_CONCURRENCY": "4",
+            "CLEAN_MAX_TURNS": "240",
+            "CLEAN_CHILD_MAX_TURNS": "80",
+            "CLEAN_MAX_TOKENS": "40960",
+            "CLEAN_MODEL_TIMEOUT": "600",
+            "CLEAN_CHILD_WALL_TIMEOUT": "2400",
+        },
+    }
+
+
+def _mural_v04_skill(
+    skills_root: Path = MURAL_V04_SKILLS_ROOT,
+    harness_root: Path = MURAL_V04_HARNESS_ROOT,
+) -> dict:
+    """Register the v0.4 quality/stability iteration of adaptive MURAL."""
+    name = "mural-presenter-v0-4"
+    required = (
+        "SKILL.md",
+        "agents/openai.yaml",
+        "assets/base.css",
+        "assets/vendor/echarts.min.js",
+        "references/aesthetic-recipes.md",
+        "references/charts-and-diagrams.md",
+        "references/creative-direction.md",
+        "references/design-rules.md",
+        "references/design-styles.md",
+        "references/layout-patterns.md",
+        "references/quality-checklist.md",
+        "references/plan-contract.md",
+        "references/materials-and-images.md",
+        "references/html-contract.md",
+        "roles/image.md",
+        "roles/material.md",
+        "roles/orchestrator.md",
+        "roles/research.md",
+        "roles/review.md",
+        "roles/slide.md",
+        "scripts/orchestrator.py",
+        "scripts/image.py",
+        "scripts/slide.py",
+        "scripts/review.py",
+        "scripts/_internal/__init__.py",
+        "scripts/_internal/cli.py",
+        "scripts/_internal/bootstrap.py",
+        "scripts/_internal/planning.py",
+        "scripts/_internal/delivery.py",
+        "scripts/_internal/assets.py",
+        "scripts/_internal/renderer.py",
+        "scripts/_internal/deck_core.py",
+        "scripts/_internal/font_bundle.py",
+        "scripts/_internal/image_background.py",
+        "scripts/_internal/render_deck.py",
+        "scripts/_internal/workspace_policy.py",
+    )
+    missing_skill = [
+        f"{name}/{relative}"
+        for relative in required
+        if not (skills_root / name / relative).is_file()
+    ]
+    harness_required = (
+        MURAL_V04_HARNESS_ENTRY,
+        "core/__init__.py",
+        "core/agent_loop.py",
+        "core/config.py",
+        "core/language.py",
+        "core/model_call.py",
+        "core/render_broker.py",
+        "core/run_profiles.py",
+        "core/runtime_capabilities.py",
+        "core/run_batch.py",
+        "core/trace_mode.py",
+        "core/tools.py",
+    )
+    missing_harness = [
+        relative for relative in harness_required
+        if not (harness_root / relative).is_file()
+    ]
+    reasons = []
+    if missing_skill:
+        reasons.append("MURAL Presenter v0.4 Skill 缺少：" + ", ".join(missing_skill))
+    if missing_harness:
+        reasons.append("MURAL Presenter v0.4 Harness 缺少：" + ", ".join(missing_harness))
+    digest = hashlib.sha256()
+    if not missing_skill:
+        _hash_runtime_tree(digest, skills_root, prefix="skills/")
+    if not missing_harness:
+        _hash_runtime_tree(digest, harness_root, prefix="harness/")
+    ready = not missing_skill and not missing_harness
+    return {
+        "label": "MURAL Presenter v0.4 · Adaptive Quality",
+        "path": str(skills_root / name),
+        "instruction_paths": {
+            "zh": str(skills_root / name),
+            "en": str(skills_root / name),
+        },
+        "skills_root": str(skills_root),
+        "name": name,
+        "language": "auto",
+        "supported_languages": ["zh", "en"],
+        "agent_language_routing": "resolved-deck-brief",
+        "deck_language": "auto",
+        "force_skill_language": "",
+        "mode": "mural-presenter-v0.4-adaptive",
+        "status": "candidate" if ready else "unavailable",
+        "ready": ready,
+        "unavailable_reason": "；".join(reasons),
+        "required_files": [f"{name}/{relative}" for relative in required],
+        "source_revision": digest.hexdigest()[:12] if ready else "",
+        "pipeline": "mural-presenter-v0.4-harness",
+        "harness_path": str(harness_root),
+        "harness_entry": MURAL_V04_HARNESS_ENTRY,
+        "harness_required_files": list(harness_required),
+        "pairing": "mural-presenter-v0.4-adaptive",
+        "caps": ["attachments", "revision", "static_html", "custom_fonts"],
+        "runtime_env": {
+            "CLEAN_MODEL_SELECT_SKILL": "0",
+            "MURAL_RUN_MODE": "inference",
+            "CLEAN_SKILL_NAME": name,
+            "CLEAN_SKILL_NAME_ZH": name,
+            "CLEAN_SKILL_NAME_EN": name,
+            "CLEAN_CHILD_CONCURRENCY": "12",
+            "CLEAN_CHILD_POOL_MAX_WORKERS": "12",
             "CLEAN_REMOTE_TOOL_CONCURRENCY": "4",
             "CLEAN_MAX_TURNS": "240",
             "CLEAN_CHILD_MAX_TURNS": "80",
@@ -900,9 +1370,69 @@ def _sense_present_skill(name: str, label: str, pipeline: str, entry: str) -> di
     }
 
 
+def _sense_present_suite_skill() -> dict:
+    """Register the full in-repository suite through its sn-ppt-entry root."""
+    required = (
+        "sn-ppt-entry/SKILL.md",
+        "sn-ppt-story/SKILL.md",
+        "sn-ppt-tools/SKILL.md",
+        "sn-ppt-tools/references/capability-policy.md",
+        "sn-ppt-standard/SKILL.md",
+        "sn-ppt-standard/scripts/render.py",
+        "sn-ppt-standard/scripts/build_player.py",
+        "sn-ppt-standard/subagents/image.md",
+        "sn-ppt-standard/subagents/slide.md",
+        "sn-ppt-standard/subagents/review.md",
+    )
+    missing = [
+        relative
+        for relative in required
+        if not (SENSE_PRESENT_SUITE_SKILLS_ROOT / relative).is_file()
+    ]
+    harness = INFERENCE_DIR / SENSE_PRESENT_SUITE_HARNESS_ENTRY
+    if not harness.is_file():
+        missing.append(SENSE_PRESENT_SUITE_HARNESS_ENTRY)
+    digest = hashlib.sha256()
+    if not missing:
+        for path in sorted(
+            (item for item in SENSE_PRESENT_SUITE_SKILLS_ROOT.rglob("*") if item.is_file()),
+            key=lambda item: item.relative_to(SENSE_PRESENT_SUITE_SKILLS_ROOT).as_posix(),
+        ):
+            if any(part in {".git", ".venv", "__pycache__"} for part in path.parts):
+                continue
+            digest.update(path.relative_to(SENSE_PRESENT_SUITE_SKILLS_ROOT).as_posix().encode())
+            digest.update(path.read_bytes())
+    ready = not missing
+    return {
+        "label": "Sense Present PPT Skill Suite",
+        "path": str(SENSE_PRESENT_SUITE_SKILLS_ROOT / "sn-ppt-entry"),
+        "skills_root": str(SENSE_PRESENT_SUITE_SKILLS_ROOT),
+        "name": "sn-ppt-entry",
+        "language": "auto",
+        "deck_language": "auto",
+        "mode": "sense-present-suite",
+        "status": "current" if ready else "unavailable",
+        "ready": ready,
+        "unavailable_reason": "缺少：" + ", ".join(missing) if missing else "",
+        "source_revision": digest.hexdigest()[:12] if ready else "",
+        "pipeline": "sense-present-ppt-skill-harness",
+        "pairing": "sense-present-ppt-skill-suite",
+        "output": "static_html",
+        "caps": ["attachments", "static_html"],
+        "runtime_env": {
+            "SENSENOVA_PPT_SUITE_ROOT": str(SENSE_PRESENT_SUITE_ROOT),
+            "MAX_CONCURRENT_CHILDREN": "12",
+            "MAX_TURNS": "240",
+            "SUBAGENT_MAX_TURNS": "80",
+            "MAX_TOKENS": "40960",
+        },
+    }
+
+
 # 顺序同时决定 UI 顺序。普通 Long-horizon 从 Pipeline 热加载；Grouped 版本在
 # Web Demo vendor 中维护独立副本。两者都在任务启动时快照进对应 deck 工作区。
 SKILLS = {
+    "sense-present-ppt-skill": _sense_present_suite_skill(),
     "sense-present-standard": _sense_present_skill(
         "sn-ppt-standard", "SenseNova Static HTML", "sense-present-standard-harness",
         "sense_present_standard.py",
@@ -929,17 +1459,33 @@ SKILLS = {
         inline_image=True,
     ),
     "visual-craft": _visual_craft_skill(),
+    "visual-craft-v3-pre-speech": _visual_craft_v3_skill(speech=False),
+    "visual-craft-v3-speech": _visual_craft_v3_skill(speech=True),
     "sn-ppt-web": _sn_ppt_web_skill(),
     "long-horizon-presenter": _long_horizon_presenter_skill(),
     "mural-presenter": _mural_presenter_skill(),
+    "mural-presenter-creative": _mural_presenter_creative_skill(),
     "mural-presenter-v0.2": _mural_v02_skill(),
+    "mural-presenter-v0.2-grouped": _mural_v02_skill(grouped=True),
+    "mural-presenter-v0.3": _mural_v03_skill(),
+    "mural-presenter-v0.4": _mural_v04_skill(),
 }
 if ENABLE_EXPERIMENTAL_SKILLS:
     SKILLS["mural-next"] = _mural_next_skill()
 # The public V1 release exposes one stable workflow. Other catalog entries stay
 # registered only so existing development data can still be inspected when a
 # maintainer explicitly opts into them through PPTAGENT_PUBLIC_SKILL_KEYS.
-_DEFAULT_PUBLIC_SKILL_KEYS = ("mural-presenter-v0.2", "mural-presenter")
+_DEFAULT_PUBLIC_SKILL_KEYS = (
+    "sense-present-ppt-skill",
+    "mural-presenter",
+    "mural-presenter-creative",
+    "mural-presenter-v0.2",
+    "mural-presenter-v0.2-grouped",
+    "mural-presenter-v0.3",
+    "mural-presenter-v0.4",
+    "visual-craft-v3-pre-speech",
+    "visual-craft-v3-speech",
+)
 _configured_public_skill_keys = tuple(
     key.strip()
     for key in os.environ.get("PPTAGENT_PUBLIC_SKILL_KEYS", "").split(",")
@@ -996,23 +1542,41 @@ def refresh_external_skills(*, force: bool = False) -> dict:
             inline_image=True,
         )
         visual_craft = _visual_craft_skill()
+        visual_craft_v3_pre_speech = _visual_craft_v3_skill(speech=False)
+        visual_craft_v3_speech = _visual_craft_v3_skill(speech=True)
         sn_ppt_web = _sn_ppt_web_skill()
         long_horizon_presenter = _long_horizon_presenter_skill()
         mural_presenter = _mural_presenter_skill()
+        mural_presenter_creative = _mural_presenter_creative_skill()
         mural_v02 = _mural_v02_skill()
+        mural_v02_grouped = _mural_v02_skill(grouped=True)
+        mural_v03 = _mural_v03_skill()
+        mural_v04 = _mural_v04_skill()
         mural_next = _mural_next_skill() if ENABLE_EXPERIMENTAL_SKILLS else None
         SKILLS["long-horizon"] = refreshed
         SKILLS["long-horizon-grouped"] = grouped
         SKILLS["long-horizon-grouped-inline-image"] = grouped_inline_image
         SKILLS["visual-craft"] = visual_craft
+        SKILLS["visual-craft-v3-pre-speech"] = visual_craft_v3_pre_speech
+        SKILLS["visual-craft-v3-speech"] = visual_craft_v3_speech
         SKILLS["sn-ppt-web"] = sn_ppt_web
         SKILLS["long-horizon-presenter"] = long_horizon_presenter
         SKILLS["mural-presenter"] = mural_presenter
+        SKILLS["mural-presenter-creative"] = mural_presenter_creative
         SKILLS["mural-presenter-v0.2"] = mural_v02
+        SKILLS["mural-presenter-v0.2-grouped"] = mural_v02_grouped
+        SKILLS["mural-presenter-v0.3"] = mural_v03
+        SKILLS["mural-presenter-v0.4"] = mural_v04
         if mural_next is not None:
             SKILLS["mural-next"] = mural_next
         if "PIPELINES" in globals():
             PIPELINES["visual-craft-harness"] = _visual_craft_pipeline(visual_craft)
+            PIPELINES["visual-craft-v3-pre-speech-harness"] = (
+                _visual_craft_v3_pipeline(visual_craft_v3_pre_speech)
+            )
+            PIPELINES["visual-craft-v3-speech-harness"] = (
+                _visual_craft_v3_pipeline(visual_craft_v3_speech)
+            )
             PIPELINES["sn-ppt-web-harness"] = _sn_ppt_web_pipeline(
                 sn_ppt_web
             )
@@ -1024,6 +1588,15 @@ def refresh_external_skills(*, force: bool = False) -> dict:
             )
             PIPELINES["mural-presenter-v0.2-harness"] = _mural_v02_pipeline(
                 mural_v02
+            )
+            PIPELINES["mural-presenter-v0.2-grouped-harness"] = (
+                _mural_v02_pipeline(mural_v02_grouped, grouped=True)
+            )
+            PIPELINES["mural-presenter-v0.3-harness"] = _mural_v03_pipeline(
+                mural_v03
+            )
+            PIPELINES["mural-presenter-v0.4-harness"] = _mural_v04_pipeline(
+                mural_v04
             )
             if mural_next is not None:
                 PIPELINES["mural-next-harness"] = _mural_next_pipeline(mural_next)
@@ -1042,6 +1615,21 @@ def _visual_craft_pipeline(skill: dict | None = None) -> dict:
         "skill_mode": "ppt-skill-html",
         "caps": ["attachments", "revision"],
         "pairing": "visual-craft-paired",
+        "ready": bool(skill.get("ready")),
+        "unavailable_reason": skill.get("unavailable_reason", ""),
+    }
+
+
+def _visual_craft_v3_pipeline(skill: dict) -> dict:
+    """Return the exact Harness paired with one Visual Craft V3 snapshot."""
+    return {
+        "label": f"{skill['label']} Harness",
+        "path": str(skill["harness_path"]),
+        "entry": str(skill["harness_entry"]),
+        "supports": ["anthropic", "openai"],
+        "skill_mode": "ppt-skill-html",
+        "caps": list(skill.get("caps", [])),
+        "pairing": str(skill.get("pairing", "")),
         "ready": bool(skill.get("ready")),
         "unavailable_reason": skill.get("unavailable_reason", ""),
     }
@@ -1096,16 +1684,63 @@ def _mural_presenter_pipeline(skill: dict | None = None) -> dict:
     }
 
 
-def _mural_v02_pipeline(skill: dict | None = None) -> dict:
-    skill = skill or SKILLS.get("mural-presenter-v0.2") or _mural_v02_skill()
+def _mural_v02_pipeline(
+    skill: dict | None = None,
+    *,
+    grouped: bool = False,
+) -> dict:
+    skill_key = "mural-presenter-v0.2-grouped" if grouped else "mural-presenter-v0.2"
+    skill = skill or SKILLS.get(skill_key) or _mural_v02_skill(grouped=grouped)
     return {
-        "label": "MURAL Presenter v0.2 · Slide Parallel",
+        "label": (
+            "MURAL Presenter v0.2 · Grouped"
+            if grouped
+            else "MURAL Presenter v0.2 · Single"
+        ),
         "path": str(MURAL_V02_HARNESS_ROOT),
         "entry": MURAL_V02_HARNESS_ENTRY,
         "supports": ["anthropic", "openai"],
-        "skill_mode": "clean-bilingual-single-slide",
+        "skill_mode": (
+            "clean-bilingual-grouped"
+            if grouped
+            else "clean-bilingual-single-slide"
+        ),
         "caps": ["attachments", "revision", "static_html"],
-        "pairing": "mural-presenter-v0.2-single-slide",
+        "pairing": (
+            "mural-presenter-v0.2-grouped"
+            if grouped
+            else "mural-presenter-v0.2-single-slide"
+        ),
+        "ready": bool(skill.get("ready")),
+        "unavailable_reason": skill.get("unavailable_reason", ""),
+    }
+
+
+def _mural_v03_pipeline(skill: dict | None = None) -> dict:
+    skill = skill or SKILLS.get("mural-presenter-v0.3") or _mural_v03_skill()
+    return {
+        "label": "MURAL Presenter v0.3 · Adaptive Ownership",
+        "path": str(MURAL_V03_HARNESS_ROOT),
+        "entry": MURAL_V03_HARNESS_ENTRY,
+        "supports": ["anthropic", "openai"],
+        "skill_mode": "mural-presenter-v0.3-adaptive",
+        "caps": ["attachments", "revision", "static_html", "custom_fonts"],
+        "pairing": "mural-presenter-v0.3-adaptive",
+        "ready": bool(skill.get("ready")),
+        "unavailable_reason": skill.get("unavailable_reason", ""),
+    }
+
+
+def _mural_v04_pipeline(skill: dict | None = None) -> dict:
+    skill = skill or SKILLS.get("mural-presenter-v0.4") or _mural_v04_skill()
+    return {
+        "label": "MURAL Presenter v0.4 · Adaptive Quality",
+        "path": str(MURAL_V04_HARNESS_ROOT),
+        "entry": MURAL_V04_HARNESS_ENTRY,
+        "supports": ["anthropic", "openai"],
+        "skill_mode": "mural-presenter-v0.4-adaptive",
+        "caps": ["attachments", "revision", "static_html", "custom_fonts"],
+        "pairing": "mural-presenter-v0.4-adaptive",
         "ready": bool(skill.get("ready")),
         "unavailable_reason": skill.get("unavailable_reason", ""),
     }
@@ -1127,6 +1762,17 @@ def _mural_next_pipeline(skill: dict | None = None) -> dict:
 
 
 PIPELINES = {
+    "sense-present-ppt-skill-harness": {
+        "label": "Sense Present PPT Skill Suite Harness",
+        "path": str(INFERENCE_DIR),
+        "entry": SENSE_PRESENT_SUITE_HARNESS_ENTRY,
+        "supports": ["anthropic", "openai"],
+        "skill_mode": "sense-present-suite",
+        "caps": ["attachments", "static_html"],
+        "pairing": "sense-present-ppt-skill-suite",
+        "ready": bool(SKILLS["sense-present-ppt-skill"].get("ready")),
+        "unavailable_reason": SKILLS["sense-present-ppt-skill"].get("unavailable_reason", ""),
+    },
     "sense-present-standard-harness": {
         "label": "SenseNova Static HTML Harness",
         "path": str(INFERENCE_DIR),
@@ -1160,10 +1806,19 @@ PIPELINES = {
         "ready": True,
     },
     "visual-craft-harness": _visual_craft_pipeline(),
+    "visual-craft-v3-pre-speech-harness": _visual_craft_v3_pipeline(
+        SKILLS["visual-craft-v3-pre-speech"]
+    ),
+    "visual-craft-v3-speech-harness": _visual_craft_v3_pipeline(
+        SKILLS["visual-craft-v3-speech"]
+    ),
     "sn-ppt-web-harness": _sn_ppt_web_pipeline(),
     "long-horizon-presenter-harness": _long_horizon_presenter_pipeline(),
     "mural-presenter-harness": _mural_presenter_pipeline(),
     "mural-presenter-v0.2-harness": _mural_v02_pipeline(),
+    "mural-presenter-v0.2-grouped-harness": _mural_v02_pipeline(grouped=True),
+    "mural-presenter-v0.3-harness": _mural_v03_pipeline(),
+    "mural-presenter-v0.4-harness": _mural_v04_pipeline(),
 }
 if ENABLE_EXPERIMENTAL_SKILLS:
     PIPELINES["mural-next-harness"] = _mural_next_pipeline()
@@ -1184,10 +1839,12 @@ LEGACY_SKILL_ALIASES = {
 # 可选模型注册表:anthropic 走引擎默认 teacher 路径;openai 走引擎的 student shim
 # (agent_loop 按 MODEL_BACKEND=openai + STUDENT_BASE_URL/STUDENT_MODEL 切换)。
 # Public V1 intentionally ships without built-in model endpoints.
-# Configure SENSENOVA_MODEL_* or add models from User -> Model configuration.
+# Configure SENSENOVA_MODEL_* / SENSENOVA_MODEL2_* or add models from
+# User -> Model configuration.
 MODELS = {}
 DEFAULT_MODEL = "deployment-model"
 ENVIRONMENT_MODEL_KEY = "deployment-model"
+ENVIRONMENT_MODEL2_KEY = "deployment-model-2"
 
 
 def _normalize_thinking_transport(value: str | None) -> str:
@@ -1196,7 +1853,7 @@ def _normalize_thinking_transport(value: str | None) -> str:
     return "chat_template_kwargs" if transport == "openai" else transport
 
 
-def _environment_model() -> dict | None:
+def _environment_model(prefix: str = "SENSENOVA_MODEL") -> dict | None:
     """Build the optional deployment-managed model as its own registry item.
 
     ``SENSENOVA_MODEL_*`` used to override the first built-in model in
@@ -1205,26 +1862,26 @@ def _environment_model() -> dict | None:
     model keeps the catalog truthful and lets deployments start with no model
     at all.
     """
-    base_url = os.environ.get("SENSENOVA_MODEL_BASE_URL", "").strip().rstrip("/")
-    model_name = os.environ.get("SENSENOVA_MODEL_NAME", "").strip()
+    base_url = os.environ.get(f"{prefix}_BASE_URL", "").strip().rstrip("/")
+    model_name = os.environ.get(f"{prefix}_NAME", "").strip()
     if not base_url or not model_name:
         return None
     return {
         "label": (
-            os.environ.get("SENSENOVA_MODEL_DISPLAY_NAME", "").strip()
+            os.environ.get(f"{prefix}_DISPLAY_NAME", "").strip()
             or model_name
         ),
         "backend": "openai",
         "engine_model": model_name,
         "base_url": base_url,
-        "api_key": os.environ.get("SENSENOVA_MODEL_API_KEY", "").strip(),
+        "api_key": os.environ.get(f"{prefix}_API_KEY", "").strip(),
         "slide_concurrency": int(
-            os.environ.get("SENSENOVA_MODEL_SLIDE_CONCURRENCY", "4") or "4"
+            os.environ.get(f"{prefix}_SLIDE_CONCURRENCY", "4") or "4"
         ),
         "thinking_mode": "toggle",
         "thinking_transport": _normalize_thinking_transport(
             os.environ.get(
-                "SENSENOVA_MODEL_THINKING_TRANSPORT",
+                f"{prefix}_THINKING_TRANSPORT",
                 "chat_template_kwargs",
             )
         ),
@@ -1235,6 +1892,9 @@ def _environment_model() -> dict | None:
 _ENVIRONMENT_MODEL = _environment_model()
 if _ENVIRONMENT_MODEL:
     MODELS[ENVIRONMENT_MODEL_KEY] = _ENVIRONMENT_MODEL
+_ENVIRONMENT_MODEL2 = _environment_model("SENSENOVA_MODEL2")
+if _ENVIRONMENT_MODEL2:
+    MODELS[ENVIRONMENT_MODEL2_KEY] = _ENVIRONMENT_MODEL2
 
 # 老 deck 的 DB 里可能存了历史 model key(label/id 漂移期或旧版本留下的),映射到现行注册表 key,
 # 保证老 deck 仍可解析、不报「未知模型」。新建 deck 一律存归一后的现行 key。
@@ -1295,13 +1955,13 @@ def resolve_thinking(model_key: str, requested: bool,
 
 
 def user_selectable_models():
-    """Return deployment-visible built-ins plus the optional env model.
+    """Return deployment-visible built-ins plus optional env models.
 
     When ``PPTAGENT_PUBLIC_MODEL_KEYS`` is absent, development keeps the
     historical four-model catalog.  Setting it to an empty value intentionally
     exposes no built-ins, which is the release default.  A complete
     ``SENSENOVA_MODEL_BASE_URL`` + ``SENSENOVA_MODEL_NAME`` pair is always
-    registered as one additional, honestly labelled model.
+    registered as additional, honestly labelled models.
     """
     development_defaults = (
         "sensenova-flash-lite-v39",
@@ -1313,8 +1973,12 @@ def user_selectable_models():
     keys = list(development_defaults) if configured is None else [
         key.strip() for key in configured.split(",") if key.strip()
     ]
-    if _ENVIRONMENT_MODEL and ENVIRONMENT_MODEL_KEY not in keys:
-        keys.append(ENVIRONMENT_MODEL_KEY)
+    for key, model in (
+        (ENVIRONMENT_MODEL_KEY, _ENVIRONMENT_MODEL),
+        (ENVIRONMENT_MODEL2_KEY, _ENVIRONMENT_MODEL2),
+    ):
+        if model and key not in keys:
+            keys.append(key)
     return [
         (key, MODELS[key])
         for key in dict.fromkeys(keys)
@@ -1386,6 +2050,19 @@ def validate_selection(model_key: str, pipeline_key: str, skill_key: str,
         return pipe.get("unavailable_reason") or "该 Harness 当前不可用"
     if model["backend"] not in set(pipe["supports"]):
         return f"{pipe['label']} 暂不支持 {model['backend']} 模型"
+    if skill_key in {
+        "mural-presenter-v0.2",
+        "mural-presenter-v0.2-grouped",
+        "mural-presenter-v0.3",
+        "mural-presenter-v0.4",
+    } and (
+        model.get("multimodal") is False
+    ):
+        return (
+            f"{skill['label']} 使用同一主模型完成像素检查；"
+            f"{model.get('label') or model.get('engine_model')} 是文本接口，"
+            "请改选真正支持图像输入的 PPTAgent/多模态模型。"
+        )
     return None
 
 
@@ -1550,6 +2227,10 @@ def selection_env(model_key: str, pipeline_key: str, skill_key: str,
                     # openai shim 原样塞进 payload,严格 openai 端点(tokenhub gpt-5.5)直接 400
                     # (Unknown parameter 'cache_control')。vLLM 学生本就忽略它,openai 一律关。
                     "PROMPT_CACHE": "0"})
+        if "multimodal" in m:
+            env["VISION_BACKEND"] = (
+                "same_model_aux" if m.get("multimodal") else "disabled"
+            )
         thinking = thinking_capability(model_key, model_config=m)
         if thinking["toggle"]:
             env["STUDIO_THINKING_TRANSPORT"] = thinking["transport"]
@@ -1587,6 +2268,8 @@ def selection_env(model_key: str, pipeline_key: str, skill_key: str,
         # code/Skill/Harness only and never receives copied secrets.
         "CLEAN_DOTENV_PATH": str(_ANTHROPIC_ENV_FILE),
     })
+    if skill.get("agent_language_routing") == "first-skill-read-lock":
+        env["CLEAN_MODEL_SELECT_SKILL"] = "1"
     env["PPT_CAPABILITY_PROFILE"] = "visual"
     env.update(skill.get("runtime_env", {}))
     env.update({
@@ -1627,10 +2310,17 @@ def build_job(sample_id: str, seed: dict, run_dir, dry: bool = False, model_key:
         "long-horizon",
         "long-horizon-grouped",
         "visual-craft",
+        "visual-craft-v3-pre-speech",
+        "visual-craft-v3-speech",
         "sn-ppt-web",
         "long-horizon-presenter",
         "mural-presenter",
+        "mural-presenter-creative",
         "mural-presenter-v0.2",
+        "mural-presenter-v0.2-grouped",
+        "mural-presenter-v0.3",
+        "mural-presenter-v0.4",
+        "sense-present-ppt-skill",
         "mural-next",
     }:
         # A generation job must capture the latest Skill even when the homepage
@@ -1650,6 +2340,8 @@ def build_job(sample_id: str, seed: dict, run_dir, dry: bool = False, model_key:
         eng_seed["lang"] = deck_language
     if eng_seed.get("slide_count") and not eng_seed.get("pages_hint"):
         eng_seed["pages_hint"] = int(eng_seed["slide_count"])
+    if skill.get("authoring_profile"):
+        eng_seed["authoring_profile"] = str(skill["authoring_profile"])
     pipe = PIPELINES[pipeline_key]
     job = {
         "sample_id": sample_id,

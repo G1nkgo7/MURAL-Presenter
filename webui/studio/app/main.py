@@ -1154,7 +1154,7 @@ def get_batch(batch_id: int, user=Depends(require_user), con=Depends(get_db)):
 def list_decks(user=Depends(require_user), con=Depends(get_db)):
     rows = con.execute(
         "SELECT id,batch_id,batch_index,parent_deck_id,revision_no,title,status,"
-        "slide_count,created_at,started_at,finished_at,seed_json "
+        "slide_count,created_at,started_at,finished_at,model,skill_version,seed_json "
         "FROM decks WHERE user_id = ? ORDER BY id DESC", (user["id"],)
     ).fetchall()
     prefs = {
@@ -1178,6 +1178,9 @@ def list_decks(user=Depends(require_user), con=Depends(get_db)):
         item["presentation_kind"] = (
             "dynamic" if seed.get("ppt_output") == "dynamic_html" else "static"
         )
+        item["model_label"] = _model_label(con, user["id"], item.get("model") or "")
+        skill = engine.SKILLS.get(item.get("skill_version") or "") or {}
+        item["skill_label"] = skill.get("label") or item.get("skill_version") or ""
         item["pinned"] = prefs.get(str(item["id"]), False)
         decks.append(item)
     return {"decks": decks}
@@ -1700,6 +1703,7 @@ def _static_html_preview_state(run_dir: str | None) -> dict:
         return {"ready": False, "final": False, "stamp": 0}
     root = Path(run_dir)
     present = root / "present.html"
+    css_path = root / "base.css"
     # SenseNova PPT v2 dynamic output uses the same Studio deck shell but its
     # canonical player is deck.html.  It implements ?slide=N and slidechange.
     dynamic_deck = root / "deck.html"
@@ -1717,7 +1721,7 @@ def _static_html_preview_state(run_dir: str | None) -> dict:
         )
     except OSError:
         fragments = []
-    if not fragments or not (root / "base.css").is_file():
+    if not fragments or not css_path.is_file():
         if not present.is_file():
             return {"ready": False, "final": False, "stamp": 0}
         try:
@@ -1725,11 +1729,11 @@ def _static_html_preview_state(run_dir: str | None) -> dict:
         except OSError:
             stamp = 0
         return {"ready": True, "final": True, "stamp": stamp}
-    # Refresh the live player after a successful render when possible. During
-    # the first page, fall back to fragment mtimes so preview becomes available
-    # before the whole deck is finalized.
-    rendered = [path for path in (root / "renders").glob("slide_*.png") if path.is_file()]
-    stamp_sources = fragments + rendered
+    # A formal build is stale only when its authored HTML changed afterwards.
+    # Final PNGs are intentionally written after present.html during Review;
+    # treating their newer mtimes as authored changes made every completed Deck
+    # fall back to the provisional player forever.
+    stamp_sources = fragments + [css_path]
     try:
         live_stamp = max(path.stat().st_mtime_ns // 1_000_000 for path in stamp_sources)
     except (OSError, ValueError):
@@ -1740,28 +1744,223 @@ def _static_html_preview_state(run_dir: str | None) -> dict:
         except OSError:
             present_stamp = 0
         # In-place revisions intentionally keep the last good present.html on
-        # disk while individual slide fragments are rewritten.  A newer
-        # fragment/render therefore means the canonical player is stale: serve
-        # the fragment-backed player until the final build catches up.
+        # disk while individual slide fragments/base.css are rewritten. Serve
+        # the fragment-backed player until the formal build catches up.
         if live_stamp <= present_stamp:
             return {"ready": True, "final": True, "stamp": present_stamp}
     return {"ready": True, "final": False, "stamp": live_stamp}
 
 
+def _inline_fragment_present_html(
+    css: str,
+    rows: list[tuple[int, str]],
+    canvas_w: int,
+    canvas_h: int,
+) -> str:
+    """Assemble Mural-style fragments in the same CSS document.
+
+    A slide fragment is not a standalone document: its dimensions, page frame,
+    fonts, and visibility all come from ``base.css``. Loading such a fragment in
+    an iframe drops that contract and collapses the slide to its content size.
+    """
+    sections = "\n\n".join(
+        re.sub(
+            r'''<link\b(?=[^>]*\bhref=["']\.\./base\.css["'])[^>]*>''',
+            "",
+            text,
+            flags=re.I,
+        )
+        for _, text in rows
+    )
+    return f"""<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Live Presentation Preview</title>
+  <style>
+{css}
+  </style>
+</head>
+<body>
+  <div class="stage"><main class="deck" id="deck">
+{sections}
+  </main></div>
+  <script>
+  (() => {{
+    const slides = [...document.querySelectorAll('.slide[data-slide]')];
+    const byNumber = new Map(slides.map(slide => [Number(slide.dataset.slide), slide]));
+    const numbers = [...byNumber.keys()].sort((a, b) => a - b);
+    const deck = document.getElementById('deck');
+    let current = Number(new URLSearchParams(location.search).get('slide')) || numbers[0] || 1;
+    function fitDeck() {{
+      const scale = Math.min(innerWidth / {canvas_w}, innerHeight / {canvas_h});
+      deck.style.left = `${{(innerWidth - {canvas_w} * scale) / 2}}px`;
+      deck.style.top = `${{(innerHeight - {canvas_h} * scale) / 2}}px`;
+      deck.style.transform = `scale(${{scale}})`;
+    }}
+    function go(number) {{
+      number = Number(number);
+      if (!byNumber.has(number)) return false;
+      current = number;
+      slides.forEach(slide => slide.classList.toggle(
+        'active', Number(slide.dataset.slide) === current
+      ));
+      dispatchEvent(new CustomEvent('slidechange', {{ detail: {{ slide: current }} }}));
+      return true;
+    }}
+    function step(delta) {{
+      const index = numbers.indexOf(current);
+      go(numbers[Math.max(0, Math.min(numbers.length - 1, index + delta))]);
+    }}
+    addEventListener('keydown', event => {{
+      if (['ArrowRight', 'PageDown', ' '].includes(event.key)) step(1);
+      if (['ArrowLeft', 'PageUp'].includes(event.key)) step(-1);
+    }});
+    addEventListener('resize', fitDeck);
+    fitDeck();
+    go(byNumber.has(current) ? current : numbers[0]);
+    const fontsReady = Promise.resolve(document.fonts?.ready)
+      .catch(() => undefined)
+      .then(() => new Promise(resolve => requestAnimationFrame(() => {{
+        fitDeck();
+        dispatchEvent(new CustomEvent('deckfontsready'));
+        resolve();
+      }})));
+    window.cleanDeck = {{ go, step, count: slides.length, fontsReady, provisional: true }};
+  }})();
+  </script>
+</body>
+</html>"""
+
+
+def _hybrid_fragment_present_html(
+    css: str,
+    rows: list[tuple[int, Path, str, bool]],
+    canvas_w: int,
+    canvas_h: int,
+) -> str:
+    """Assemble mixed fragment/standalone output without weakening either page.
+
+    Models can occasionally emit one complete HTML document among otherwise
+    canonical Mural fragments. Route each page independently: fragments stay in
+    the shared ``base.css`` document, while complete documents retain iframe
+    isolation.
+    """
+    shells: list[str] = []
+    for number, path, text, standalone in rows:
+        if standalone:
+            content = (
+                f'<iframe title="Slide {number}" loading="eager" '
+                f'src="slides/{path.name}"></iframe>'
+            )
+            kind = "standalone"
+        else:
+            content = re.sub(
+                r'''<link\b(?=[^>]*\bhref=["']\.\./base\.css["'])[^>]*>''',
+                "",
+                text,
+                flags=re.I,
+            )
+            kind = "fragment"
+        shells.append(
+            f'<div class="slide-shell" data-slide="{number}" '
+            f'data-kind="{kind}" aria-hidden="true">{content}</div>'
+        )
+    shell_markup = "\n".join(shells)
+    return f"""<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Live Presentation Preview</title>
+  <style>
+{css}
+    .slide-shell {{ position:absolute; inset:0; opacity:0; pointer-events:none; }}
+    .slide-shell.active {{ opacity:1; pointer-events:auto; }}
+    .slide-shell > iframe {{ width:100%; height:100%; display:block; border:0; overflow:hidden; background:transparent; }}
+  </style>
+</head>
+<body>
+  <div class="stage"><main class="deck" id="deck">
+{shell_markup}
+  </main></div>
+  <script>
+  (() => {{
+    const shellList = [...document.querySelectorAll('.slide-shell[data-slide]')];
+    const shells = new Map(shellList.map(shell => [Number(shell.dataset.slide), shell]));
+    const numbers = [...shells.keys()].sort((a, b) => a - b);
+    const deck = document.getElementById('deck');
+    let current = Number(new URLSearchParams(location.search).get('slide')) || numbers[0] || 1;
+    function fitDeck() {{
+      const scale = Math.min(innerWidth / {canvas_w}, innerHeight / {canvas_h});
+      deck.style.left = `${{(innerWidth - {canvas_w} * scale) / 2}}px`;
+      deck.style.top = `${{(innerHeight - {canvas_h} * scale) / 2}}px`;
+      deck.style.transform = `scale(${{scale}})`;
+    }}
+    function go(number) {{
+      number = Number(number);
+      if (!shells.has(number)) return false;
+      current = number;
+      shells.forEach((shell, page) => {{
+        const active = page === current;
+        shell.classList.toggle('active', active);
+        shell.setAttribute('aria-hidden', active ? 'false' : 'true');
+        const fragment = shell.querySelector(':scope > .slide[data-slide]');
+        fragment?.classList.toggle('active', active);
+      }});
+      dispatchEvent(new CustomEvent('slidechange', {{ detail: {{ slide: current }} }}));
+      return true;
+    }}
+    function step(delta) {{
+      const index = numbers.indexOf(current);
+      go(numbers[Math.max(0, Math.min(numbers.length - 1, index + delta))]);
+    }}
+    addEventListener('keydown', event => {{
+      if (['ArrowRight', 'PageDown', ' '].includes(event.key)) step(1);
+      if (['ArrowLeft', 'PageUp'].includes(event.key)) step(-1);
+    }});
+    addEventListener('resize', fitDeck);
+    fitDeck();
+    go(shells.has(current) ? current : numbers[0]);
+    const iframeLoads = shellList
+      .map(shell => shell.querySelector(':scope > iframe'))
+      .filter(Boolean)
+      .map(frame => frame.contentDocument?.readyState === 'complete'
+        ? Promise.resolve()
+        : new Promise(resolve => {{
+            frame.addEventListener('load', resolve, {{ once: true }});
+            frame.addEventListener('error', resolve, {{ once: true }});
+          }}));
+    const fontsReady = Promise.all([
+      Promise.resolve(document.fonts?.ready).catch(() => undefined),
+      ...iframeLoads,
+    ]).then(() => new Promise(resolve => requestAnimationFrame(() => {{
+      fitDeck();
+      dispatchEvent(new CustomEvent('deckfontsready'));
+      resolve();
+    }})));
+    window.cleanDeck = {{ go, step, count: shells.size, fontsReady, provisional: true }};
+  }})();
+  </script>
+</body>
+</html>"""
+
+
 def _provisional_present_html(run_dir: str) -> str:
-    """Build a live player around authored slide documents without rewriting them."""
+    """Build the canonical player around available fragments without writing it."""
     root = Path(run_dir)
     css_path = root / "base.css"
     if not css_path.is_file():
         raise HTTPException(status_code=404, detail="实时 PPT 样式尚未生成")
-    rows: list[tuple[int, str]] = []
+    rows: list[tuple[int, Path]] = []
     for path in (root / "slides").glob("slide_*.html"):
         match = _SLIDE_FRAGMENT_RE.match(path.name)
         if not match or not path.is_file():
             continue
         try:
             if path.stat().st_size > 0:
-                rows.append((int(match.group(1)), path.name))
+                rows.append((int(match.group(1)), path))
         except OSError:
             continue
     rows.sort(key=lambda row: row[0])
@@ -1772,38 +1971,86 @@ def _provisional_present_html(run_dir: str) -> str:
     height_match = re.search(r"--canvas-h:\s*(\d+)px", css)
     canvas_w = int(width_match.group(1)) if width_match else 1280
     canvas_h = int(height_match.group(1)) if height_match else 720
-    frames = "\n".join(
-        f'    <iframe class="provisional-slide" data-slide="{number}" '
-        f'src="slides/{filename}" title="Slide {number}" scrolling="no"></iframe>'
-        for number, filename in rows
-    )
+    fragment_rows = [
+        (number, path, path.read_text(encoding="utf-8", errors="replace"))
+        for number, path in rows
+    ]
+    classified_rows = [
+        (
+            number,
+            path,
+            text,
+            bool(re.search(r"(?is)<!doctype\s+html|<html\b|<head\b|<body\b", text)),
+        )
+        for number, path, text in fragment_rows
+    ]
+    standalone_documents = [standalone for _, _, _, standalone in classified_rows]
+    if any(standalone_documents) and not all(standalone_documents):
+        return _hybrid_fragment_present_html(
+            css,
+            classified_rows,
+            canvas_w,
+            canvas_h,
+        )
+    if not any(standalone_documents):
+        return _inline_fragment_present_html(
+            css,
+            [(number, text) for number, _, text, _ in classified_rows],
+            canvas_w,
+            canvas_h,
+        )
+    # Skills differ here: Mural pages are embeddable fragments, while VisualCraft
+    # v3 pages are complete standalone HTML documents with their own <head>,
+    # page CSS and relative assets. Inlining complete documents corrupts the DOM,
+    # leaks page CSS across slides and resolves ../base.css against the API route.
+    # Use the same iframe isolation contract as v3's formal build_player.py.
+    slide_paths = [f"slides/{path.name}" for _, path in rows]
+    slide_numbers = [number for number, _ in rows]
     player = f"""
   <script>
   (() => {{
-    const slides = [...document.querySelectorAll('iframe.provisional-slide[data-slide]')];
-    const byNumber = new Map(slides.map(slide => [Number(slide.dataset.slide), slide]));
-    const ordered = [...byNumber.keys()].filter(Number.isFinite).sort((a, b) => a - b);
-    let current = Number(new URLSearchParams(location.search).get('slide')) || ordered[0] || 1;
+    const paths = {json.dumps(slide_paths, ensure_ascii=False)};
+    const numbers = {json.dumps(slide_numbers)};
+    const deck = document.getElementById('deck');
+    const shells = new Map();
+    let current = Number(new URLSearchParams(location.search).get('slide')) || numbers[0] || 1;
     function fitDeck() {{
       const scale = Math.min(innerWidth / {canvas_w}, innerHeight / {canvas_h});
-      const deck = document.getElementById('deck');
       deck.style.left = `${{(innerWidth - {canvas_w} * scale) / 2}}px`;
       deck.style.top = `${{(innerHeight - {canvas_h} * scale) / 2}}px`;
       deck.style.transform = `scale(${{scale}})`;
     }}
+    const loads = paths.map((path, index) => new Promise(resolve => {{
+      const number = numbers[index];
+      const shell = document.createElement('div');
+      shell.className = 'slide-shell';
+      shell.dataset.slide = String(number);
+      shell.setAttribute('aria-hidden', 'true');
+      const frame = document.createElement('iframe');
+      frame.title = `Slide ${{number}}`;
+      frame.loading = 'eager';
+      frame.addEventListener('load', resolve, {{ once: true }});
+      frame.addEventListener('error', resolve, {{ once: true }});
+      frame.src = path;
+      shell.appendChild(frame);
+      deck.appendChild(shell);
+      shells.set(number, shell);
+    }}));
     function go(number) {{
-      if (!byNumber.has(Number(number))) return;
-      current = Number(number);
-      slides.forEach(slide => {{
-        const active = Number(slide.dataset.slide) === current;
-        slide.classList.toggle('active', active);
-        slide.setAttribute('aria-hidden', active ? 'false' : 'true');
+      number = Number(number);
+      if (!shells.has(number)) return false;
+      current = number;
+      shells.forEach((shell, page) => {{
+        const active = page === current;
+        shell.classList.toggle('active', active);
+        shell.setAttribute('aria-hidden', active ? 'false' : 'true');
       }});
       dispatchEvent(new CustomEvent('slidechange', {{ detail: {{ slide: current }} }}));
+      return true;
     }}
     function step(delta) {{
-      const index = ordered.indexOf(current);
-      go(ordered[Math.max(0, Math.min(ordered.length - 1, index + delta))]);
+      const index = numbers.indexOf(current);
+      go(numbers[Math.max(0, Math.min(numbers.length - 1, index + delta))]);
     }}
     addEventListener('keydown', event => {{
       if (['ArrowRight', 'PageDown', ' '].includes(event.key)) step(1);
@@ -1811,32 +2058,13 @@ def _provisional_present_html(run_dir: str) -> str:
     }});
     addEventListener('resize', fitDeck);
     fitDeck();
-    function waitForFrame(frame) {{
-      return new Promise(resolve => {{
-        let settled = false;
-        const finish = () => {{
-          if (settled) return;
-          settled = true;
-          try {{
-            Promise.resolve(frame.contentDocument?.fonts?.ready)
-              .catch(() => undefined).then(resolve);
-          }} catch {{ resolve(); }}
-        }};
-        frame.addEventListener('load', finish, {{ once: true }});
-        frame.addEventListener('error', finish, {{ once: true }});
-        try {{
-          if (frame.contentWindow?.location.href !== 'about:blank'
-              && frame.contentDocument?.readyState === 'complete') finish();
-        }} catch {{ finish(); }}
-      }});
-    }}
-    const fontsReady = Promise.all(slides.map(waitForFrame));
-    window.cleanDeck = {{ go, step, count: slides.length, fontsReady, provisional: true }};
-    go(byNumber.has(current) ? current : ordered[0]);
-    Promise.resolve(fontsReady).catch(() => undefined).then(() => requestAnimationFrame(() => {{
+    go(shells.has(current) ? current : numbers[0]);
+    const fontsReady = Promise.all(loads).then(() => new Promise(resolve => requestAnimationFrame(() => {{
       fitDeck();
       dispatchEvent(new CustomEvent('deckfontsready'));
-    }}));
+      resolve();
+    }})));
+    window.cleanDeck = {{ go, step, count: numbers.length, fontsReady, provisional: true }};
   }})();
   </script>"""
     return f"""<!doctype html>
@@ -1853,17 +2081,13 @@ def _provisional_present_html(run_dir: str) -> str:
       position:absolute; width:{canvas_w}px; height:{canvas_h}px;
       transform-origin:0 0; overflow:hidden; background:#000;
     }}
-    .provisional-slide {{
-      position:absolute; inset:0; width:{canvas_w}px; height:{canvas_h}px;
-      display:none; border:0; margin:0; background:#000; overflow:hidden;
-    }}
-    .provisional-slide.active {{ display:block; }}
+    .slide-shell {{ position:absolute; inset:0; opacity:0; pointer-events:none; }}
+    .slide-shell.active {{ opacity:1; pointer-events:auto; }}
+    .slide-shell iframe {{ width:100%; height:100%; display:block; border:0; overflow:hidden; background:transparent; }}
   </style>
 </head>
 <body>
-  <div class="stage"><main class="deck" id="deck">
-{frames}
-  </main></div>
+  <div class="stage"><main class="deck" id="deck"></main></div>
 {player}
 </body>
 </html>"""

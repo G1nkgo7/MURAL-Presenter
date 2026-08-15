@@ -331,7 +331,7 @@ def main() -> int:
             "PPTAGENT_MURAL_PRESENTER_SKILL_ROOT": str(MURAL_PRESENTER_SUITE / "skills/mural-presenter"),
             "PPTAGENT_MURAL_PRESENTER_HARNESS_ROOT": str(MURAL_PRESENTER_SUITE / "harnesses/mural-presenter"),
             "PPTAGENT_MURAL_PRESENTER_HARNESS_ENTRY": "infer.py",
-            "PPTAGENT_PUBLIC_SKILL_KEYS": "mural-presenter",
+            "PPTAGENT_PUBLIC_SKILL_KEYS": "mural-presenter,mural-presenter-creative",
             "PPTAGENT_DEFAULT_SKILL": "mural-presenter",
         })
     for key, value in defaults.items():

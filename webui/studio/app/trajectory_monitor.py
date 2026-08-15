@@ -481,9 +481,24 @@ def _agent_events(role_dir: Path, limit: int = 100) -> list[dict[str, Any]]:
     return events[-limit:]
 
 
-def _agent_rows(sample: Path, sample_complete: bool) -> list[dict[str, Any]]:
+def _agent_rows(
+    sample: Path,
+    sample_complete: bool,
+    *,
+    run: Path | None = None,
+) -> list[dict[str, Any]]:
     configs = [sample / "_trace/orchestrator/config.json"]
     configs.extend(sorted((sample / "_trace/subagents").glob("*/config.json")))
+    live_launcher = run is not None and _pid_alive(_pid(run / "launcher.pid"))
+    active_config = (
+        max(
+            (path for path in configs if path.is_file()),
+            key=lambda path: _latest_mtime(path.parent),
+            default=None,
+        )
+        if live_launcher
+        else None
+    )
     agents: list[dict[str, Any]] = []
     for config_path in configs:
         if not config_path.is_file():
@@ -498,7 +513,10 @@ def _agent_rows(sample: Path, sample_complete: bool) -> list[dict[str, Any]]:
             if (role_dir / name).is_file()
         ]
         complete = (role_dir / "usage.json").is_file() or (role_dir / "handoff.json").is_file() or sample_complete
-        status = "complete" if complete else ("running" if _pid_alive(pid) else "waiting")
+        inferred_running = live_launcher and active_config == config_path
+        status = "complete" if complete else (
+            "running" if _pid_alive(pid) or inferred_running else "waiting"
+        )
         started_ts = _timestamp(config.get("started_at")) or config_path.stat().st_mtime
         finished_ts = max((path.stat().st_mtime for path in completion_files), default=0.0) if complete else None
         timing_end = finished_ts or (time.time() if status == "running" else None)
@@ -747,7 +765,7 @@ def _feed_payload(
 ) -> dict[str, Any]:
     feed: dict[str, list[dict[str, Any]]] = {}
     timings: dict[str, dict[str, Any]] = {}
-    agents = _agent_rows(sample, complete)
+    agents = _agent_rows(sample, complete, run=run)
     for agent in agents:
         key = "orch" if agent["role"] == "orchestrator" or agent["label"] in {"orch", "orchestrator"} else agent["label"]
         events: list[dict[str, Any]] = []
@@ -820,6 +838,10 @@ def decks_payload() -> dict[str, Any]:
             "id": record["id"],
             "title": record["query"],
             "status": status,
+            "model": str(config.get("model") or ""),
+            "model_label": str(config.get("model") or ""),
+            "skill_version": "mural-presenter",
+            "skill_label": "MURAL Presenter",
             "presentation_kind": "static",
             "created_at": updated_at,
             "updated_at": updated_at,
@@ -854,7 +876,11 @@ def deck_progress_payload(
         str(number): int((sample / "renders" / f"slide_{number:02d}.png").stat().st_mtime)
         for number in rendered
     }
-    agents = _agent_rows(sample, summary["status"] == "completed")
+    atimes = {
+        str(number): int((sample / "slides" / f"slide_{number:02d}.html").stat().st_mtime_ns // 1_000_000)
+        for number in authored
+    }
+    agents = _agent_rows(sample, summary["status"] == "completed", run=run)
     overall_timing = _overall_timing(
         sample,
         agents,
@@ -888,10 +914,12 @@ def deck_progress_payload(
         "title": _deck_title(sample, config),
         "status": summary["status"],
         "phase": phase,
+        "authored": authored,
         "rendered": rendered,
         "slides_total": max(summary["expected_pages"], len(pages)),
         "slides_rendered": len(rendered),
         "slides_authored": len(authored),
+        "atimes": atimes,
         "rtimes": rtimes,
         "html_ready": bool(pages),
         "html_final": (sample / "present.html").is_file(),
@@ -928,10 +956,12 @@ def not_started_progress_payload(record: dict[str, Any]) -> dict[str, Any]:
         "title": query,
         "status": "not_started",
         "phase": "not_started",
+        "authored": [],
         "rendered": [],
         "slides_total": page_count,
         "slides_rendered": 0,
         "slides_authored": 0,
+        "atimes": {},
         "rtimes": {},
         "html_ready": False,
         "html_final": False,
@@ -1107,7 +1137,7 @@ def sample_payload(run: Path, sample_id: str) -> dict[str, Any]:
         return {
             **summary,
             "workspace": str(sample),
-            "agents": _agent_rows(sample, complete),
+            "agents": _agent_rows(sample, complete, run=run),
             "artifacts": _artifact_rows(run, sample),
             "recent_log": _tail_log(run / "run.log", resolved_id),
             "pages": _page_rows(run, sample),

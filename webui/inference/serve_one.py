@@ -134,6 +134,25 @@ def _select_pipeline(job):
     return mod
 
 
+def _uses_clean_runner(job):
+    """Route every Clean Harness profile through its broker-owning runner.
+
+    Versioned profiles may append an orchestration qualifier to the base mode
+    (for example ``clean-bilingual-single-slide``).  They still share the same
+    infer.py/core.run_batch entry contract and must not fall through to the
+    legacy module-level worker interface.
+    """
+    mode = str((job.get("pipeline") or {}).get("skill_mode") or "")
+    return (
+        mode == "clean-bilingual"
+        or mode.startswith("clean-bilingual-")
+        or mode in {
+            "mural-presenter-v0.3-adaptive",
+            "mural-presenter-v0.4-adaptive",
+        }
+    )
+
+
 def _install_subagent_turn_adapter(job):
     """Apply Studio's per-child turn limit to versioned external Harnesses.
 
@@ -235,7 +254,10 @@ def _run_clean_infer(job):
             key=os.environ.get("STUDENT_API_KEY", "EMPTY"),
             timeout=int(os.environ.get("CLEAN_MODEL_TIMEOUT", "600")),
         )
-        model_call._client = lambda: shim
+        # Clean Harness revisions may pass a per-call base_url into _client.
+        # Studio already resolved the selected OpenAI endpoint into this shim,
+        # so accept and intentionally ignore that optional compatibility arg.
+        model_call._client = lambda _base_url=None: shim
 
     cfg_args = types.SimpleNamespace(
         batch=job.get("batch", "studio"),
@@ -371,14 +393,26 @@ def main():
     run_dir = job["run_dir"]
     dry = bool(job.get("dry_run"))
 
-    if (job.get("pipeline") or {}).get("skill_mode") == "clean-bilingual":
+    if _uses_clean_runner(job):
         rec = _run_clean_infer(job)
+        accept_detail = rec.get("accept_detail")
+        accepted_pages = (
+            accept_detail.get("n_pages")
+            if isinstance(accept_detail, dict)
+            else None
+        )
         print(json.dumps({
             "status": rec.get("status"),
             "run_dir": run_dir,
-            "n_slides": rec.get("n_slides", rec.get("n_renders")),
+            # n_renders includes incremental page retries and is not a slide
+            # count. Prefer the accepted renderer manifest cardinality.
+            "n_slides": rec.get("n_slides", accepted_pages),
         }, ensure_ascii=False))
-        sys.exit(0 if rec.get("status") == "completed" else 1)
+        sys.exit(
+            0
+            if rec.get("status") in {"completed", "needs_improvement"}
+            else 1
+        )
 
     pipe = _select_pipeline(job)
     _install_subagent_turn_adapter(job)

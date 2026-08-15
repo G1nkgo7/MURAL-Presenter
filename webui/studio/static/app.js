@@ -116,7 +116,7 @@ function notifyRunFailure(value, fallback = "生成未能完成") {
 
 const ed = {                 // 编辑器状态
   id: null, kind: "static", sse: null, timer: null,
-  total: 0, rendered: new Set(), sel: null, follow: true,
+  total: 0, authored: new Set(), rendered: new Set(), sel: null, follow: true,
   status: null, startedElapsed: null, elapsedBase: 0, elapsedAt: 0,
   agentTimings: {}, overallTiming: null,
   fullQuery: "",
@@ -1016,6 +1016,7 @@ function setTheme(theme, { remember = true } = {}) {
 const UI_COPY = {
   zh: {
     new_chat: "新对话", history: "历史记录", theme: "主题", login_register: "登录 / 注册", new_presentation: "新建演示",
+    history_search: "搜索历史记录", all_skills: "全部 Skill", all_models: "全部模型", no_history_matches: "没有匹配的历史记录",
     batch: "批量生成与下载", add_model: "添加模型", static_presentation: "静态演示",
     dynamic_presentation: "动态演示", switch_account: "切换账号", logout: "退出登录",
     hero_title: "今天，你想展示什么？", start_inspiration: "从一个灵感开始", refresh: "换一批", prompt_placeholder: "描述你的主题、受众和想要的效果…",
@@ -1029,6 +1030,7 @@ const UI_COPY = {
   },
   en: {
     new_chat: "New chat", history: "History", theme: "Theme", login_register: "Sign in / Register", new_presentation: "New presentation",
+    history_search: "Search history", all_skills: "All skills", all_models: "All models", no_history_matches: "No matching history",
     batch: "Batch generation & download", add_model: "Add model", static_presentation: "Static presentation",
     dynamic_presentation: "Dynamic presentation", switch_account: "Switch account", logout: "Sign out",
     hero_title: "What would you like to present today?", start_inspiration: "Start with an idea", refresh: "Refresh", prompt_placeholder: "Describe your topic, audience, and desired outcome…",
@@ -1060,6 +1062,10 @@ function setLanguage(language, { remember = true } = {}) {
   });
   const selector = $("#settings-language");
   if (selector) selector.value = currentLanguage;
+  if (isAuthenticated && historyRows.length) {
+    updateHistoryFilterOptions();
+    renderHistoryRows();
+  }
   setCreationMode(creationMode, { remember: false });
   setSidebarCollapsed(document.querySelector(".layout")?.classList.contains("sidebar-collapsed"), { remember: false });
   if (remember) localStorage.setItem("studio_language", currentLanguage);
@@ -1354,6 +1360,60 @@ const HISTORY_GROUPS = [
   { key: "dynamic", label: "动态演示", icon: "dynamic" },
 ].filter((group) => dynamicEnabled || group.key !== "dynamic");
 let historyContextTarget = null;
+let historyRows = [];
+
+function historyTitle(row) {
+  return String(row.display_title || row.title || "未命名");
+}
+
+function historySkillKey(row) {
+  return String(row.skill_version || "");
+}
+
+function historyModelKey(row) {
+  return String(row.model || row.model_key || "");
+}
+
+function historySkillLabel(row) {
+  const key = historySkillKey(row);
+  return String(row.skill_label || SKILL_LABEL[key] || (key === "dazzle-deck" ? "Dazzle Deck" : key));
+}
+
+function historyModelLabel(row) {
+  const key = historyModelKey(row);
+  return String(row.model_label || modelLabel(key));
+}
+
+function updateHistoryFilterSelect(select, rows, keyFor, labelFor, allLabel) {
+  if (!select) return;
+  const selected = select.value;
+  const options = new Map();
+  rows.forEach((row) => {
+    const key = keyFor(row);
+    if (key) options.set(key, labelFor(row) || key);
+  });
+  select.innerHTML = `<option value="">${escapeHtml(allLabel)}</option>${[...options]
+    .sort((a, b) => a[1].localeCompare(b[1]))
+    .map(([key, label]) => `<option value="${escapeHtml(key)}">${escapeHtml(label)}</option>`)
+    .join("")}`;
+  select.value = options.has(selected) ? selected : "";
+}
+
+function updateHistoryFilterOptions() {
+  updateHistoryFilterSelect($("#history-skill-filter"), historyRows, historySkillKey, historySkillLabel, uiText("all_skills"));
+  updateHistoryFilterSelect($("#history-model-filter"), historyRows, historyModelKey, historyModelLabel, uiText("all_models"));
+}
+
+function filteredHistoryRows() {
+  const query = String($("#history-search-input")?.value || "").trim().toLowerCase();
+  const skill = $("#history-skill-filter")?.value || "";
+  const model = $("#history-model-filter")?.value || "";
+  return historyRows.filter((row) => (
+    (!query || historyTitle(row).toLowerCase().includes(query))
+    && (!skill || historySkillKey(row) === skill)
+    && (!model || historyModelKey(row) === model)
+  ));
+}
 
 function historyGroupState() {
   try { return JSON.parse(localStorage.getItem("studio_history_groups") || "{}"); }
@@ -1371,7 +1431,7 @@ function historyRow(d) {
   const kindLabel = visualKind === "dynamic" ? uiText("dynamic_presentation") : uiText("static_presentation");
   const statusLabel = STATUS_LABEL[d.status] || d.status;
   const markerLabel = `${kindLabel} · ${statusLabel}`;
-  const title = d.display_title || d.title || "未命名";
+  const title = historyTitle(d);
   const active = String(d.id) === String(ed.id) && d.kind === ed.kind;
   return `
     <a class="convo deck-item ${active ? "active" : ""}" data-id="${escapeHtml(String(d.id))}" data-kind="${d.kind}"
@@ -1532,9 +1592,62 @@ async function regenerateHistoryItem(target) {
   }
 }
 
+function renderHistoryRows() {
+  const box = $("#deck-list");
+  if (!box) return;
+  const rows = filteredHistoryRows();
+  const hasFilter = Boolean(
+    $("#history-search-input")?.value.trim()
+    || $("#history-skill-filter")?.value
+    || $("#history-model-filter")?.value
+  );
+  if (!rows.length && historyRows.length && hasFilter) {
+    box.innerHTML = `<div class="history-filter-empty">${escapeHtml(uiText("no_history_matches"))}</div>`;
+    return;
+  }
+  const state = historyGroupState();
+  const grouped = {
+    pinned: rows.filter((d) => d.pinned),
+    static: rows.filter((d) => !d.pinned && d.groupKind === "static"),
+    dynamic: dynamicEnabled ? rows.filter((d) => !d.pinned && d.groupKind === "dynamic") : [],
+  };
+  box.innerHTML = HISTORY_GROUPS.map((group) => historyGroupMarkup(group, grouped[group.key], !!state[group.key])).join("");
+  $$("#deck-list .history-group-head").forEach((button) => (button.onclick = () => {
+    const section = button.closest(".history-group");
+    const collapsed = !section.classList.contains("collapsed");
+    section.classList.toggle("collapsed", collapsed);
+    button.setAttribute("aria-expanded", collapsed ? "false" : "true");
+    setHistoryGroupCollapsed(section.dataset.historyGroup, collapsed);
+  }));
+  $$("#deck-list .deck-item").forEach((a) =>
+    (a.onclick = (e) => {
+      if (e.target.classList.contains("del-btn")) return;
+      e.preventDefault(); a.dataset.kind === "dynamic" ? openDynamic(a.dataset.id) : openDeck(+a.dataset.id);
+    }));
+  $$("#deck-list .deck-item").forEach((a) => (a.oncontextmenu = trajectoryMode ? null : (event) => {
+    event.preventDefault(); event.stopPropagation(); openHistoryContextMenu(a, event.clientX, event.clientY);
+  }));
+  $$("#deck-list .del-btn").forEach((button) => {
+    if (trajectoryMode) { button.hidden = true; return; }
+    button.onclick = (event) => {
+      event.preventDefault(); event.stopPropagation();
+      askDelete(button.closest(".deck-item"), button.dataset.id, button.dataset.kind);
+    };
+  });
+}
+
+function initHistoryFilters() {
+  $("#history-search-input")?.addEventListener("input", renderHistoryRows);
+  $("#history-skill-filter")?.addEventListener("change", renderHistoryRows);
+  $("#history-model-filter")?.addEventListener("change", renderHistoryRows);
+}
+
 async function loadDecks(active) {
   const box = $("#deck-list");
+  const tools = $("#history-tools");
+  if (tools) tools.hidden = !isAuthenticated;
   if (!isAuthenticated) {
+    historyRows = [];
     box.innerHTML = '<button type="button" class="guest-history" data-open-auth>登录后查看历史演示</button>';
     return;
   }
@@ -1559,35 +1672,9 @@ async function loadDecks(active) {
       })),
     ];
     if (!trajectoryMode) rows.sort((a, b) => String(b.sortAt).localeCompare(String(a.sortAt)));
-    const state = historyGroupState();
-    const grouped = {
-      pinned: rows.filter((d) => d.pinned),
-      static: rows.filter((d) => !d.pinned && d.groupKind === "static"),
-      dynamic: dynamicEnabled ? rows.filter((d) => !d.pinned && d.groupKind === "dynamic") : [],
-    };
-    box.innerHTML = HISTORY_GROUPS.map((group) => historyGroupMarkup(group, grouped[group.key], !!state[group.key])).join("");
-    $$("#deck-list .history-group-head").forEach((button) => (button.onclick = () => {
-      const section = button.closest(".history-group");
-      const collapsed = !section.classList.contains("collapsed");
-      section.classList.toggle("collapsed", collapsed);
-      button.setAttribute("aria-expanded", collapsed ? "false" : "true");
-      setHistoryGroupCollapsed(section.dataset.historyGroup, collapsed);
-    }));
-    $$("#deck-list .deck-item").forEach((a) =>
-      (a.onclick = (e) => {
-        if (e.target.classList.contains("del-btn")) return;
-        e.preventDefault(); a.dataset.kind === "dynamic" ? openDynamic(a.dataset.id) : openDeck(+a.dataset.id);
-      }));
-    $$("#deck-list .deck-item").forEach((a) => (a.oncontextmenu = trajectoryMode ? null : (event) => {
-      event.preventDefault(); event.stopPropagation(); openHistoryContextMenu(a, event.clientX, event.clientY);
-    }));
-    $$("#deck-list .del-btn").forEach((b) => {
-      if (trajectoryMode) { b.hidden = true; return; }
-      b.onclick = (e) => {
-      e.preventDefault(); e.stopPropagation();
-      askDelete(b.closest(".deck-item"), b.dataset.id, b.dataset.kind);
-      };
-    });
+    historyRows = rows;
+    updateHistoryFilterOptions();
+    renderHistoryRows();
   } catch { box.innerHTML = '<div class="muted small pad">加载失败</div>'; }
 }
 
@@ -1639,6 +1726,7 @@ async function removeDeck(id, kind = "static") {
 /* ---------------- 提交简报 ---------------- */
 const MODEL_LABEL = {
   "deployment-model": "PPTAgent Qwen3.5 27B (ckpt1764)",
+  "deployment-model-2": "PPTAgent 2",
   "sensenova-flash-lite-v39": "SenseNova Flash Lite v39 (1)",
   "sensenova-flash-lite-v39-2": "SenseNova Flash Lite v39 (2)",
   "sensenova-flash-lite-v39-3": "SenseNova Flash Lite v39 (3)",
@@ -1654,15 +1742,24 @@ function modelLabel(key) {
 const PIPELINE_LABEL = {
   infer: "Clean infer harness",
   "visual-craft-harness": "Visual Craft Harness",
+  "visual-craft-v3-pre-speech-harness": "Visual Craft V3 · Pre-Speech Harness",
+  "visual-craft-v3-speech-harness": "Visual Craft V3 · Speech Harness",
   "sn-ppt-web-harness": "sn-ppt-web harness",
   "mural-presenter-harness": "MURAL Presenter harness",
+  "mural-presenter-v0.1-harness": "MURAL Presenter v0.1",
+  "mural-presenter-v0.2-harness": "MURAL Presenter v0.2 · Single",
+  "mural-presenter-v0.2-grouped-harness": "MURAL Presenter v0.2 · Grouped",
+  "mural-presenter-v0.3-harness": "MURAL Presenter v0.3 · Adaptive Ownership",
+  "mural-presenter-v0.4-harness": "MURAL Presenter v0.4 · Adaptive Quality",
   "mural-next-harness": "MURAL Next experimental harness",
   "sense-present-standard-harness": "SenseNova Static HTML Harness",
   "sense-present-dazzle-harness": "SenseNova Dynamic HTML Harness",
+  "sense-present-ppt-skill-harness": "Sense Present PPT Skill Suite Harness",
 };
 const SKILL_LABEL = {
   "sense-present-standard": "SenseNova Static HTML",
   "sense-present-dazzle": "SenseNova Dynamic HTML",
+  "sense-present-ppt-skill": "Sense Present PPT Skill Suite",
   auto: "Auto（自动选择）",
   zh: "中文 Skill",
   en: "English Skill",
@@ -1670,8 +1767,16 @@ const SKILL_LABEL = {
   "long-horizon-grouped": "Long-horizon HTML PPT Grouped",
   "long-horizon-grouped-inline-image": "Long-horizon Grouped · Inline Image",
   "visual-craft": "Visual Craft HTML PPT",
+  "visual-craft-v3-pre-speech": "Visual Craft V3 · Pre-Speech",
+  "visual-craft-v3-speech": "Visual Craft V3 · Speech",
   "sn-ppt-web": "sn-ppt-web",
   "mural-presenter": "MURAL Presenter",
+  "mural-presenter-creative": "MURAL Presenter · Creative",
+  "mural-presenter-v0.1": "MURAL Presenter v0.1",
+  "mural-presenter-v0.2": "MURAL Presenter v0.2 · Single",
+  "mural-presenter-v0.2-grouped": "MURAL Presenter v0.2 · Grouped",
+  "mural-presenter-v0.3": "MURAL Presenter v0.3 · Adaptive Ownership",
+  "mural-presenter-v0.4": "MURAL Presenter v0.4 · Adaptive Quality",
   "mural-next": "MURAL Next · Experimental",
 };
 
@@ -2391,7 +2496,7 @@ async function openDeck(id) {
   history.replaceState(null, "", `#static-${encodeURIComponent(id)}`);
   $$("#deck-list .deck-item").forEach((a) => a.classList.toggle("active", a.dataset.id == id));
   stopLive();
-  Object.assign(ed, { id, kind: "static", total: 0, rendered: new Set(), sel: null, follow: true, status: null,
+  Object.assign(ed, { id, kind: "static", total: 0, authored: new Set(), rendered: new Set(), sel: null, follow: true, status: null,
                       lastPhase: null, feedSeen: new Set(), finalized: false, planCache: {},
                       ppCollapsed: true,
                       feed: {}, pageAgents: {}, workspaceView: "process", viewMode: "ppt",
@@ -2401,7 +2506,7 @@ async function openDeck(id) {
                       fullQuery: "",
                       briefMeta: {}, attachments: [], staticFollowups: [], staticConversationTurns: [],
                       conKey: null, conLines: [],
-                      rtimes: {}, staticDirtyPages: new Set(), phLines: {}, historyRequest: 0,
+                      atimes: {}, rtimes: {}, staticDirtyPages: new Set(), phLines: {}, historyRequest: 0,
                       pageHistoryCache: new Map(), pageHistoryPending: new Map(),
                       historyScopePage: null, historyRenderKey: "", speechRenderKey: "",
                       speechScopePage: null, speechRequest: 0, speechPages: new Map(), hasAnySpeech: false, stopRequested: false });
@@ -2765,10 +2870,12 @@ function apply(p) {
   ed.status = p.status;
   // 正式 present.html 或任意单页 HTML 均可进入实时 PPT。生成期由后端
   // 即时拼装临时播放器，finalize 后同一路径无缝切换到正式文件。
+  const wasStaticDeckFinal = !!ed.staticDeckFinal;
   const nextHtmlStamp = Number(p.html_stamp) || 0;
   const htmlPreviewChanged = !!nextHtmlStamp && nextHtmlStamp !== ed.staticHtmlStamp;
   ed.staticDeckReady = !!p.html_ready;
   ed.staticDeckFinal = !!p.html_final;
+  const finalPreviewPromoted = ed.staticDeckFinal && !wasStaticDeckFinal;
   ed.pptOutput = p.ppt_output || ed.pptOutput || "static_html";
   if (p.html_entry) ed.staticDeckUrl = trajectoryMode
     ? trajectoryDeckApi(ed.id, `/files/${p.html_entry}`)
@@ -2802,9 +2909,30 @@ function apply(p) {
 
   // 总页数(计划出来前未知,先用已渲数撑起胶片条)
   const known = p.slides_total || 0;
+  const authored = Array.isArray(p.authored) ? p.authored.map(Number).filter((n) => n > 0) : [];
   const maxR = p.rendered.length ? Math.max(...p.rendered) : 0;
-  const total = Math.max(known, maxR, p.slides_authored || 0);
+  const maxA = authored.length ? Math.max(...authored) : 0;
+  const total = Math.max(known, maxR, maxA, p.slides_authored || 0);
   if (total !== ed.total) { ed.total = total; buildFilmstrip(); }
+
+  // HTML page completion and PNG rendering are separate milestones. Once a
+  // complete slide_XX.html is published, show it in the right-side live player;
+  // filmstrip thumbnails still wait for their stable PNG.
+  const atimes = p.atimes || {};
+  for (const n of authored) {
+    const key = String(n);
+    const isNew = !ed.authored.has(n);
+    ed.authored.add(n);
+    // A page is safe to reveal once when it first appears. Subsequent Agent
+    // patches are intentionally not pushed into the live iframe one by one:
+    // their successful PNG render below is the stable visual checkpoint. This
+    // prevents a rapid patch/render loop from flashing the entire preview.
+    if (isNew) ed.staticDirtyPages?.add(n);
+    ed.atimes[key] = atimes[key] || ed.atimes[key] || 0;
+    if (isNew && ed.follow && ed.workspaceView === "ppt" && ed.viewMode !== "console") {
+      select(n, { byUser: false });
+    }
+  }
 
   // 新渲染好的页:替换占位 → 显影;已显示的页被重渲覆盖 → 换新图
   const rtimes = p.rtimes || {};
@@ -2823,13 +2951,18 @@ function apply(p) {
     }
   }
 
+  // The formal player replaces the provisional fragment-backed player once.
+  // Mark every authored page dirty so the next selected page loads the final
+  // present.html, while normal production refreshes remain page-scoped.
+  if (finalPreviewPromoted) authored.forEach((n) => ed.staticDirtyPages?.add(n));
+
   // html_stamp belongs to the whole provisional player: another page being
   // authored also changes it. Keep the selected iframe stable unless that
   // selected page itself has a new successful render. Dirty background pages
   // are picked up lazily when the user navigates to them.
-  if (htmlPreviewChanged && ed.staticDirtyPages?.has(Number(ed.sel))
+  if ((htmlPreviewChanged || finalPreviewPromoted) && ed.staticDirtyPages?.has(Number(ed.sel))
       && ed.workspaceView === "ppt" && ed.viewMode !== "console"
-      && ed.sel > 0 && ed.rendered.has(ed.sel)) {
+      && ed.sel > 0 && ed.authored.has(Number(ed.sel))) {
     showStaticDeck(ed.sel);
   }
 
@@ -2902,9 +3035,9 @@ function taskConfigData() {
     runtime = `${maxTokens.toLocaleString()} Tokens/轮 · 主 Agent ${mainTurns.toLocaleString()} 轮`;
   } else if (childRaw > 0) {
     runtime = `${maxTokens.toLocaleString()} Tokens/轮 · 主 Agent ${mainTurns.toLocaleString()} 轮 · 子 Agent ${childRaw.toLocaleString()} 轮`;
-  } else if (skillKey === "sn-ppt-web" || skillKey === "mural-presenter") {
+  } else if (skillKey === "sn-ppt-web" || skillKey === "mural-presenter" || skillKey === "mural-presenter-creative") {
     runtime = `${maxTokens.toLocaleString()} Tokens/轮 · 主 Agent ${mainTurns.toLocaleString()} 轮 · 页面子 Agent 36–120 轮 · 其他子 Agent ${mainTurns.toLocaleString()} 轮`;
-  } else if (skillKey === "visual-craft") {
+  } else if (["visual-craft", "visual-craft-v3-pre-speech", "visual-craft-v3-speech"].includes(skillKey)) {
     runtime = `${maxTokens.toLocaleString()} Tokens/轮 · 主 Agent ${mainTurns.toLocaleString()} 轮 · 页面子 Agent 28 轮 · 其他子 Agent ${mainTurns.toLocaleString()} 轮`;
   } else if (skillKey === "sense-present-standard") {
     runtime = `${maxTokens.toLocaleString()} Tokens/轮 · 主 Agent 240 轮 · 子 Agent 240 轮`;
@@ -3818,7 +3951,9 @@ function syncViewToggle() {
   const vt = $("#view-toggle");
   const previewReady = ed.kind === "dynamic" ? !!ed.dynamicDeckUrl : !!ed.staticDeckReady;
   const isOutline = ed.sel === 0;
-  const hasPreview = !isOutline && ed.rendered.has(ed.sel);
+  const hasPreview = !isOutline && (
+    ed.kind === "dynamic" ? ed.rendered.has(ed.sel) : ed.authored.has(Number(ed.sel))
+  );
   const processMode = ed.workspaceView !== "ppt";
   const pageConsole = (pageViewTransitionTarget || ed.viewMode) === "console";
   const onConsole = processMode || !hasPreview || pageConsole;
@@ -3863,16 +3998,18 @@ function setWorkspaceView(view) {
     return;
   }
   setFollow(true);
-  const currentReady = Number(ed.sel) > 0 && ed.rendered.has(Number(ed.sel));
+  const readyPages = ed.kind === "dynamic" ? ed.rendered : ed.authored;
+  const currentReady = Number(ed.sel) > 0 && readyPages.has(Number(ed.sel));
   const target = currentReady
     ? Number(ed.sel)
-    : (ed.rendered.size ? Math.max(...ed.rendered) : 1);
+    : (readyPages.size ? Math.max(...readyPages) : 1);
   select(target, { byUser: false });
 }
 
 async function setPageView(view) {
   if (!ed.id || ed.workspaceView !== "ppt" || ed.sel === 0) return;
-  if (view === "ppt" && !ed.rendered.has(Number(ed.sel))) return;
+  const readyPages = ed.kind === "dynamic" ? ed.rendered : ed.authored;
+  if (view === "ppt" && !readyPages.has(Number(ed.sel))) return;
   const nextView = view === "console" ? "console" : "ppt";
   if (ed.viewMode === nextView && pageViewTransitionTarget == null) return;
   const token = ++pageViewTransitionToken;
@@ -4024,20 +4161,20 @@ function stabilizeStaticDeckPlayer(frame) {
       playerGuard.id = "studio-static-player-viewport-guard";
       playerGuard.textContent = `
         #stage { overflow: hidden !important; }
-        #wrap {
+        #wrap, #deck {
           flex: 0 0 auto !important;
           flex-shrink: 0 !important;
           max-width: none !important;
           max-height: none !important;
         }
-        #wrap iframe {
+        #wrap iframe, #deck .slide-shell iframe {
           overflow: hidden !important;
           scrollbar-width: none !important;
         }
       `;
       doc.head?.appendChild(playerGuard);
     }
-    const nestedFrames = [...doc.querySelectorAll("#wrap iframe, iframe[data-slide]")];
+    const nestedFrames = [...doc.querySelectorAll("#wrap iframe, #deck .slide-shell iframe, iframe[data-slide]")];
     nestedFrames.forEach((slideFrame) => {
       if (!slideFrame.dataset.studioViewportGuard) {
         slideFrame.dataset.studioViewportGuard = "1";
@@ -4145,23 +4282,9 @@ function scheduleDeckViewportFit(frame = $("#canvas-deck")) {
 function prepareStaticDeckMotion(frame) {
   try {
     const doc = frame.contentDocument;
-    if (!doc?.documentElement || doc.getElementById("studio-static-motion")) return;
-    const style = doc.createElement("style");
-    style.id = "studio-static-motion";
-    style.textContent = `
-      html.studio-embedded-player {
-        --motion-page-duration: 540ms !important;
-        --motion-enter-duration: 660ms !important;
-        --motion-page-shift: var(--studio-page-shift, 42px) !important;
-        --motion-content-shift: 18px !important;
-      }
-      html.studio-embedded-player .slide {
-        will-change: opacity, transform, filter;
-        backface-visibility: hidden;
-      }
-    `;
-    doc.head.appendChild(style);
-    doc.documentElement.classList.add("studio-embedded-player");
+    if (!doc?.documentElement) return;
+    // The Deck owns its motion tokens. Overriding them in Studio made playback
+    // differ from both the renderer and the downloaded present.html.
     stabilizeStaticDeckPlayer(frame);
   } catch {
     // Same-origin is expected; legacy outputs can still fall back to their own player.
@@ -4176,9 +4299,6 @@ function playStaticSlide(frame, n) {
     const dynamicHtml = editorPresentationKind() === "dynamic";
     if (dynamicHtml) stabilizeDynamicDeckPlayer(frame);
     else prepareStaticDeckMotion(frame);
-    const current = dynamicDeckActiveSlide(frame);
-    const direction = current && n < current ? -1 : 1;
-    frame.contentDocument?.documentElement?.style.setProperty("--studio-page-shift", `${direction * 42}px`);
     player.go(n);
     // Provisional players are assembled from whatever fragments exist while a
     // deck is being authored. Some legacy skills emit complete HTML documents
@@ -4218,6 +4338,17 @@ function keepStaticPng(n) {
     return;
   }
 
+  // There is no previous bitmap to preserve on the first page selection.
+  // Mount the known stable render immediately; using only a detached probe in
+  // this state lets frequent progress refreshes invalidate every probe token,
+  // leaving both this image and the font-pending iframe invisible.
+  if (!currentIsUsable) {
+    img.src = url;
+    img.hidden = false;
+    empty.hidden = true;
+    return;
+  }
+
   // Keep the last successfully rendered page visible while the requested page
   // is fetched. Directly replacing img.src clears the old bitmap immediately;
   // a stale id, a transient 404 or a slow AFS read would therefore turn the
@@ -4232,7 +4363,8 @@ function keepStaticPng(n) {
   probe.onload = async () => {
     try { await probe.decode?.(); } catch {}
     if (token !== stableStaticImageToken || ed.kind !== "static" || Number(ed.sel) !== Number(n)
-        || ed.workspaceView !== "ppt" || ed.viewMode === "console" || !frame.hidden) return;
+        || ed.workspaceView !== "ppt" || ed.viewMode === "console"
+        || (!frame.hidden && !frame.classList.contains("font-pending"))) return;
     img.src = url;
     img.hidden = false;
     empty.hidden = true;
@@ -4245,6 +4377,24 @@ function keepStaticPng(n) {
     }
   };
   probe.src = url;
+}
+
+let staticPreviewFallbackToken = 0;
+function scheduleStaticPreviewFallback(frame, n, deckId, deckStamp) {
+  const token = ++staticPreviewFallbackToken;
+  setTimeout(() => {
+    if (token !== staticPreviewFallbackToken || ed.kind !== "static"
+        || String(ed.id) !== String(deckId) || Number(ed.sel) !== Number(n)
+        || frame.dataset.deckKind !== "static" || frame.dataset.deckId !== String(deckId)
+        || frame.dataset.deckStamp !== String(deckStamp)
+        || !frame.classList.contains("font-pending")) return;
+    const img = $("#canvas-img");
+    // A progress refresh can invalidate the iframe reveal callback after it
+    // made the player transparent, while a stale callback has already hidden
+    // the PNG. Never leave both preview layers invisible: restore the current
+    // stable render and let the next selection/reload retry live HTML.
+    if (img.hidden || !img.complete || img.naturalWidth < 1) keepStaticPng(n);
+  }, 1500);
 }
 
 async function revealStaticDeckWhenFontsReady(frame, deckWindow) {
@@ -4272,63 +4422,157 @@ async function revealStaticDeckWhenFontsReady(frame, deckWindow) {
     }
   }
   if (frame.dataset.deckKind !== "static" || frame.dataset.deckId !== deckId || frame.contentWindow !== deckWindow) return;
-  const failed = (() => {
-    try { return [...(frame.contentDocument?.fonts || [])].some((face) => face.status === "error"); }
-    catch { return true; }
-  })();
   const player = deckWindow.cleanDeck;
-  if ((!dynamicHtml && failed) || !player?.go || (player.provisional && Number(player.count) < 1)) {
+  if (!player?.go || (player.provisional && Number(player.count) < 1)) {
     frame.dataset.fontsReady = "0";
     keepStaticPng(ed.sel);
     return;
   }
   frame.dataset.fontsReady = "1";
   const pending = Number(frame.dataset.pendingSlide) || ed.sel;
+  if (!staticHtmlCheckpointReady(pending)) {
+    frame.dataset.fontsReady = "0";
+    keepStaticPng(pending);
+    return;
+  }
   if (!playStaticSlide(frame, pending)) {
     frame.dataset.fontsReady = "0";
     keepStaticPng(pending);
     return;
   }
   delete frame.dataset.pendingSlide;
-  ed.staticDirtyPages?.delete(Number(pending));
+  // A current formal present.html owns every page, so one successful load
+  // closes the entire deck-wide dirty set. Keeping background pages dirty made
+  // every filmstrip click navigate the iframe again and briefly expose slide 1.
+  if (ed.staticDeckFinal) {
+    ed.staticDirtyPages?.clear();
+  } else {
+    // The provisional endpoint is also a deck-wide snapshot. Clear every page
+    // that was included in this load, but preserve a page re-rendered while the
+    // iframe was in flight by comparing its page-specific checkpoint.
+    let loadedPages = {};
+    try { loadedPages = JSON.parse(frame.dataset.deckPageStampSnapshot || "{}"); } catch {}
+    Object.entries(loadedPages).forEach(([page, stamp]) => {
+      const current = ed.rtimes?.[page] || ed.atimes?.[page] || 0;
+      if (String(current) === String(stamp)) ed.staticDirtyPages?.delete(Number(page));
+    });
+  }
   frame.hidden = false;
-  scheduleDeckViewportFit(frame);
-  frame.classList.add("font-pending");
-  frame.classList.remove("font-ready");
+  // Position and scale the requested slide behind the stable PNG before the
+  // iframe is made visible. This prevents the browser's unscaled first frame
+  // and the player's default first slide from leaking into the transition.
+  fitWorkspaceCanvas();
+  fitDeckViewport(frame);
   requestAnimationFrame(() => {
+    if (frame.dataset.deckKind !== "static" || frame.dataset.deckId !== deckId
+        || frame.contentWindow !== deckWindow || Number(ed.sel) !== Number(pending)) return;
+    fitWorkspaceCanvas();
+    fitDeckViewport(frame);
     frame.classList.remove("font-pending");
     frame.classList.add("font-ready");
-    setTimeout(() => {
-      if (frame.dataset.deckKind === "static" && frame.dataset.deckId === deckId) {
-        $("#canvas-img").hidden = true;
-      }
-    }, 220);
+    $("#canvas-img").hidden = true;
   });
+}
+
+function revealStaticSlideAfterLazyLoad(frame, n, deckId, attempt = 0) {
+  if (ed.kind !== "static" || String(ed.id) !== String(deckId) || Number(ed.sel) !== Number(n)
+      || frame.dataset.deckKind !== "static" || frame.dataset.deckId !== String(deckId)) return;
+  if (!staticHtmlCheckpointReady(n)) {
+    keepStaticPng(n);
+    return;
+  }
+  if (playStaticSlide(frame, n)) {
+    delete frame.dataset.pendingSlide;
+    frame.hidden = false;
+    fitWorkspaceCanvas();
+    fitDeckViewport(frame);
+    requestAnimationFrame(() => {
+      if (Number(ed.sel) !== Number(n) || frame.dataset.deckId !== String(deckId)) return;
+      frame.classList.remove("font-pending");
+      frame.classList.add("font-ready");
+      $("#canvas-img").hidden = true;
+    });
+    return;
+  }
+  // Formal VisualCraft players lazy-load non-adjacent pages. Keep the target
+  // PNG on screen while that nested iframe loads, then promote HTML in place.
+  if (attempt < 80) setTimeout(() => revealStaticSlideAfterLazyLoad(frame, n, deckId, attempt + 1), 100);
+}
+
+function staticHtmlCheckpointReady(n) {
+  const page = Number(n);
+  if (!ed.rendered?.has(page)) return true;
+  const key = String(page);
+  const authoredStamp = Number(ed.atimes?.[key] || 0);
+  const renderedStamp = Number(ed.rtimes?.[key] || 0);
+  // Once a stable PNG exists, a newer HTML patch is only a draft. Keep the
+  // checkpoint PNG until that exact page has rendered again; otherwise a
+  // scaffold/patch can replace a verified visual with incomplete live DOM.
+  if (!authoredStamp) return true;
+  return renderedStamp > 0 && renderedStamp >= authoredStamp;
 }
 
 function showStaticDeck(n) {
   const frame = $("#canvas-deck");
   const deckId = String(ed.id);
+  if (!staticHtmlCheckpointReady(n)) {
+    keepStaticPng(n);
+    return;
+  }
   const sameDeck = frame.dataset.deckKind === "static" && frame.dataset.deckId === deckId;
-  const requestedStamp = String(ed.staticStamp || 0);
+  // During production html_stamp is deck-wide, so another page being patched
+  // must not reload the page currently on screen. Use this page's last stable
+  // render checkpoint (or its first authored checkpoint before a PNG exists).
+  // The final present.html promotion remains deck-wide and reloads exactly once.
+  const pageKey = String(Number(n));
+  const pageStamp = ed.rtimes?.[pageKey] || ed.atimes?.[pageKey] || ed.staticStamp || 0;
+  const requestedStamp = String(ed.staticDeckFinal ? (ed.staticStamp || pageStamp) : pageStamp);
   const targetIsDirty = !!ed.staticDirtyPages?.has(Number(n));
   const mustReload = sameDeck && targetIsDirty && frame.dataset.deckStamp !== requestedStamp;
   frame.dataset.pendingSlide = String(n);
   $("#canvas-empty").hidden = true;
   if (sameDeck && !mustReload && frame.dataset.fontsReady === "1") {
     frame.hidden = false;
-    $("#canvas-img").hidden = true;
-    if (playStaticSlide(frame, n)) delete frame.dataset.pendingSlide;
+    if (playStaticSlide(frame, n)) {
+      delete frame.dataset.pendingSlide;
+      $("#canvas-img").hidden = true;
+    } else {
+      frame.classList.add("font-pending");
+      frame.classList.remove("font-ready");
+      keepStaticPng(n);
+      revealStaticSlideAfterLazyLoad(frame, n, deckId);
+    }
     return;
   }
+  // Keep a stable target-page PNG visible while a new player document loads.
+  // The iframe remains mounted but transparent until revealStaticDeckWhenFontsReady
+  // has selected the requested page and applied its final viewport scale.
+  frame.classList.add("font-pending");
+  frame.classList.remove("font-ready");
   keepStaticPng(n);
-  if (sameDeck && !mustReload) return;
+  frame.hidden = false;
+  scheduleStaticPreviewFallback(frame, n, deckId, requestedStamp);
+  if (sameDeck && !mustReload) {
+    // The load event may have fired just before a progress refresh changed the
+    // pending page. Re-run the idempotent reveal against the already loaded
+    // document instead of leaving the iframe permanently transparent.
+    try {
+      if (frame.contentDocument?.readyState === "complete") {
+        void revealStaticDeckWhenFontsReady(frame, frame.contentWindow);
+      }
+    } catch {}
+    return;
+  }
   frame.dataset.deckKind = "static";
   frame.dataset.deckId = deckId;
   frame.dataset.deckStamp = requestedStamp;
+  frame.dataset.deckPageStampSnapshot = JSON.stringify(Object.fromEntries(
+    [...(ed.staticDirtyPages || [])].map((page) => {
+      const key = String(Number(page));
+      return [key, ed.rtimes?.[key] || ed.atimes?.[key] || 0];
+    }),
+  ));
   frame.dataset.fontsReady = "0";
-  frame.classList.add("font-pending");
-  frame.classList.remove("font-ready");
   // Do not clear every dirty page here. A deck-wide render can update many
   // pages while this iframe is loading; clearing the set made fresh thumbnails
   // coexist with stale nested slide documents. The successfully revealed page
@@ -4936,12 +5180,11 @@ function select(n, { byUser } = {}) {
     return;
   }
   const showConsole = ed.viewMode === "console";
-  if (ed.rendered.has(n) && !showConsole) {
+  if (ed.authored.has(n) && !showConsole) {
     if (ed.staticDeckReady && ed.staticDeckUrl) {
-      // 完成态先保留稳定 PNG；字体就绪后再切到 canonical present.html。
+      // 单页 HTML 完整写入后立即显示实时页面；PNG 仅作为载入失败回退。
       showStaticDeck(n);
-    } else {
-      // 生成过程中 present.html 仍可能被重建，继续使用稳定的逐页渲染图。
+    } else if (ed.rendered.has(n)) {
       keepStaticPng(n);
     }
   } else {
@@ -5359,6 +5602,12 @@ function cleanAgentText(value) {
     .replace(/\n{3,}/g, "\n\n")
     .trim();
   if (!text || /^轨迹已写\b/.test(text)) return "";
+  if (/^The write_file didn't actually overwrite\b/i.test(text)) {
+    return "规划文件未通过批量写入约束，正在使用受控批量恢复方式更新。";
+  }
+  if (/^The harness rejects single-page groups\b/i.test(text)) {
+    return "页面责任分组格式未通过校验，正在按既定所有权拓扑修正单页组写法。";
+  }
   if (/^Now I have enough context\./i.test(text)) return "资料与页面规划已梳理完成，开始搭建本页内容与版式。";
   if (/^Let me reconsider\b/i.test(text)) return "发现当前版式与页面规划不完全一致，正在重新调整。";
   if (/^Let me write the full deck\b/i.test(text)) return "演示结构已经梳理完成，正在开始整套页面编排。";
@@ -5905,11 +6154,11 @@ function agentTimingBadge(timing) {
   const waiting = timing.status === "waiting";
   const parts = [];
   if (started) parts.push(`<span>${escapeHtml(started.text)} 发起</span>`);
-  if (finished) parts.push(`<span>${escapeHtml(finished.text)} 完成</span>`);
+  if (finished) parts.push(`<span>${escapeHtml(finished.text)} ${failed ? "结束" : "完成"}</span>`);
   if (duration) parts.push(`<b>${escapeHtml(`${running ? "已进行" : "耗时"} ${duration}`)}</b>`);
   const titleParts = [];
   if (startedFull) titleParts.push(`发起：${startedFull.text}`);
-  if (finishedFull) titleParts.push(`完成：${finishedFull.text}`);
+  if (finishedFull) titleParts.push(`${failed ? "结束" : "完成"}：${finishedFull.text}`);
   if (duration) titleParts.push(`${running ? "已进行" : "耗时"}：${duration}`);
   titleParts.push("并行 Agent 的时间可能重叠");
   return `<time class="orch-duration orch-stage-time${running ? " running" : ""}${failed ? " failed" : ""}${waiting ? " waiting" : ""}" datetime="${escapeHtml(started?.iso || finished?.iso || "")}" title="${escapeHtml(titleParts.join("；"))}">${parts.join("<span class=\"orch-time-separator\">·</span>")}</time>`;
@@ -5933,12 +6182,36 @@ function timingAgentLabel(key) {
   return meta.label || "协作 Agent";
 }
 
+function overallDurationSeconds(timing = ed.overallTiming || {}) {
+  const explicitRaw = timing.duration_s;
+  const explicit = Number(explicitRaw);
+  if (explicitRaw != null && explicitRaw !== "" && Number.isFinite(explicit)) {
+    return Math.max(0, explicit);
+  }
+
+  // Progress owns the end-to-end job clock (including startup before the first
+  // Harness event), and already advances locally between SSE payloads.
+  const progressElapsed = currentElapsedSeconds();
+  if (Number.isFinite(progressElapsed)) return Math.max(0, progressElapsed);
+
+  // Compatibility fallback for historical trajectories that expose only ISO
+  // start/end stamps and never persisted duration_s.
+  const started = Date.parse(String(timing.started_at || ""));
+  const finished = Date.parse(String(timing.finished_at || ""));
+  if (!Number.isFinite(started)) return null;
+  if (Number.isFinite(finished)) return Math.max(0, (finished - started) / 1000);
+  if (isStaticActiveStatus(ed.status)) return Math.max(0, (Date.now() - started) / 1000);
+  return null;
+}
+
 function orchestrationTimingMarkup() {
   const timings = Object.entries(ed.agentTimings || {})
-    .filter(([, timing]) => timing && Number.isFinite(Number(timing.duration_s)))
+    .filter(([, timing]) => timing && timing.duration_s != null && timing.duration_s !== ""
+      && Number.isFinite(Number(timing.duration_s)))
     .sort(([, a], [, b]) => String(a.started_at || "").localeCompare(String(b.started_at || "")));
   const overall = ed.overallTiming || {};
-  const overallDuration = fmtDur(overall.duration_s);
+  const overallSeconds = overallDurationSeconds(overall);
+  const overallDuration = fmtDur(overallSeconds);
   if (!timings.length && !overallDuration) return "";
   const rows = timings.map(([key, timing]) => {
     const meta = orchestrationAgentMeta(key);
@@ -5953,7 +6226,7 @@ function orchestrationTimingMarkup() {
   }).join("");
   return `<section class="orchestration-timing-card">
     <div class="orchestration-timing-head">
-      <span><small>整体用时</small><strong>${escapeHtml(overallDuration || "计算中")}</strong></span>
+      <span><small>整体用时</small><strong data-overall-elapsed>${escapeHtml(overallDuration || "尚未开始")}</strong></span>
       <em><b>${timings.length}</b> 个 Agent 协同 · 各阶段包含并行重叠</em>
     </div>
     <div class="orchestration-timing-agents">${rows}</div>
@@ -7544,6 +7817,7 @@ document.addEventListener("keydown", (event) => {
 setTheme(document.documentElement.dataset.theme || "dark", { remember: false });
 setLanguage(currentLanguage, { remember: false });
 setTopbar();
+initHistoryFilters();
 const initialParams = new URLSearchParams(location.search);
 if (initialParams.get("mode") === "dynamic") setCreationMode("dynamic", { remember: false });
 if (["login", "register"].includes(initialParams.get("auth"))) {

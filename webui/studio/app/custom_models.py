@@ -143,13 +143,9 @@ def public_payload(row) -> dict:
 
 
 def vision_capability(row) -> bool:
-    """DeepSeek V4 is text-only; visual inspection is routed to Gemini."""
+    """DeepSeek V4 chat endpoints are text-only, regardless of UI legacy flags."""
     model_id = str(row["model_id"] or "").strip().lower()
-    base_url = str(row["base_url"] or "").strip().lower()
-    if (
-        model_id in {"deepseek-v4-flash", "deepseek-v4-pro"}
-        and "api.deepseek.com" in base_url
-    ):
+    if model_id in {"deepseek-v4-flash", "deepseek-v4-pro"}:
         return False
     return bool(row["vision_enabled"])
 

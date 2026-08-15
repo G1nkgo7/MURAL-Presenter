@@ -1154,7 +1154,7 @@ def get_batch(batch_id: int, user=Depends(require_user), con=Depends(get_db)):
 def list_decks(user=Depends(require_user), con=Depends(get_db)):
     rows = con.execute(
         "SELECT id,batch_id,batch_index,parent_deck_id,revision_no,title,status,"
-        "slide_count,created_at,started_at,finished_at,seed_json "
+        "slide_count,created_at,started_at,finished_at,model,skill_version,seed_json "
         "FROM decks WHERE user_id = ? ORDER BY id DESC", (user["id"],)
     ).fetchall()
     prefs = {
@@ -1178,6 +1178,9 @@ def list_decks(user=Depends(require_user), con=Depends(get_db)):
         item["presentation_kind"] = (
             "dynamic" if seed.get("ppt_output") == "dynamic_html" else "static"
         )
+        item["model_label"] = _model_label(con, user["id"], item.get("model") or "")
+        skill = engine.SKILLS.get(item.get("skill_version") or "") or {}
+        item["skill_label"] = skill.get("label") or item.get("skill_version") or ""
         item["pinned"] = prefs.get(str(item["id"]), False)
         decks.append(item)
     return {"decks": decks}

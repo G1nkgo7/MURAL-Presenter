@@ -304,10 +304,15 @@ export SENSENOVA_MODEL_DISPLAY_NAME="My multimodal model"
 发布版会自动选择：
 
 ```dotenv
-PPTAGENT_PUBLIC_SKILL_KEYS=mural-presenter
+PPTAGENT_PUBLIC_SKILL_KEYS=mural-presenter,mural-presenter-creative
 PPTAGENT_DEFAULT_SKILL=mural-presenter
 PPTAGENT_ENABLE_EXPERIMENTAL=0
 ```
+
+`mural-presenter` 是默认稳态画像；`mural-presenter-creative` 是同一套
+Skill/Harness 的强模型创作画像，强制一页一个 Slide Agent，同时保留相同的附件、素材、
+字体、渲染和最终审计门。v0.1 已整体移入 `archive/mural-presenter-v0.1/`，不再作为
+WebUI 可运行入口；历史成品仍可查看。
 
 一般无需设置 Skill 路径；启动器会自动发现仓库根目录下唯一的正式
 Skill/Harness。只有私有实验才设置 `PPTAGENT_ENABLE_EXPERIMENTAL=1`，并显式把

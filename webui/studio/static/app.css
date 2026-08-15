@@ -3571,7 +3571,7 @@ html[data-theme="dark"] .badge.ph-done { color: #6ee1bc; background: rgba(43,212
   content: ""; position: absolute; inset: 0; pointer-events: none; opacity: 0;
   background: linear-gradient(105deg, transparent 15%, rgba(255,255,255,.38) 48%, transparent 78%); transform: translateX(-115%);
 }
-.outline-agent-progress .agent-now.is-running::after { opacity: .55; animation: outline-thinking-sweep 3.6s ease-in-out infinite; }
+.outline-agent-progress .agent-now.is-running::after { display: none; }
 .outline-agent-progress .agent-now-icon { width: 30px; height: 30px; border-radius: 10px; }
 .outline-agent-progress .agent-kicker { display: block; margin-bottom: 1px; font-size: 8.5px; }
 .outline-agent-progress .agent-now strong { font-size: 12.5px; }

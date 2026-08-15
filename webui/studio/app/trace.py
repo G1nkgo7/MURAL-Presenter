@@ -99,6 +99,13 @@ def snapshot(run_dir, seed=None, status=None, started_at=None, finished_at=None,
             rtimes[str(n)] = stat.st_mtime_ns // 1_000_000
         except OSError:
             pass
+    atimes = {}
+    for n in authored:
+        try:
+            stat = os.stat(os.path.join(rd, "slides", f"slide_{n:02d}.html"))
+            atimes[str(n)] = stat.st_mtime_ns // 1_000_000
+        except OSError:
+            pass
     workers = len(glob.glob(os.path.join(rd, "_trace", "subagents", "slide_*")))
 
     total = len(glob.glob(os.path.join(rd, "plan", "slide_*.md")))
@@ -118,7 +125,9 @@ def snapshot(run_dir, seed=None, status=None, started_at=None, finished_at=None,
         "slides_total": total or None,
         "slides_authored": len(authored),
         "slides_rendered": len(rendered),
+        "authored": authored,
         "rendered": rendered,
+        "atimes": atimes,
         "rtimes": rtimes,
         "workers": workers,
         "activity": _last_activity(log_path),
@@ -176,6 +185,10 @@ _TIMING_PREFIX_RE = r"(?:\[(\d{2}:\d{2}:\d{2}) \+\s*(\d+(?:\.\d+)?)s\]\s+)?"
 _FEED_RE = re.compile(
     _TIMING_PREFIX_RE
     + r"\[[^/\]]+/([^\]]+)\] (?:🔧 (\w+)\((.*)|\[\d+\] 💬 (.*))"
+)
+_AGENT_EXIT_RE = re.compile(
+    _TIMING_PREFIX_RE
+    + r"\[[^/\]]+/([^\]]+)\]\s+轨迹已写\b.*?\bexit=([A-Za-z0-9_-]+)"
 )
 _HINT_RE = re.compile(r'"path"\s*:\s*"([^"]+)"')
 _PLAN_GROUP_RE = re.compile(
@@ -676,6 +689,66 @@ def _agent_timing_payload(run_dir, aliases=None):
     return timings, overall
 
 
+def _apply_agent_exit_timings(chunk, timings, aliases=None):
+    """Complete per-Agent clocks from the Harness's durable exit event.
+
+    v0.1 writes ``messages.json`` and ``tool_log.json`` for both active and
+    finished workers, so file presence cannot distinguish the two. The runner
+    emits one explicit ``轨迹已写 ... exit=...`` line only after an Agent has
+    stopped. Its elapsed value is Agent-local; combine it with that Agent's
+    persisted start timestamp to recover an exact UTC finish boundary.
+    """
+    for line in str(chunk or "").splitlines():
+        match = _AGENT_EXIT_RE.match(line)
+        if not match:
+            continue
+        clock, elapsed_s, raw_agent, exit_reason = match.groups()
+        key = _livefeed_agent_key(raw_agent, aliases)
+        timing = timings.get(key)
+        if not timing:
+            continue
+        started = _trace_timestamp(timing.get("started_at"))
+        try:
+            elapsed = float(elapsed_s)
+        except (TypeError, ValueError):
+            elapsed = None
+        if started is None or elapsed is None or elapsed < 0:
+            continue
+        # The role directory is reused for a retry, so config.json describes
+        # the latest attempt while the job log retains earlier exits. Prefer
+        # the explicit runner wall clock to reject an exit that predates the
+        # current attempt's start; elapsed alone is attempt-local and would
+        # otherwise be added to the wrong start timestamp.
+        finished = None
+        if clock:
+            try:
+                hour, minute, second = (int(part) for part in clock.split(":"))
+                start_dt = datetime.fromtimestamp(started, timezone.utc)
+                candidates = [
+                    start_dt.replace(hour=hour, minute=minute, second=second, microsecond=0).timestamp() + day * 86400
+                    for day in (-1, 0, 1)
+                ]
+                expected = started + elapsed
+                finished = min(candidates, key=lambda value: abs(value - expected))
+            except (TypeError, ValueError):
+                finished = None
+        if finished is None:
+            finished = started + elapsed
+        if finished < started - 1:
+            continue
+        previous_finish = _trace_timestamp(timing.get("finished_at"))
+        if previous_finish and previous_finish > finished:
+            finished = previous_finish
+        failed = bool(re.search(r"(?:fail|error|reject|incomplete|blocked)", exit_reason, re.I))
+        timing.update({
+            "status": "failed" if failed else "complete",
+            "finished_at": _trace_iso(finished),
+            "duration_s": round(max(0.0, finished - started), 1),
+            "exit_reason": exit_reason,
+        })
+    return timings
+
+
 def _run_response_language(run_dir):
     """Best-effort response language for filtering user-facing process prose."""
     candidates = [
@@ -795,6 +868,7 @@ def livefeed(log_path, max_bytes=8 * 1024 * 1024, per_agent=240, run_dir=None):
             "agent_timings": agent_timings,
             "overall_timing": overall_timing,
         }
+    _apply_agent_exit_timings(chunk, agent_timings, aliases)
     for sequence, line in enumerate(chunk.split("\n")):
         m = _FEED_RE.match(line)
         if not m:

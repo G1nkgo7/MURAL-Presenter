@@ -803,7 +803,7 @@ requires-dist = [
     { name = "pillow", specifier = ">=10.0" },
     { name = "playwright", specifier = ">=1.40" },
     { name = "pymupdf", specifier = ">=1.24" },
-    { name = "pypdf", specifier = ">=4.0" },
+    { name = "pypdf", specifier = "==6.14.2" },
     { name = "python-docx", specifier = ">=1.1" },
     { name = "python-dotenv", specifier = ">=1.0" },
     { name = "python-multipart", specifier = ">=0.0.9" },

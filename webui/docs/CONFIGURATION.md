@@ -28,11 +28,14 @@ Shell 变量插值，因此不要写 `${HOME}`，请填写完整路径。
 
 ## MURAL Presenter 正式 Skill/Harness
 
-前端默认只展示一个 `MURAL Presenter`。Harness 根据本轮 query 的主要语言配置中文或英文提示；任务快照记录实际 Skill、语言和目录哈希。正式实现只保存在同级 `MURAL/` 仓库中，WebUI 不维护副本。
+前端默认展示 `MURAL Presenter` 与 `MURAL Presenter · Creative`。两者共用同一套
+Skill/Harness：前者是稳态画像，后者面向强模型并强制一页一个 Slide Agent。Harness 根据本轮
+query 的主要语言配置中文或英文提示；任务快照记录实际 Skill、语言、authoring profile 和目录哈希。
+正式实现只保存在仓库根目录，WebUI 不维护副本。
 
 | 变量 | 默认 | 说明 |
 |---|---|---|
-| `PPTAGENT_PUBLIC_SKILL_KEYS` | `mural-presenter` | 对外开放的 Skill key |
+| `PPTAGENT_PUBLIC_SKILL_KEYS` | `mural-presenter,mural-presenter-creative,mural-presenter-v0.2,mural-presenter-v0.2-grouped` | 对外开放的 Skill key；v0.1 已归档，不再注册 |
 | `PPTAGENT_DEFAULT_SKILL` | `mural-presenter` | 默认 Skill key |
 | `PPTAGENT_MURAL_PRESENTER_SKILL_ROOT` | `../skills/mural-presenter` | 正式 Skill 唯一源 |
 | `PPTAGENT_MURAL_PRESENTER_HARNESS_ROOT` | `../harnesses/mural-presenter` | 正式 Harness 唯一源 |

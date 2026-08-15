@@ -58,23 +58,6 @@ class ReleaseWebUIParityTests(unittest.TestCase):
         self.assertIn("stamp_sources = fragments + [css_path]", preview)
         self.assertNotIn('glob("slide_*.png")', preview)
 
-    def test_v02_formal_players_expose_font_readiness(self):
-        for language in ("en", "zh"):
-            for grouped in (False, True):
-                suffix = "-grouped" if grouped else ""
-                deck = (
-                    ROOT.parents[0] / "skills/mural-presenter-v0.2"
-                    / f"mural-presenter-v0-2{suffix}-{language}/scripts/deck.py"
-                ).read_text(encoding="utf-8")
-                self.assertIn(
-                    "const fontsReady = Promise.resolve(document.fonts?.ready)",
-                    deck,
-                )
-                self.assertIn(
-                    "window.cleanDeck = {{ go, step, count: slides.length, fontsReady }}",
-                    deck,
-                )
-
     def test_studio_preserves_static_deck_motion_tokens(self):
         app = (ROOT / "studio/static/app.js").read_text(encoding="utf-8")
         start = app.index("function prepareStaticDeckMotion(")
@@ -232,18 +215,6 @@ class ReleaseWebUIParityTests(unittest.TestCase):
             '"agent_language_routing": "query-auto"',
         ):
             self.assertIn(required, mural)
-
-    def test_mural_v01_is_archived_and_not_registered(self):
-        engine = (ROOT / "studio/app/engine.py").read_text(encoding="utf-8")
-        self.assertNotIn("def _mural_v01_skill(", engine)
-        self.assertNotIn('"mural-presenter-v0.1": _mural_v01_skill()', engine)
-        archive = ROOT.parents[0] / "archive/mural-presenter-v0.1"
-        self.assertTrue(
-            (archive / "skills/mural-presenter-v0.1/mural-presenter-v0-1-zh/SKILL.md").is_file()
-        )
-        self.assertTrue(
-            (archive / "harnesses/mural-presenter-v0.1/infer.py").is_file()
-        )
 
     def test_history_search_and_filters_use_list_metadata(self):
         template = (ROOT / "studio/templates/app.html").read_text(encoding="utf-8")

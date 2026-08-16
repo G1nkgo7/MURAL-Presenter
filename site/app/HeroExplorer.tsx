@@ -36,7 +36,13 @@ export function HeroExplorer({ language }: { language: Language }) {
       ))}
       <div className="hero-stage-hotspots" aria-label={isZh ? "选择壁画阶段" : "Choose a mural stage"}>
         {stages.map((stage) => (
-          <label className={`hero-hotspot is-${stage.id}`} htmlFor={`${prefix}-${stage.id}`} data-mode={stage.id} key={stage.id}>
+          <label
+            className={`hero-hotspot is-${stage.id}`}
+            htmlFor={`${prefix}-${stage.id}`}
+            data-mode={stage.id}
+            aria-label={stage.label}
+            key={stage.id}
+          >
             <i aria-hidden="true" />
             <span><small>{stage.number}</small><strong>{stage.label}</strong></span>
           </label>

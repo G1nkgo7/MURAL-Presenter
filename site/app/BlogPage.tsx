@@ -191,7 +191,6 @@ export function BlogPage({ language }: { language: Language }) {
   const isZh = language === "zh";
   const homeHref = "#top";
   const paperHref = isZh ? "/zh/paper" : "/paper";
-  const sections = t.sections as readonly ArticleSection[];
   const acronym = isZh
     ? [
         ["M", "Multi-Agent", "多角色并行"],
@@ -218,17 +217,6 @@ export function BlogPage({ language }: { language: Language }) {
         ["02", "Across slides", "Definitions, narrative promises, and visual encodings remain shared even when related pages are far apart."],
         ["03", "Across revisions", "Later requests update every affected relation while preserving work outside the impact boundary."],
       ] as const;
-  const topologies = isZh
-    ? [
-        ["A", "单条轨迹", "一个上下文完成整册", "全局决策天然连续，但研究、规划、页面代码、渲染反馈与修改历史会持续累积。"],
-        ["B", "逐页并行", "一页一个执行上下文", "页面容易并行，却没有谁天然负责术语、叙事伏笔或视觉编码等跨页关系。"],
-        ["C", "MURAL", "关联页面共同负责", "共享蓝图投影到页面组；组内联合制作，装配后再恢复 whole-deck Review。"],
-      ] as const
-    : [
-        ["A", "Single trajectory", "One context owns the deck", "Global decisions stay continuous, but research, plans, slide code, render feedback, and revisions accumulate together."],
-        ["B", "Per-slide parallel", "One context owns each page", "Slides parallelize cleanly, but no worker naturally owns terminology, narrative setups, or visual encodings across pages."],
-        ["C", "MURAL", "Related slides share an owner", "A shared blueprint projects into groups; joint production closes locally and whole-deck Review returns after assembly."],
-      ] as const;
   const evaluationCards = isZh
     ? [
         ["01", "长程关系是否闭合", "THREAD-Bench 记录一项要求在哪里建立、被哪些远处页面消费，以及最终是否可观察地闭合。"],
@@ -239,67 +227,6 @@ export function BlogPage({ language }: { language: Language }) {
         ["01", "Do long-range relations close?", "THREAD-Bench records where a requirement is established, which distant pages consume it, and whether closure is observable."],
         ["02", "Do pages and decks work?", "PresentBench and SlidesGen-Bench complement the study with content, layout, visual quality, and general generation measures."],
         ["03", "Does the deck survive revision?", "DECKBench measures edit success, preservation of untouched pages, cross-slide regressions, and replay scope together."],
-      ] as const;
-  const lifecycleStages = isZh
-    ? [
-        ["01", "Material & Research", "把附件、已有材料和必要的网络证据整理成可引用的知识状态。", "material.md · knowledge-brief.md"],
-        ["02", "Plan & Compile", "锁定受众、叙事弧、设计语言、页面地图、素材策略和 production groups。", "deck.md · base.css · group briefs"],
-        ["03", "Group Authoring", "同一 Group Agent 联合制作关联页面，并在组内完成 write–render–inspect–revise。", "slide_NN.html · group contact sheet"],
-        ["04", "Review & Deliver", "装配整册，检查跨组关系；再按影响范围修改并导出交付格式。", "HTML · PPTX · PDF · Images"],
-      ] as const
-    : [
-        ["01", "Material & Research", "Turn attachments, supplied material, and consequential web evidence into citable knowledge state.", "material.md · knowledge-brief.md"],
-        ["02", "Plan & Compile", "Fix the audience, narrative arc, design language, page map, asset strategy, and production groups.", "deck.md · base.css · group briefs"],
-        ["03", "Group Authoring", "One Group Agent jointly authors related slides and closes write–render–inspect–revise inside the group.", "slide_NN.html · group contact sheet"],
-        ["04", "Review & Deliver", "Assemble the deck, inspect cross-group relations, route revisions by impact, and export delivery formats.", "HTML · PPTX · PDF · Images"],
-      ] as const;
-  const revisionRoutes = isZh
-    ? [
-        ["PAGE", "局部 Patch", "文案、位置或单个视觉元素能够精确定位时，只修改并重渲染受影响页面。"],
-        ["GROUP", "重新激活页面组", "术语、叙事关系或共同视觉语言变化时，让原 Group Agent 连同关联页面一起恢复工作。"],
-        ["DECK", "重规划受影响结构", "章节、页数、核心结论或共享系统变化时，回到整册蓝图，再选择性重启下游。"],
-      ] as const
-    : [
-        ["PAGE", "Local patch", "When copy, position, or one visual element is precisely localized, patch and rerender only the affected page."],
-        ["GROUP", "Reactivate the group", "When terminology, narrative relations, or a shared visual language changes, resume the responsible Group Agent and its related pages."],
-        ["DECK", "Replan affected structure", "When sections, slide count, core claims, or shared systems change, return to the blueprint and selectively restart downstream work."],
-      ] as const;
-  const figureShowcase = isZh
-    ? [
-        {
-          index: "01",
-          label: "责任拓扑",
-          title: "从逐页拆分，到依赖对齐的共同责任",
-          description: "比较单条轨迹、逐页并行与 MURAL，重点不是 Agent 数量，而是跨页关系在哪里被共同生成、检查和重放。",
-          src: "/execution-topologies.png",
-          alt: "顺序式、完整上下文并行和 MURAL 页面组执行拓扑",
-        },
-        {
-          index: "02",
-          label: "完整生命周期",
-          title: "从需求接地，到分组制作与后续修改",
-          description: "MURAL 把长期决策外置为共享状态，并让材料、规划、页面组、整册复审与修改路由形成可继续执行的创作链路。",
-          src: "/authoring-lifecycle.png",
-          alt: "MURAL 从材料、规划、分组制作到复审、修改与交付的完整生命周期",
-        },
-      ] as const
-    : [
-        {
-          index: "01",
-          label: "Responsibility topology",
-          title: "From per-slide decomposition to dependency-aligned ownership",
-          description: "The comparison is not about Agent count. It shows where cross-slide relations are jointly authored, inspected, and replayed.",
-          src: "/execution-topologies.png",
-          alt: "Sequential, full-context parallel, and MURAL slide-group execution topologies",
-        },
-        {
-          index: "02",
-          label: "Full lifecycle",
-          title: "From grounded intent to grouped authoring and later revision",
-          description: "MURAL externalizes long-lived decisions, then connects material, planning, slide groups, whole-deck review, and impact-scoped revision.",
-          src: "/authoring-lifecycle.png",
-          alt: "The MURAL material, planning, group-authoring, review, revision, and delivery lifecycle",
-        },
       ] as const;
 
   return (
@@ -360,7 +287,6 @@ export function BlogPage({ language }: { language: Language }) {
                 <span
                   className={initial === "R" ? "is-revision" : ""}
                   aria-label={`${initial}, ${term}: ${meaning}`}
-                  tabIndex={0}
                   key={initial}
                 >
                   <b>{initial}</b>

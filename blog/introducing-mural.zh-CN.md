@@ -1,6 +1,6 @@
 ---
 title: "演示文稿不是一摞页面：介绍 MURAL-Presenter"
-description: "一种面向长程演示文稿完整生成与修改生命周期的方法。"
+description: "一种面向长程演示文稿的依赖对齐生命周期创作方法。"
 date: 2026-08-07
 language: zh-CN
 status: research-preview
@@ -35,8 +35,9 @@ MURAL-Presenter（简称 MURAL）的全称是 Multi-Agent Unified Revision-Aware
 | **A** | **Authoring** | 系统执行一条可复用生命周期，而不是一次性生成 prompt。 |
 | **L** | **Long-Horizon Presentations** | 决策跨越远距阶段、页面与修改轮次仍有明确责任。 |
 
-换句话说，MURAL 不只是把一条长工作流拆成子任务，而是让 Agent 的责任边界匹配整册依赖，
-并在并行制作后重新恢复 whole-deck closure。
+换句话说，MURAL 不只是把一条长工作流拆成子任务，而是先外置长期状态，再让 Agent 的责任边界匹配整册依赖，
+并在并行制作后恢复 whole-deck closure。解析、传输、校验、渲染和封装仍由确定性工具完成；只有输入有界、责任明确、
+产物可以独立验收，且隔离、并行或重放足以补偿交接成本时，系统才建立 fresh Agent context。
 
 ![MURAL 完整创作生命周期](../assets/figures/authoring-lifecycle.png)
 
@@ -64,17 +65,17 @@ Group Agent 不只是一次生成几个文件。它会先写完本组全部页�
 
 ## 把生命周期写成可执行 Skill
 
-MURAL Authoring Skill 描述阶段、角色、落盘产物、质量门和继续执行的路径。流程从用户需求与可选材料开始。
-Material 将附件整理成带位置依据的说明，使后续 Agent 不需要反复打开原文件。只有外部事实或未解释术语会改变
-演示文稿的结论时，才启动 Research。这让资料接地成为一个有目的的判断，而不是所有任务都要经过的仪式。
+MURAL Authoring Skill 描述角色触发、落盘产物、质量门和继续执行路径，但不会把每个阶段都映射成一个 Agent。
+解析、下载、登记、校验、渲染和封装仍由版本化工具完成。Material 只在存在附件时出现；只有外部事实或未解释术语
+会改变演示文稿结论时，才启动 Research。
 
 Orchestrator 随后确定受众、沟通目标、叙事弧、术语、设计方向、页面地图、素材策略和 production groups。
 这些整册决策会写入 shared deck blueprint，再编译成 group/page briefs。下游 Agent 不必从不断增长的对话中
 重新猜整场演讲，只需要接收与自身职责相关的状态。
 
-整册需要位图时，MURAL 会在页面组开工前安排一次统一 Image 阶段。这个设计看起来简单，却能避免不同页面组重复
-搜索、争用 catalog，或各自生成互不相干的图片系列。Image 阶段负责把全册素材解析为一套可用的本地资产；
-Group Agent 仍然决定图片如何参与最终构图。
+整册需要真实图片或生成图时，一个或多个 Image Agents 会按互不重叠的 asset groups 工作，负责开放式检索、生成、
+候选比较和视觉筛选；确定性的传输、登记与校验仍由工具完成。没有图片需求时，系统不会启动 Image Agent。
+Group Agent 仍然决定已验收素材如何参与最终构图。
 
 页面组制作关闭第一层视觉循环。每个 Group Agent 完成整组首稿，渲染组图，检查最新像素，合并问题，修改后再次
 渲染。所有组完成后，确定性 assembly 生成权威整册与 contact sheet。Whole-deck Review 再检查任何单组都无法
@@ -124,12 +125,12 @@ DECKBench 提供多轮修改任务。把这些评测放在一起，才能判断 
 ## 项目现在走到哪里
 
 当前公开的是一个 research preview。仓库已经包含项目叙事、系统配图、MURAL 品牌系统和中英文文档。Grouped workflow、
-统一素材阶段、组级检查、整册 Review 和 scope-aware revision 已经出现在工作系统中，但实验代码与 Skill 仍需要冻结到一个
+按需支持角色、组级检查、整册 Review 和 scope-aware revision 已经出现在工作系统中，但实验代码与 Skill 仍需要冻结到一个
 干净、可复现的版本。
 
 训练集、canonical THREAD-Bench cases、Judge 校准、模型权重和正式效果结果目前尚未公开。我们选择保留这些空位，
 而不是在发布页面上填入尚未稳定的数字。正式发布需要可复现配置、可追踪 run ledger、第三方再分发审查，以及适用于不同产物
 的许可证。
 
-MURAL 的出发点并不复杂：演示文稿不是一摞分别合格的页面，而是一段贯穿证据、规划、制作、复审和修改的设计论证。
-系统本身也应该围绕这个生命周期来组织。
+MURAL 的出发点并不是把一个 workflow 换成更多 Agent，而是让每项长期决策都有显式状态、共同负责者，
+以及可靠的复审与修改路径。

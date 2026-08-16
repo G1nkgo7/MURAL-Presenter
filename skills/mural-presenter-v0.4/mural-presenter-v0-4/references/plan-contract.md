@@ -129,8 +129,9 @@ Slide 读取或“沿用 Pxx”。
 ## 约束
 只写本页特有的硬要求或禁用论点。
 
-## 讲稿节拍
-讲者解释、边界与转场。
+## 初版口语讲稿
+可直接朗读的 2–5 句话，承担解释、边界与转场；不要写节拍关键词、机械复述屏显、
+完整论文式长段，或容纳本应上屏的核心证据。长度按页面内容自然决定。
 ```
 
 必需 metadata：
@@ -141,21 +142,27 @@ Slide 读取或“沿用 Pxx”。
 - 小写 kebab token 的 `production_group`。普通内容页在 `single` 拓扑中使用唯一 token；
   封面与结尾同时存在时，**无论整册选择 `single` 还是 `grouped` 拓扑**，两者都必须共同
   使用 `bookends`；两张以上 divider 同理必须全部共同使用 `dividers`。这是唯一允许的
-  非连续特殊页视觉记忆组。仅当整册只有一张 divider，或只存在封面/结尾之一时，该孤立
-  特殊页才可独占一个组。其余 `grouped` 责任单元必须是共享叙事/视觉依赖的连续 2–4 页。
+  非连续特殊页视觉记忆组。仅当整册只存在封面或结尾之一（非两者都有）时，该单页保留
+  `bookends` 标识但委派时页码表只含一页。其余 `grouped` 责任单元必须是共享叙事/视觉
+  依赖的连续 2–4 页。
   委派孤立 Group 时页码表只写一次，如 `[13]`，不能写 `[13,13]`；
 - `needs_bitmap`：只允许 `true` 或 `false`。`true` 表示该责任单元必须等待 Image 的本地
   位图；`false` 表示可立即进入 Slide，并用代码视觉或强排印完成表达。
 - `primary_visual_medium`：必填。声明本页主要视觉载体，并在位图页直接锁定获取路线，
   不增加另一份逐页策略表。允许值：`bitmap-real`（检索真实人物/产品/地点/事件/作品）、
   `bitmap-generated`（生成概念体验、未来愿景、未建成空间、抽象隐喻、情绪或统一风格
-  Hero）、`bitmap-material`（附件 Figure/截图/照片或用户直供视觉）、`echarts`（定量图表）、
+  Hero）、`bitmap-material`（附件中可独立裁出的图像型 Figure、截图、照片、插图或用户
+  直供视觉；以文字/数字网格为主体的论文 Table 不属于此类）、`echarts`（定量图表）、
   `svg-diagram`（少节点、短标签、确需锐利矢量几何的简单结构）、`canvas-diagram`
   （架构/机制/关系/流程的默认 Canvas + HTML 方案，也覆盖动态布局/高节点/长标签）、
   `code-visual`（HTML/CSS 排版主导的数据、
   对比、时间线或强排印）、`editorial-typography`（有意识的纯排印构图，作为节奏
   选择而非缺少想法的降级）、`mixed-real`、`mixed-generated`、`mixed-material`
-  （对应来源的位图与代码视觉/图表并重；`needs_bitmap` 必须为 `true`）。Slide 必须兑现
+  （对应来源的位图与代码视觉/图表并重；`needs_bitmap` 必须为 `true`）。`mixed-*` 只在
+  两种媒介都形成可独立识别的 substantive visual 时使用，例如位图 + ECharts 或位图 +
+  机制图；位图旁的标题、正文、参数列表、普通标签或文字 callout 不构成第二种媒介，
+  这类 feature split 仍写对应的 `bitmap-real / bitmap-generated / bitmap-material`。
+  Slide 必须兑现
   所声明的媒介；
   图表/架构/机制不得静默退化成卡片墙或小图标。Review 对照此声明验收。
 
@@ -171,8 +178,10 @@ Image 可选择路线内部的 query、prompt、裁切与文件，但不得把�
 数值、关系与真实性边界。若附件含可复用的独立 Figure、照片或插图，可记录页图来源、
 语义主体与候选裁剪区域，交给 Image 通过 `crop-material` 校验后复制到 `assets/` 并
 登记 `kind: material`；逐页 HTML 仍不得直接引用 `inputs/**`。整页 facsimile、长文本、
-页眉页脚和不可核实图表不得裁入。数据、实验结果、流程和架构在不能可靠复用时优先
-写成 `needs_bitmap: false`，由 Slide 按已核实内容忠实重绘。
+页眉页脚和不可核实图表不得裁入。论文中即使编号为 Figure，只要主体实际是文字密集
+表格、步骤清单或数字网格，也应在规划时直接写成 `needs_bitmap: false`，由 Slide 依据
+Material/Research 提取的结构与数值忠实重绘；不要先交 Image 试裁后再降级。数据、实验
+结果、流程和架构在不能可靠复用时同样优先走代码视觉。
 
 普通内容页应同时填写 `composition` 与构图蓝图。若漏填，校验只告警，scaffold 会按
 `page_type / page_family` 推断安全起点，不阻断整册；显式规划仍更好，因为能保留原定
@@ -214,6 +223,11 @@ Image 可选择路线内部的 query、prompt、裁切与文件，但不得把�
 
 实质内容页需要 Evidence/证据章节。保留 `speech.md` 所需的决定性事实、边界和来源
 URL，但不粘贴长篇来源原文，也不重复全册视觉契约；Slide 不把原始来源放到画布。
+
+逐页计划按固定语义顺序完成：页面职责 → 屏显结论与决定性证据 → 视觉表达 →
+`## 初版口语讲稿`。删除讲稿后，页面仍须独立表达核心结论与决定性证据；讲稿只能补充
+解释、边界和跨页转场。`plan/slide_NN.md` 是 canonical source，`speech.md` 只是
+`sync-speech` 的派生产物，任何 Agent 都不得直接编辑。
 逐页计划定结论和证据，不定完整最终正文与布局。原始请求简短时，每页仍应补入让它
 值得存在的具体事实、案例、对比、机制或影响，不能用通用要点把计划形式填满。
 

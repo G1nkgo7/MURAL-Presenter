@@ -21,6 +21,7 @@ import sys
 import tempfile
 import threading
 from html import unescape
+from html.parser import HTMLParser
 from pathlib import Path
 
 import requests
@@ -30,7 +31,7 @@ from . import config, model_call
 IMG_EXT = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 _SCRATCH_SUFFIXES = (".new", ".tmp", ".bak", ".orig", ".rej")
 _MODEL_OUTPUT_DIRS = {"research", "plan", "slides", "assets", "checks"}
-_MODEL_OUTPUT_FILES = {"base.css", "speech.md"}
+_MODEL_OUTPUT_FILES = {"base.css"}
 _LEGACY_GROUPED_SKILL_NAMES = {
     "long-horizon-html-ppt-grouped",
     "long-horizon-html-ppt-grouped-inline-image",
@@ -358,12 +359,18 @@ def _model_write_error(agent, path: str) -> str | None:
     if not normalized or normalized.startswith("/") or ".." in parts:
         return f"写入路径 `{path}` 不是规范的工作区相对路径。"
     normalized = "/".join(parts)
+    if normalized == "speech.md":
+        return (
+            "speech.md 是从 plan/slide_NN.md 的 `## 初版口语讲稿` 确定性派生的文件，"
+            "任何 Agent 都不得直接编辑。请修改对应逐页计划，再由 Orchestrator 或 Review "
+            "运行角色专属的 `sync-speech`。"
+        )
     top = parts[0] if parts else ""
     if normalized not in _MODEL_OUTPUT_FILES and top not in _MODEL_OUTPUT_DIRS:
         return (
             f"写入路径 `{path}` 不在模型正式产物白名单内。"
             "模型只能写 research/、plan/、slides/、assets/、checks/、"
-            "base.css 或 speech.md；present.html、renders/、"
+            "或 base.css；speech.md、present.html、renders/、"
             "_trace/ 与 tmp/ 由受控脚本持有。"
         )
 
@@ -491,6 +498,8 @@ def _model_write_error(agent, path: str) -> str | None:
                 "Slide 只能写自己分配的正式页面集合"
                 + (f"：{expected}。" if expected else " `slides/slide_NN.html`。")
             )
+        if len(assigned_pages) > 1 and re.fullmatch(r"slides/slide_\d+\.html", normalized):
+            pass
         unresolved_assets = _grouped_unresolved_asset_pages(agent)
         if unresolved_assets:
             pages_text = ",".join(f"{page:02d}" for page in unresolved_assets)
@@ -503,7 +512,7 @@ def _model_write_error(agent, path: str) -> str | None:
         # but does not freeze the source file at the renderer safety ceiling.
         # A later repair Agent must retain one legal way to close a real defect.
     if role == "review" and not (
-        normalized in {"base.css", "speech.md", "plan/deck.md"}
+        normalized in {"base.css", "plan/deck.md"}
         or top == "slides"
         or (
             top == "plan"
@@ -511,7 +520,8 @@ def _model_write_error(agent, path: str) -> str | None:
         )
     ):
         return (
-            "Review 只能修改 slides/、逐页 plan、plan/deck.md、base.css 或 speech.md。"
+            "Review 只能修改 slides/、逐页 plan、plan/deck.md 或 base.css；"
+            "speech.md 必须由 sync-speech 派生。"
         )
     return None
 
@@ -1109,6 +1119,91 @@ def read_file(agent, path, offset=1, limit=500):
     return numbered
 
 
+_HTML_VOID_ELEMENTS = {
+    "area",
+    "base",
+    "br",
+    "col",
+    "embed",
+    "hr",
+    "img",
+    "input",
+    "link",
+    "meta",
+    "param",
+    "source",
+    "track",
+    "wbr",
+}
+
+
+class _SingleRootSectionParser(HTMLParser):
+    """Recognize one top-level section while allowing arbitrary nested sections."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.stack: list[str] = []
+        self.root_opening: str | None = None
+        self.root_closed = False
+        self.invalid = False
+
+    def handle_starttag(self, tag: str, attrs) -> None:  # type: ignore[no-untyped-def]
+        tag = tag.lower()
+        if not self.stack:
+            if self.root_opening is not None or self.root_closed or tag != "section":
+                self.invalid = True
+                return
+            self.root_opening = self.get_starttag_text()
+        if tag not in _HTML_VOID_ELEMENTS:
+            self.stack.append(tag)
+
+    def handle_startendtag(self, tag: str, attrs) -> None:  # type: ignore[no-untyped-def]
+        # A self-closing top-level section cannot own the authored page body.
+        if not self.stack:
+            self.invalid = True
+
+    def handle_endtag(self, tag: str) -> None:
+        tag = tag.lower()
+        if not self.stack or self.stack[-1] != tag:
+            self.invalid = True
+            return
+        self.stack.pop()
+        if not self.stack:
+            self.root_closed = True
+
+    def handle_data(self, data: str) -> None:
+        if not self.stack and data.strip():
+            self.invalid = True
+
+    def handle_entityref(self, name: str) -> None:
+        if not self.stack:
+            self.invalid = True
+
+    def handle_charref(self, name: str) -> None:
+        if not self.stack:
+            self.invalid = True
+
+    def handle_decl(self, decl: str) -> None:
+        if not self.stack:
+            self.invalid = True
+
+    def unknown_decl(self, data: str) -> None:
+        if not self.stack:
+            self.invalid = True
+
+
+def _single_root_section_opening(content: str) -> str | None:
+    parser = _SingleRootSectionParser()
+    try:
+        parser.feed(content)
+        parser.close()
+    except Exception:
+        return None
+    if parser.invalid or parser.stack or not parser.root_closed:
+        return None
+    return parser.root_opening
+
+
 def _slide_root_contract_error(agent, normalized: str, fp: str, content: str) -> str | None:
     """Keep scaffold-owned root metadata immutable before a render is attempted."""
     if not (
@@ -1123,13 +1218,13 @@ def _slide_root_contract_error(agent, normalized: str, fp: str, content: str) ->
     except OSError:
         return None
     old_root = re.search(r"<section\b[^>]*>", existing, flags=re.I)
-    new_roots = re.findall(r"<section\b[^>]*>", str(content or ""), flags=re.I)
-    if not old_root or len(new_roots) != 1 or len(re.findall(r"</section\s*>", str(content or ""), re.I)) != 1:
+    new_tag = _single_root_section_opening(str(content or ""))
+    if not old_root or not new_tag:
         return (
             "slide_contract：必须保留骨架唯一的根 `<section class=\"slide\">...</section>`；"
-            "请只填充 markers 内正文，或复制原 opening tag 后再重写内容"
+            "允许在根内使用嵌套 section；请勿新增顶层兄弟节点，并确保标签闭合"
         )
-    old_tag, new_tag = old_root.group(0), new_roots[0]
+    old_tag = old_root.group(0)
     new_class = re.search(r"\bclass=[\"']([^\"']*)[\"']", new_tag, flags=re.I)
     if not new_class or "slide" not in new_class.group(1).split():
         return "slide_contract：根 section 必须保留 class `slide`。"
@@ -1274,6 +1369,7 @@ def _explicit_surface_color_conflict(agent, content: str) -> str | None:
 
 def write_file(agent, path, content):
     normalized = str(path or "").replace("\\", "/").lstrip("./")
+    research_over_budget = False
     if (
         _is_current_variant_skill(agent)
         and getattr(agent, "role", "") == "image"
@@ -1346,14 +1442,22 @@ def write_file(agent, path, content):
         _is_current_variant_skill(agent)
         and getattr(agent, "role", "") == "research"
         and normalized == "research/knowledge-brief.md"
-        and len(str(content or "")) > brief_limit
     ):
-        return (
-            "write_file 错误[knowledge_brief_too_long]："
-            f"当前 {len(str(content or ''))} 字符，本任务最多 {brief_limit} 字符。"
-            "请压缩为证据账本：每条事实只出现一次，删除检索过程、候选页表、"
-            "重复来源与叙事性复述；保留实体消歧、关键事实/数字、边界、视觉线索和 URL。"
-        )
+        content_len = len(str(content or ""))
+        ceiling = research_brief_hard_ceiling(agent)
+        if _research_brief_receipt_exists(agent):
+            return (
+                "write_file 错误[knowledge_brief_locked]：Research 简报已被接受并锁定，"
+                "不允许重写。请立即结束 Research 交接。"
+            )
+        if content_len > ceiling:
+            return (
+                "write_file 错误[knowledge_brief_too_long]："
+                f"当前 {content_len} 字符，绝对上限 {ceiling} 字符。"
+                "请压缩为证据账本：每条事实只出现一次，删除检索过程、候选页表、"
+                "重复来源与叙事性复述；保留实体消歧、关键事实/数字、边界、视觉线索和 URL。"
+            )
+        research_over_budget = content_len > brief_limit
     if (
         getattr(agent, "role", "") == "orchestrator"
         and _is_current_variant_skill(agent)
@@ -1423,7 +1527,10 @@ def write_file(agent, path, content):
         and getattr(agent, "role", "") == "research"
         and normalized == "research/knowledge-brief.md"
     ):
-        _persist_research_handoff_receipt(agent, str(content or ""))
+        _persist_research_handoff_receipt(
+            agent, str(content or ""),
+            over_budget=research_over_budget,
+        )
     if (
         _is_current_variant_skill(agent)
         and getattr(agent, "role", "") == "image"
@@ -1434,16 +1541,23 @@ def write_file(agent, path, content):
             getattr(agent, "_image_catalog_rewrites", 0) or 0
         ) + 1
     _record_slide_prerender_mutation(agent, normalized)
+    if research_over_budget:
+        return (
+            f"已写入 {len(content.encode())} 字节到 {path}  "
+            f"⚠ 简报 {len(str(content or ''))} 字符超出推荐预算 {brief_limit}，"
+            "已作为首次写入接受并锁定——不允许后续 write_file 或 patch 修改。"
+            "请立即结束 Research 交接。"
+        )
     return f"已写入 {len(content.encode())} 字节到 {path}"
 
 
 def research_brief_char_limit(agent) -> int:
-    """Return a page-aware Research handoff ceiling.
+    """Return the page-aware recommended budget for the Research handoff.
 
-    A fixed 10k limit made otherwise valid 12--20 page briefs bounce through
-    repeated rewrites.  The handoff stays bounded, but its allowance now scales
-    with the requested deck size and is disclosed to the Research role before
-    it writes.  This is a transport limit, not a target length.
+    This is the *recommended* target, not the hard ceiling.  Briefs above this
+    but below ``research_brief_hard_ceiling`` are accepted once with a warning.
+    The allowance scales with the requested deck size and is disclosed to the
+    Research role before it writes.
     """
     configured = str(
         getattr(agent, "cfg", {}).get("research_brief_max_chars", "")
@@ -1478,14 +1592,16 @@ def research_brief_char_limit(agent) -> int:
         # Attachment verification briefs carry compact evidence IDs, figure /
         # table descriptions and external resolution notes.  Rejecting an
         # otherwise useful 17--19k handoff forces a second long model rewrite,
-        # which is slower and often drops evidence.  Keep the prose target
-        # compact, but make the transport ceiling large enough to accept the
-        # first complete attachment handoff.
+        # which is slower and often drops evidence.  Keep this recommended
+        # budget large enough for a compact attachment handoff; the separate
+        # hard ceiling still bounds safe first-write acceptance.
         return max(20000, min(28000, 10000 + 1000 * pages))
     return max(12000, min(24000, 6000 + 650 * pages))
 
 
-def _persist_research_handoff_receipt(agent, content: str) -> None:
+def _persist_research_handoff_receipt(
+    agent, content: str, *, over_budget: bool = False,
+) -> None:
     """Record the exact accepted Research handoff outside model-owned files.
 
     A provider/process interruption can occur after ``write_file`` durably
@@ -1494,12 +1610,17 @@ def _persist_research_handoff_receipt(agent, content: str) -> None:
     of treating any pre-existing or partial Markdown file as complete.
     """
     encoded = content.encode("utf-8")
+    recommended = research_brief_char_limit(agent)
+    ceiling = research_brief_hard_ceiling(agent)
     receipt = {
-        "version": 1,
+        "version": 2,
         "path": "research/knowledge-brief.md",
         "sha256": hashlib.sha256(encoded).hexdigest(),
         "bytes": len(encoded),
         "characters": len(content),
+        "recommended_characters": recommended,
+        "hard_ceiling_characters": ceiling,
+        "over_budget": over_budget,
     }
     _atomic_write_text(
         agent.ws,
@@ -1523,14 +1644,43 @@ def research_handoff_is_valid(agent) -> bool:
         text = payload.decode("utf-8")
     except UnicodeDecodeError:
         return False
-    return bool(
-        receipt.get("version") == 1
-        and receipt.get("path") == "research/knowledge-brief.md"
-        and receipt.get("sha256") == hashlib.sha256(payload).hexdigest()
-        and receipt.get("bytes") == len(payload)
-        and receipt.get("characters") == len(text)
-        and len(text) <= research_brief_char_limit(agent)
-    )
+    version = receipt.get("version")
+    if version not in (1, 2):
+        return False
+    if receipt.get("path") != "research/knowledge-brief.md":
+        return False
+    if receipt.get("sha256") != hashlib.sha256(payload).hexdigest():
+        return False
+    if receipt.get("bytes") != len(payload):
+        return False
+    if receipt.get("characters") != len(text):
+        return False
+    if version == 1:
+        return len(text) <= research_brief_char_limit(agent)
+    recommended = research_brief_char_limit(agent)
+    ceiling = research_brief_hard_ceiling(agent)
+    stored_over = receipt.get("over_budget")
+    if not isinstance(stored_over, bool):
+        return False
+    if receipt.get("recommended_characters") != recommended:
+        return False
+    if receipt.get("hard_ceiling_characters") != ceiling:
+        return False
+    if stored_over != (len(text) > recommended):
+        return False
+    if len(text) > ceiling:
+        return False
+    return True
+
+
+def research_brief_hard_ceiling(agent) -> int:
+    """Absolute ceiling above which briefs are always rejected."""
+    return min(40000, int(research_brief_char_limit(agent) * 1.6))
+
+
+def _research_brief_receipt_exists(agent) -> bool:
+    """Return True only when a fully valid research handoff receipt exists."""
+    return research_handoff_is_valid(agent)
 
 
 def _decode_plan_transport_text(value: str) -> str:
@@ -1975,11 +2125,16 @@ def patch(
         and getattr(agent, "role", "") == "research"
         and normalized == "research/knowledge-brief.md"
     ):
-        brief_limit = research_brief_char_limit(agent)
-        if len(updated) > brief_limit:
+        if _research_brief_receipt_exists(agent):
+            return (
+                "patch 错误[knowledge_brief_locked]：Research 简报已被接受并锁定，"
+                "不允许后续 patch。请立即结束 Research 交接。"
+            )
+        ceiling = research_brief_hard_ceiling(agent)
+        if len(updated) > ceiling:
             return (
                 "patch 错误[knowledge_brief_too_long]：修改后简报为 "
-                f"{len(updated)} 字符，本任务最多 {brief_limit} 字符。"
+                f"{len(updated)} 字符，绝对上限 {ceiling} 字符。"
                 "请用更短的替换合并重复事实；不得借增量 patch 绕过交接上限。"
             )
     contract_error = _slide_root_contract_error(agent, normalized, fp, updated)
@@ -1991,7 +2146,10 @@ def patch(
         and getattr(agent, "role", "") == "research"
         and normalized == "research/knowledge-brief.md"
     ):
-        _persist_research_handoff_receipt(agent, updated)
+        _persist_research_handoff_receipt(
+            agent, updated,
+            over_budget=len(updated) > research_brief_char_limit(agent),
+        )
     _record_slide_prerender_mutation(agent, normalized)
     return f"已编辑 {path}"
 
@@ -2358,6 +2516,58 @@ def terminal(agent, command, timeout=None):
             cmd,
         )
     )
+    image_crop_output = ""
+    image_crop_source = ""
+    if (
+        _is_current_variant_skill(agent)
+        and getattr(agent, "role", "") == "image"
+    ):
+        try:
+            crop_tokens = shlex.split(cmd)
+        except (TypeError, ValueError):
+            crop_tokens = []
+        if (
+            len(crop_tokens) >= 6
+            and os.path.basename(crop_tokens[0]) in {"python", "python3"}
+            and crop_tokens[1] == _agent_role_script(agent)
+            and crop_tokens[2:4] == ["crop-material", "."]
+            and "--output" in crop_tokens
+        ):
+            output_index = crop_tokens.index("--output") + 1
+            if output_index < len(crop_tokens):
+                image_crop_output = str(crop_tokens[output_index]).replace("\\", "/")
+            if "--source" in crop_tokens:
+                source_index = crop_tokens.index("--source") + 1
+                if source_index < len(crop_tokens):
+                    image_crop_source = str(crop_tokens[source_index]).replace("\\", "/")
+    if image_crop_output:
+        crop_attempts = dict(getattr(agent, "_image_crop_attempts", {}) or {})
+        crop_state = dict(crop_attempts.get(image_crop_output, {}) or {})
+        successes = int(crop_state.get("success", 0) or 0)
+        failures = int(crop_state.get("failure", 0) or 0)
+        if successes >= 2 or failures >= 2:
+            return (
+                "terminal 止损[material_crop_budget]：同一附件素材 `"
+                + image_crop_output
+                + "` 已用完首稿与一次定向修复预算。不要继续微调裁切框或换名重裁；"
+                "若当前文件仍不合格，在 assets/catalog.md 将对应条目标为 failed，"
+                "运行一次 image.py finalize .，并把受影响页结构化交给 Orchestrator "
+                "改为 HTML/CSS/SVG/ECharts 忠实重绘。已有通过素材照常交接。"
+            )
+        source_attempts = dict(
+            getattr(agent, "_image_crop_source_attempts", {}) or {}
+        )
+        source_state = dict(source_attempts.get(image_crop_source, {}) or {})
+        source_failures = int(source_state.get("failure", 0) or 0)
+        if image_crop_source and source_failures >= 3:
+            return (
+                "terminal 止损[material_source_crop_budget]：同一附件页 `"
+                + image_crop_source
+                + f"` 已有 {source_failures} 次裁取失败，说明继续换输出名或微调 box "
+                "不会形成可靠素材。"
+                "保留已通过裁图；其余条目标为 failed，finalize 后将对应页面交给 "
+                "Orchestrator 改为忠实代码重绘。"
+            )
     image_plain_fetch_after_critic = bool(
         _is_current_variant_skill(agent)
         and getattr(agent, "role", "") == "image"
@@ -2412,7 +2622,7 @@ def terminal(agent, command, timeout=None):
     if is_managed_slide:
         expected_script = re.escape(_agent_role_script(agent))
         if _is_current_variant_skill(agent):
-            grouped_actions = "render-group" if _is_grouped_skill(agent) else "render"
+            grouped_actions = "render|render-group" if _is_grouped_skill(agent) else "render"
         else:
             grouped_actions = (
                 "render-group|repair-contract"
@@ -2445,7 +2655,7 @@ def terminal(agent, command, timeout=None):
                     "repair-contract。"
                     if _is_inline_image_skill(agent)
                     else (
-                        "slide.py render-group。"
+                        "slide.py render --page NN / render-group。"
                         if _is_grouped_skill(agent)
                         else "slide.py render。"
                     )
@@ -2555,6 +2765,14 @@ def terminal(agent, command, timeout=None):
                 rendered_pages.update(_parse_page_argument(group_match.group(1)))
             except ValueError as exc:
                 return f"terminal 错误：render-group 页码无效：{exc}"
+        if len(assigned_pages) > 1:
+            is_group_render = bool(group_match)
+            if is_group_render and rendered_pages != assigned_pages:
+                return (
+                    "terminal 错误[group_page_coverage]：最终 render-group 必须覆盖完整责任组 "
+                    + ",".join(f"{page:02d}" for page in sorted(assigned_pages))
+                    + "。"
+                )
         if rendered_pages and not rendered_pages.issubset(assigned_pages):
             return (
                 "terminal 错误：Slide 只能渲染自己分配的页面 "
@@ -2623,11 +2841,57 @@ def terminal(agent, command, timeout=None):
         return f"terminal 错误：命令超过 {to}s 超时"
     except Exception as e:  # noqa: BLE001
         return f"terminal 错误：{e}"
+    if image_crop_output:
+        crop_attempts = dict(getattr(agent, "_image_crop_attempts", {}) or {})
+        crop_state = dict(crop_attempts.get(image_crop_output, {}) or {})
+        outcome = "success" if r.returncode == 0 else "failure"
+        crop_state[outcome] = int(crop_state.get(outcome, 0) or 0) + 1
+        crop_attempts[image_crop_output] = crop_state
+        agent._image_crop_attempts = crop_attempts
+        if image_crop_source:
+            source_attempts = dict(
+                getattr(agent, "_image_crop_source_attempts", {}) or {}
+            )
+            source_state = dict(source_attempts.get(image_crop_source, {}) or {})
+            source_state[outcome] = int(source_state.get(outcome, 0) or 0) + 1
+            source_attempts[image_crop_source] = source_state
+            agent._image_crop_source_attempts = source_attempts
     out = (r.stdout or "")
     if r.stderr:
         out += ("\n[stderr] " + r.stderr)
     if r.returncode:
         out += f"\n[exit_code={r.returncode}]"
+    if (
+        image_crop_output
+        and r.returncode != 0
+        and int(
+            dict(
+                dict(getattr(agent, "_image_crop_attempts", {}) or {}).get(
+                    image_crop_output, {}
+                )
+            ).get("failure", 0)
+            or 0
+        ) >= 2
+    ):
+        out += (
+            "\n[material_crop_route_required] 同一输出已连续两次裁取失败；"
+            "停止修改 box。把该 catalog 条目标为 failed，finalize 已通过的其他素材，"
+            "并要求受影响页从 bitmap-material 改为忠实代码重绘。"
+        )
+    source_failures = int(
+        dict(
+            dict(getattr(agent, "_image_crop_source_attempts", {}) or {}).get(
+                image_crop_source, {}
+            )
+        ).get("failure", 0)
+        or 0
+    ) if image_crop_source else 0
+    if image_crop_source and r.returncode != 0 and source_failures == 2:
+        out += (
+            "\n[crop_escalation_required] 此附件页已发生第 2 次裁取失败。"
+            "若独立视觉本身仍然文字密集，立即标记 failed 并路由到 "
+            "needs_bitmap:false 的忠实代码重绘；不要通过更换输出名继续试裁。"
+        )
     if image_initial_fetch_command:
         agent._image_initial_fetch_passes = int(
             getattr(agent, "_image_initial_fetch_passes", 0) or 0
@@ -3039,6 +3303,15 @@ def vision_analyze(
         and getattr(agent, "role", "") == "slide"
         and len(assigned_pages) > 1
     ):
+        inspection_query = (
+            "This is a low-resolution Slide Group consistency montage. Inspect only "
+            "cross-page visual DNA, hierarchy rhythm, repeated geometry, relative density, "
+            "and transitions. Do not declare page-local overlap, clipping, typography, "
+            "crop, or edge safety resolved from this montage. Full-resolution single-page "
+            "Critic evidence is authoritative for those local defects; if the montage "
+            "appears to contradict an open page issue, preserve the page issue. "
+            "Additional requested focus: " + inspection_query
+        )
         rendered = dict(getattr(agent, "rendered_output_hashes", {}) or {})
         viewed = dict(getattr(agent, "viewed_output_hashes", {}) or {})
         pending_pages = [

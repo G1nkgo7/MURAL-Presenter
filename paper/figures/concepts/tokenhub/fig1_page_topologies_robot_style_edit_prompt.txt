@@ -1,0 +1,13 @@
+Use case: precise-object-edit
+
+Image 1 is the edit target. Image 2 is a semantic reference for Panel (a) only.
+
+Change only Panel (a) “Sequential”:
+- Keep exactly one generic robot Agent, located after the deck-context input near the top.
+- Below that single robot, show a serial chain of slide-thumbnail artifacts labeled “Slide 01”, “Slide 02”, and “Slide N”.
+- Remove the two extra robots currently shown beside “Slide 02” and “Slide N”.
+- Preserve the coral “growing history” arrow and its destination at the single top robot.
+
+Keep everything else in Image 1 pixel-compositionally unchanged: Panel (b), Panel (c), all typography, colors, borders, arrows, labels, spacing, document icons, slide thumbnails, and the existing generic robot design.
+
+Do not add or remove any text. No animal features, mascot IP, human character, brand logo, watermark, speech bubble, checkmark, cross, or new decoration.

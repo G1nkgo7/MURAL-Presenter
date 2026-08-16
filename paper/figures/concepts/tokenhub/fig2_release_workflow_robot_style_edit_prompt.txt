@@ -1,0 +1,18 @@
+Use case: precise-object-edit
+
+Image 1 is the edit target. A transparent mask isolates only the tiny icon
+inside the “Page briefs” card.
+
+Inside the transparent mask, change only the small “Page briefs” artifact
+icon in Stage 1:
+- Erase every green checkmark and every check-shaped glyph.
+- Replace them with exactly three short, straight, neutral teal horizontal
+  text lines on a plain document. The lines must not bend or resemble checks.
+- The artifact must still be labeled exactly “Page briefs”.
+
+Everything outside the transparent mask must remain pixel-compositionally
+unchanged: all three stages, robots, typography, colors, borders, arrows,
+labels, slide artifacts, Contact sheet, Review, Final deck, the orange
+“revise plan” path, blue dotted audited paths, Harness rail, and legend.
+
+Do not add or remove any text. No animal features, mascot IP, human character, brand logo, watermark, speech bubble, green check, red cross, or new decoration.

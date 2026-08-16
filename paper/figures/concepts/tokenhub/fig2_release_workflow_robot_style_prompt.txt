@@ -1,0 +1,61 @@
+Use case: infographic-diagram
+Asset type: academic paper workflow figure
+
+Input images:
+- Image 1 is the semantic and layout reference. Preserve its three release stages, roles, artifacts, arrow destinations, feedback path, infrastructure rail, legend, and exact labels.
+- Image 2 is a style reference only. Transfer its bold editorial ink outlines, softly tinted rounded stage regions, concrete document and slide artifacts, compact agent scenes, sparse green/teal/orange/blue accents, and clean illustrated-paper finish. Do not copy any title, wording, workflow, role set, training strip, or method content from Image 2.
+
+Primary request:
+Redraw Image 1 in the illustrated academic-infographic language of Image 2. Represent every semantic Agent role with one consistent original generic robot design: white rounded shell, black rounded screen face, two small cyan eyes, and restrained teal joints. Robots may hold a role-relevant neutral prop, but they wear no hats, uniforms, clothes, badges, logos, or brand-specific forms. Keep the robots compact and subordinate to the workflow.
+
+Composition:
+- Wide landscape paper figure with three softly tinted stage regions and no overall title.
+- Stage 1: User brief and Source files feed Material and Research; both feed Orchestrator; Image is optional. Orchestrator emits Deck plan, Shared style, and Page briefs.
+- Stage 2: three identical small page robots receive Page briefs and Shared style without peer arrows, and produce Page 01, Page 02, and Page N slide artifacts in parallel.
+- Stage 3: outputs enter Finalize & render, become a complete deck and Contact sheet, then flow through Review to Final deck.
+- Route one solid amber feedback arrow labeled “revise plan” from Review back to Orchestrator.
+- Keep blue dotted audited-read paths distinct from the amber revision path.
+- Place Harness as a thin neutral infrastructure rail along the bottom, not as a seventh content-producing robot.
+- Use concrete illustrated documents, folders, palette, page briefs, slide thumbnails, deck stack, and six-tile contact sheet.
+
+Style and palette:
+- Warm white paper background.
+- Slightly hand-inked but precise black/navy contours, rounded corners, tiny restrained shadows, flat pastel fills, generous whitespace.
+- Stage accents: green/teal for preparation, amber for page production, orange/blue for assembly and review.
+- Bold readable stage headings and compact sans-serif labels.
+- No gradients, glossy 3D rendering, photorealism, or poster-like decoration.
+
+Render only these strings, verbatim, with no extra words:
+“1  Prepare”
+“2  Produce pages”
+“3  Assemble & review”
+“User brief”
+“Source files”
+“Material”
+“conditional”
+“Research”
+“required”
+“Orchestrator”
+“Image”
+“optional”
+“Deck plan”
+“Shared style”
+“Page briefs”
+“Page 01”
+“Page 02”
+“Page N”
+“Harness”
+“Finalize & render”
+“Contact sheet”
+“Review”
+“Final deck”
+“revise plan”
+“enforced”
+“audited”
+
+Constraints:
+- No raccoon or any animal features: no ears, fur, tail, paws, muzzle, mask markings, or animal silhouette.
+- No mascot IP, human character, brand logo, watermark, speech bubble, slogan, green check, red cross, ranking, numeric benchmark version label, or dense file inventory.
+- Do not import Image 2's old role names, four-stage workflow, verification claims, role-wise SFT strip, or training labels.
+- Preserve Image 1's stage order, role relationships, and feedback destination exactly.
+- All text must remain legible when the image is reduced to 960 px width.

@@ -16,6 +16,7 @@ import argparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import hashlib
 import html
+from html.parser import HTMLParser
 from io import BytesIO
 import json
 import math
@@ -135,7 +136,14 @@ SECTION_ALIASES = {
     "composition": {"composition blueprint", "构图蓝图"},
     "anchors": {"render anchors", "渲染锚点"},
     "constraints": {"constraints", "约束"},
-    "speech": {"speech beat", "讲稿节拍"},
+    "speech": {
+        "initial spoken script",
+        "spoken script",
+        "初版口语讲稿",
+        # Legacy aliases remain readable for existing deck snapshots.
+        "speech beat",
+        "讲稿节拍",
+    },
     "resolved": {"resolved deck brief"},
     "theme": {"theme tokens", "主题变量"},
 }
@@ -959,6 +967,7 @@ def validate_plans(root: Path, expected: int | None = None) -> list[dict]:
         raise ValueError(
             f"bitmap_strategy={strategy} conflicts with needs_bitmap:true pages {bitmap_pages}"
         )
+    structure_warnings: list[str] = []
     cover_pages = [plan for plan in plans if plan["page_type"] == "cover"]
     closing_pages = [plan for plan in plans if plan["page_type"] == "closing"]
     if cover_pages and closing_pages:
@@ -969,6 +978,14 @@ def validate_plans(root: Path, expected: int | None = None) -> list[dict]:
                     f"production_group={plan['production_group']}; when both cover and "
                     "closing exist, they must share production_group: bookends"
                 )
+    elif cover_pages or closing_pages:
+        solo = (cover_pages or closing_pages)[0]
+        if solo["production_group"] != "bookends":
+            structure_warnings.append(
+                f"slide_{solo['number']:02d} is a solo {solo['page_type']}; "
+                "production_group: bookends is recommended so a future closing/cover "
+                "addition joins the same visual-memory group without plan rewrite"
+            )
     all_divider_plans = [plan for plan in plans if plan["page_type"] == "section-divider"]
     if len(all_divider_plans) >= 2:
         misaligned = [
@@ -1020,7 +1037,6 @@ def validate_plans(root: Path, expected: int | None = None) -> list[dict]:
     special_pages = [
         plan["number"] for plan in plans if plan["page_type"] in SPECIAL_TYPES
     ]
-    structure_warnings: list[str] = []
     if not bitmap_pages:
         try:
             capabilities = json.loads(
@@ -1303,6 +1319,33 @@ def _skeleton_is_unfilled(text: str) -> bool:
     return not body.strip()
 
 
+_SPEECH_OUTER_FENCE = re.compile(
+    r"\A\s*```(?:markdown|md|text)?[ \t]*\r?\n(?P<body>.*?)\r?\n```\s*\Z",
+    flags=re.I | re.S,
+)
+_SPEECH_REDUNDANT_LABEL = re.compile(
+    r"\A\s*(?:讲述内容|讲稿内容|初版口语讲稿|口语讲稿|initial spoken script|spoken script|speaker notes)\s*[:：]?\s*\r?\n+",
+    flags=re.I,
+)
+
+
+def _clean_speech_markdown(text: str) -> str:
+    """Remove presentation-only Markdown wrappers from spoken notes.
+
+    The per-page plan is Markdown, so models occasionally wrap the entire
+    spoken-script section in a fenced block.  ``speech.md`` is consumed as
+    audience-facing notes; carrying those wrapper tokens forward makes the UI
+    display literal backticks.  Strip only an outer whole-section fence and a
+    redundant leading label.  Inline code and intentional internal Markdown
+    remain untouched.
+    """
+    cleaned = text.strip()
+    fenced = _SPEECH_OUTER_FENCE.fullmatch(cleaned)
+    if fenced:
+        cleaned = fenced.group("body").strip()
+    return _SPEECH_REDUNDANT_LABEL.sub("", cleaned, count=1).strip()
+
+
 def sync_speech(root: Path, expected: int | None = None) -> None:
     deck, plans = _load_plans(root, expected)
     heading = "# 演讲备注" if deck["language"] == "zh" else "# Speaker notes"
@@ -1312,7 +1355,7 @@ def sync_speech(root: Path, expected: int | None = None) -> None:
             [
                 f"## Slide {plan['number']:02d} — {plan['title']}",
                 "",
-                plan["speech"].strip(),
+                _clean_speech_markdown(plan["speech"]),
                 "",
             ]
         )
@@ -1531,6 +1574,90 @@ def _header_copy_compatible(text: str, expected: str) -> bool:
     return normalize(current_block) == normalize(canonical_block)
 
 
+_HTML_VOID_ELEMENTS = {
+    "area",
+    "base",
+    "br",
+    "col",
+    "embed",
+    "hr",
+    "img",
+    "input",
+    "link",
+    "meta",
+    "param",
+    "source",
+    "track",
+    "wbr",
+}
+
+
+class _SingleRootSectionParser(HTMLParser):
+    """Validate one top-level slide root without banning semantic descendants."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.stack: list[str] = []
+        self.root_opening: str | None = None
+        self.root_closed = False
+        self.invalid = False
+
+    def handle_starttag(self, tag: str, attrs) -> None:  # type: ignore[no-untyped-def]
+        tag = tag.lower()
+        if not self.stack:
+            if self.root_opening is not None or self.root_closed or tag != "section":
+                self.invalid = True
+                return
+            self.root_opening = self.get_starttag_text()
+        if tag not in _HTML_VOID_ELEMENTS:
+            self.stack.append(tag)
+
+    def handle_startendtag(self, tag: str, attrs) -> None:  # type: ignore[no-untyped-def]
+        if not self.stack:
+            self.invalid = True
+
+    def handle_endtag(self, tag: str) -> None:
+        tag = tag.lower()
+        if not self.stack or self.stack[-1] != tag:
+            self.invalid = True
+            return
+        self.stack.pop()
+        if not self.stack:
+            self.root_closed = True
+
+    def handle_data(self, data: str) -> None:
+        if not self.stack and data.strip():
+            self.invalid = True
+
+    def handle_entityref(self, name: str) -> None:
+        if not self.stack:
+            self.invalid = True
+
+    def handle_charref(self, name: str) -> None:
+        if not self.stack:
+            self.invalid = True
+
+    def handle_decl(self, decl: str) -> None:
+        if not self.stack:
+            self.invalid = True
+
+    def unknown_decl(self, data: str) -> None:
+        if not self.stack:
+            self.invalid = True
+
+
+def _single_root_section_opening(text: str) -> str | None:
+    parser = _SingleRootSectionParser()
+    try:
+        parser.feed(text)
+        parser.close()
+    except Exception:
+        return None
+    if parser.invalid or parser.stack or not parser.root_closed:
+        return None
+    return parser.root_opening
+
+
 def _validate_fragment(
     path: Path,
     number: int,
@@ -1633,12 +1760,9 @@ def _validate_fragment(
                 "render command"
             )
         raise ValueError(f"{path.name} declares {medium} but contains no script; {remedy}")
-    if text.count("<section") != 1 or text.count("</section>") != 1:
+    opening = _single_root_section_opening(text)
+    if not opening:
         raise ValueError(f"{path.name} must contain exactly one section fragment")
-    opening_match = re.search(r"<section\b[^>]*>", text, flags=re.I)
-    if not opening_match:
-        raise ValueError(f"{path.name} is missing its root section")
-    opening = opening_match.group(0)
     expected_attrs = {
         "id": f"slide-{number:02d}",
         "data-slide": f"{number:02d}",
@@ -1986,19 +2110,25 @@ def fetch_images(root: Path, *, replace: bool = False) -> None:
         for entry in entries
         if entry["kind"] == "real" and entry.get("status") != "failed"
     ]
-    pending = [
-        entry
-        for entry in real_entries
-        if replace
-        or not _asset_path(root, entry["path"]).is_file()
-        or _asset_path(root, entry["path"]).stat().st_size == 0
-    ]
-    missing = [entry["id"] for entry in pending if not entry["download"]]
-    if missing:
-        raise ValueError(
-            "real catalog entries need a direct `download` URL before image.py fetch: "
-            + ", ".join(missing)
-        )
+    if replace:
+        pending = [
+            entry
+            for entry in real_entries
+            if entry.get("download")
+        ]
+    else:
+        pending = [
+            entry
+            for entry in real_entries
+            if not _asset_path(root, entry["path"]).is_file()
+            or _asset_path(root, entry["path"]).stat().st_size == 0
+        ]
+        missing = [entry["id"] for entry in pending if not entry["download"]]
+        if missing:
+            raise ValueError(
+                "real catalog entries need a direct `download` URL before image.py fetch: "
+                + ", ".join(missing)
+            )
 
     results: list[tuple[str, str]] = []
     errors: list[str] = []
@@ -2014,12 +2144,15 @@ def fetch_images(root: Path, *, replace: bool = False) -> None:
                 results.append(future.result())
             except Exception as exc:
                 errors.append(f"{entry['id']}: {exc}")
-    if errors:
-        raise ValueError("asset download failed:\n- " + "\n- ".join(sorted(errors)))
-
     reused = len(real_entries) - len(pending)
+    if errors:
+        print("status:PARTIAL")
+        print(f"errors:{len(errors)}")
+        for error in sorted(errors):
+            print(f"  {error}")
+    else:
+        print("status:PASS")
     downloaded = sum(status == "downloaded" for _, status in results)
-    print("status:PASS")
     print(f"downloaded:{downloaded}")
     print(f"reused:{reused}")
     for asset_id, status in sorted(results):
@@ -2999,7 +3132,10 @@ def material_figure(
     if not facsimile and (text_chars > 600 or text_coverage > 0.34):
         raise ValueError(
             f"crop is text-heavy ({text_chars} native-text chars, {text_coverage:.1%} text area); "
-            "crop only the visual subject and leave prose/caption to HTML"
+            "crop only the visual subject and leave prose/caption to HTML. "
+            "Make at most one targeted box correction; if the independent Figure/Table itself "
+            "remains text-heavy, mark this asset failed and route the page to a faithful "
+            "HTML/CSS/SVG/ECharts redraw instead of retrying crop-material"
         )
 
     output.parent.mkdir(parents=True, exist_ok=True)

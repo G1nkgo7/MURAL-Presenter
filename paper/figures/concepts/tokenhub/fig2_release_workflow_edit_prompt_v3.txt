@@ -1,0 +1,13 @@
+Make one localized correction to this academic workflow figure.
+
+The dashed blue feedback arrow labeled “revise plan” currently terminates at the “Image” card. Reroute that same dashed arrow so it terminates at the “Orchestrator” card instead.
+
+Use this exact geometry:
+- Start at the bottom edge of the “Review” card in Stage 3.
+- Travel downward a short distance, then horizontally left near 78% of the canvas height.
+- At the right side of Stage 1, around 33% of the canvas width, turn upward.
+- Then turn left and place a clear left-pointing arrowhead directly on the RIGHT BORDER of the blue “Orchestrator” card, around the middle-lower part of that border.
+- Delete the old vertical dashed segment and arrowhead below the “Image” card completely.
+- The dashed feedback path must not touch Material, Research, Image, Source files, Page briefs, or the Harness rail.
+
+Change nothing else. Preserve the Review magnifying-glass icon, all nodes, all other arrows, every label and spelling, the three stage backgrounds, palette, typography, spacing, and 1536×1024 composition exactly. Add no text and remove no text.

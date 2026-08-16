@@ -1,0 +1,50 @@
+Create a publication-quality conceptual system figure for a top-tier machine-learning or NLP paper.
+
+CANVAS AND STYLE
+- Wide 16:9 landscape canvas, clean white background, no overall title inside the image.
+- Refined flat-vector editorial infographic: precise geometry, thin consistent strokes, gentle rounded corners, very subtle soft shadows, generous whitespace, crisp sans-serif typography.
+- Visual grammar: a controlled side-by-side comparison like a strong academic systems paper, not a product slide or poster.
+- Restrained palette: deep navy #24323A for text and outlines, research blue #3E73AE, teal #2F8F85, muted amber #D99A3B, muted coral #C96B5A only for costly/redundant context, pale blue/teal panel washes.
+
+COMPOSITION
+Build three equal, clearly separated vertical panels aligned on one baseline. Each panel begins with the same compact stack-of-documents icon at upper left and ends with the same three slide-thumbnail outputs along the bottom, labeled “Slide 01”, “Slide 02”, and “Slide N”. Keep input and output icons visually identical across panels so only the execution topology changes.
+
+PANEL A
+- Header exactly: “(a) Sequential”
+- One simple abstract agent glyph, not a character.
+- Show the agent producing Slide 01, then Slide 02, then Slide N along a single serial path.
+- A muted-coral curved arrow grows from earlier outputs back toward the agent, labeled exactly “growing history”.
+- Label the input exactly “deck context”.
+
+PANEL B
+- Header exactly: “(b) Full-context parallel”
+- Show the same deck-context stack copied to three small abstract page-agent glyphs in parallel.
+- Use three muted-coral dashed branches to emphasize duplication, labeled exactly “replicated context”.
+- Each worker produces one of the same three outputs: Slide 01, Slide 02, Slide N.
+
+PANEL C
+- Header exactly: “(c) SensePresenter”
+- Show one compact planning node labeled exactly “deck planning”.
+- It creates one shared artifact labeled exactly “shared deck state” and three compact document cards grouped under the label exactly “page briefs”.
+- The three page briefs fan out to three parallel abstract page-agent glyphs, each producing Slide 01, Slide 02, or Slide N.
+- The outputs fan in to one restrained amber node labeled exactly “assemble & inspect”.
+- Make the fan-out/fan-in structure the clearest visual feature of this panel.
+
+TEXT REQUIREMENT
+Render only these text strings, verbatim, with no spelling changes and no extra words:
+“(a) Sequential”
+“(b) Full-context parallel”
+“(c) SensePresenter”
+“deck context”
+“growing history”
+“replicated context”
+“deck planning”
+“shared deck state”
+“page briefs”
+“Slide 01”
+“Slide 02”
+“Slide N”
+“assemble & inspect”
+
+CONSTRAINTS
+No mascots, no raccoons, no robots, no human characters, no brand logos, no watermark, no speech bubbles, no slogans, no decorative scene, no glossy 3D rendering, no gradients, no green checkmarks, no red crosses, no ranking or implication that one method has already won. Avoid tangled arrows and avoid dense prose. The result must remain readable when printed across two paper columns.

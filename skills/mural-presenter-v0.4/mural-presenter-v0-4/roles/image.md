@@ -67,7 +67,9 @@ Orchestrator 已在 `primary_visual_medium` 锁定获取路线；你只执行，
 3. 只有计划明确为 `bitmap-generated / mixed-generated` 时才生成，提示词只使用已核实
    语义；
 4. Figure/Table 中的数字、曲线、消融结果、流程、架构与关系无法安全复用时，交给 Slide
-   以 HTML/CSS/SVG 忠实重绘；
+   以 HTML/CSS/SVG 忠实重绘；同一输出的 `crop-material` 只允许首稿和一次定向修正，
+   第二次仍被文本覆盖、整页翻拍或边界审计拒收时，立即把该条目标为 `failed` 并
+   `finalize` 其余已通过素材，不再换框、换名或反复裁取；
 5. 搜不到原始视觉且又不能忠实重建时，报告缺口，不猜测，并进入下述有界失败合同。
 
 生成图不得声称来自原附件，不得仿造论文截图、实验结果或带精确标签的数据 Figure。

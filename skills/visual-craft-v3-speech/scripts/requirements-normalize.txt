@@ -1,0 +1,8 @@
+# ppt-skill-html 附件解析(normalize)venv 的依赖
+# 由 scripts/install.sh 装进独立 venv;宿主用 NORMALIZE_PY 指向该 venv 的 python。
+# 版本对齐当前生产环境(data/tools/.venv-normalize),可按需放宽。
+markitdown==0.1.6
+pdfminer.six==20260107
+openpyxl==3.1.5
+lxml==6.1.1
+mammoth==1.11.0

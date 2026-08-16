@@ -1,0 +1,5 @@
+# Both entrypoints use fontspec and local OpenType/TrueType fonts.
+# Override Overleaf's default pdfLaTeX command so a freshly uploaded ZIP
+# compiles with XeLaTeX even before the project compiler setting is changed.
+$pdflatex = 'xelatex -synctex=1 -interaction=nonstopmode %O %S';
+$xelatex = 'xelatex -synctex=1 -interaction=nonstopmode %O %S';

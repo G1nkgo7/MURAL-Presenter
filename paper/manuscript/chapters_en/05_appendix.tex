@@ -1,0 +1,201 @@
+\section{Evaluation Protocol and Reproducibility Details}
+\label{app:protocol}
+\setcounter{figure}{0}
+\renewcommand{\thefigure}{A\arabic{figure}}
+\renewcommand{\theHfigure}{A\arabic{figure}}
+
+This appendix provides the full protocol, statistical conventions, complete official-benchmark dimension tables, a data/model contrast between MuralPresenter-9B and MuralPresenter-27B, and the reproducibility ledger.
+
+\subsection{External-Baseline Protocol vs.\ Ablation Controls}
+
+ThreadBench uses six general-purpose controls. Existing-benchmark reruns use the five-system cohort in Tables~\ref{tab:general}--\ref{tab:edit}: the 9B synthesis pipeline, two untuned controls, and two MuralPresenter models. Within each benchmark, reruns fix nominal inputs, Skill, renderer, adapter, and budget. The main tables promote selected original-paper leaders into a separate \emph{reported} block; the complete reported lists appear below. These values retain their source protocols and are never pooled with our reruns. Single-factor ablations (\S6.3) additionally hold backbone and training variables fixed; none of these descriptive comparisons is itself causal.
+
+The current release contains one formal reference case and therefore does not support task-level confidence intervals or significance tests. Controlled ablations fix temperature, inputs, renderer, budget, and failure rules and use 3 seeds per variant; we report seed-level variation descriptively rather than treating it as task-level uncertainty. Missing artifacts, failures, and timeouts remain in the denominator; N/A and scored coverage are reported separately. External baselines, which differ in backbone, are references only and do not enter significance tests. We calibrate the LLM Judge against \resulttbd{[TBD:JUDGE\_N]} human-scored units from \resulttbd{[TBD:JUDGE\_CASES]} tasks, obtaining \resulttbd{[TBD:JUDGE\_AGREEMENT]} agreement under the protocol below.
+
+\subsection{Original-Paper Reference Scores}
+
+These are published aggregate values for context, not reproduced results or inputs to our hypothesis tests.
+
+\paragraph{PresentBench (reported).} Overall scores from the original paper~\citep{chen2026presentbench} are shown below for direct visual comparison with our reruns.
+\begin{center}\small
+\begin{tabular}{lrlr}
+\toprule System & Overall & System & Overall \\
+\midrule
+NotebookLM & 62.5 & Manus 1.6 & 57.8 \\
+Tiangong & 54.7 & Zhipu & 53.6 \\
+PPTAgent v2 & 50.2 & Gamma & 49.2 \\
+Doubao & 48.0 & Qwen & 35.9 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{SlidesGen-Bench (reported).} Official Content/Aesthetics/PEI values~\citep{yang2026slidesgenbench}.
+\begin{center}\small
+\begin{tabular}{lccc}
+\toprule System & Content (\%) & Aesthetics & PEI \\
+\midrule
+Zhipu & 88.29 & 22.06 & L2 \\
+Kimi-Banana & 87.09 & 26.58 & L1 \\
+Skywork-Banana & 83.83 & 27.28 & L1 \\
+Kimi-Smart & 82.07 & 18.30 & L2 \\
+Quark & 81.40 & 16.86 & L3 \\
+Skywork & 81.29 & 20.69 & L2 \\
+Kimi-Standard & 79.92 & 19.25 & L2 \\
+NotebookLM & 74.21 & 22.82 & L0 \\
+Gamma & 70.32 & 17.09 & L2 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{DECKBench (reported).} Task-1 values join the official slide- and deck-metric rows for the same
+system/model; Task-2 retains the original simulator/editor configurations~\citep{jang2026deckbench}.
+\begin{center}\small
+\begin{tabular}{llccc}
+\toprule System & Model & Deck Fidelity & Slide Layout & Deck TransSim \\
+\midrule
+Evo-Present & GPT-4o & 0.528 & 0.696 & 0.819 \\
+SlideGen & GPT-4o & 0.566 & 0.960 & 0.856 \\
+Auto-Slides & GPT-4o & 0.591 & 0.998 & 0.858 \\
+DECKBench & GPT-4o & 0.584 & 1.000 & 0.879 \\
+DECKBench & Qwen & 0.588 & 0.999 & 0.875 \\
+\bottomrule
+\end{tabular}
+\end{center}
+\begin{center}\small
+\begin{tabular}{llccc}
+\toprule User simulator & Editor & Granularity & $\Delta$DTW & $\Delta$TransSim \\
+\midrule
+GPT-5.1 & GPT-5-mini & Low & 0.01006 & 0.01594 \\
+GPT-5.1 & GPT-5-mini & Medium & 0.01682 & 0.02145 \\
+GPT-5.1 & GPT-5-mini & High & 0.02278 & 0.03230 \\
+Kimi K2 & DeepSeek & Low & 0.01101 & -0.00147 \\
+Kimi K2 & DeepSeek & Medium & 0.00249 & 0.00615 \\
+Kimi K2 & DeepSeek & High & 0.01549 & 0.04287 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{PPT-Eval (reported).} Claude-4.5-Opus reaches 45\% Success Rate and 57\% Average Partial
+Score in the official computer-use protocol~\citep{gandhi2026ppteval}; this is not directly comparable
+to DECKBench or our HTML authoring runs.
+
+\subsection{Full Dimensions of the Official Metrics}
+
+\paragraph{PresentBench five dimensions.} The main table already gives Overall; here we add only the remaining five dimensions and do not repeat Overall.
+
+\begin{center}
+\small
+\begingroup
+\let\texttt\resulttbd
+\setlength{\tabcolsep}{5pt}
+\begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}Xccccc@{}}
+\toprule
+System & Fund. & Vis.\&Lay. & Compl. & Corr. & Fidelity \\
+\midrule
+9B synth.\ pipeline & \resulttbd{[TBD:P5\_TC\_FU]} & \resulttbd{[TBD:P5\_TC\_VL]} & \resulttbd{[TBD:P5\_TC\_CP]} & \resulttbd{[TBD:P5\_TC\_CR]} & \resulttbd{[TBD:P5\_TC\_FI]} \\
+Qwen-3.5-9B untuned & \resulttbd{[TBD:P5\_Q9\_FU]} & \resulttbd{[TBD:P5\_Q9\_VL]} & \resulttbd{[TBD:P5\_Q9\_CP]} & \resulttbd{[TBD:P5\_Q9\_CR]} & \resulttbd{[TBD:P5\_Q9\_FI]} \\
+Qwen-3.6-27B untuned & \resulttbd{[TBD:P5\_Q27\_FU]} & \resulttbd{[TBD:P5\_Q27\_VL]} & \resulttbd{[TBD:P5\_Q27\_CP]} & \resulttbd{[TBD:P5\_Q27\_CR]} & \resulttbd{[TBD:P5\_Q27\_FI]} \\
+MuralPresenter-9B  & \resulttbd{[TBD:P5\_M9\_FU]}  & \resulttbd{[TBD:P5\_M9\_VL]}  & \resulttbd{[TBD:P5\_M9\_CP]}  & \resulttbd{[TBD:P5\_M9\_CR]}  & \resulttbd{[TBD:P5\_M9\_FI]} \\
+MuralPresenter-27B & \resulttbd{[TBD:P5\_M27\_FU]} & \resulttbd{[TBD:P5\_M27\_VL]} & \resulttbd{[TBD:P5\_M27\_CP]} & \resulttbd{[TBD:P5\_M27\_CR]} & \resulttbd{[TBD:P5\_M27\_FI]} \\
+\bottomrule
+\end{tabularx}
+\endgroup
+\end{center}
+
+\paragraph{DECKBench full official fields.} The main table gives selected fields (deck Fidelity, slide Layout Quality, deck Transition Similarity, multi-turn \(\Delta\)-DTW and \(\Delta\)-Transition Similarity); here we complete the remaining official fields so that the union of main table and appendix covers every official DECKBench metric. Slide-level and deck-level PPL and Faithfulness are distinguished by distinct IDs. Systems match the main table.
+
+\begin{center}
+\footnotesize
+\begingroup
+\let\texttt\resulttbd
+\setlength{\tabcolsep}{3pt}
+\begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}Xccccccc@{}}
+\toprule
+& \multicolumn{4}{c}{Slide-level} & \multicolumn{3}{c}{Deck-level} \\
+\cmidrule(lr){2-5}\cmidrule(lr){6-8}
+System & PPL & Faith. & Text Sim. & Fig.\ Sim. & PPL & Faith. & DTW \\
+\midrule
+9B synth.\ pipeline & \resulttbd{[TBD:E\_TC\_SPPL]} & \resulttbd{[TBD:E\_TC\_SFA]} & \resulttbd{[TBD:E\_TC\_STX]} & \resulttbd{[TBD:E\_TC\_SFG]} & \resulttbd{[TBD:E\_TC\_DPPL]} & \resulttbd{[TBD:E\_TC\_DFA]} & \resulttbd{[TBD:E\_TC\_DDTW]} \\
+Qwen-3.5-9B untuned & \resulttbd{[TBD:E\_Q9\_SPPL]} & \resulttbd{[TBD:E\_Q9\_SFA]} & \resulttbd{[TBD:E\_Q9\_STX]} & \resulttbd{[TBD:E\_Q9\_SFG]} & \resulttbd{[TBD:E\_Q9\_DPPL]} & \resulttbd{[TBD:E\_Q9\_DFA]} & \resulttbd{[TBD:E\_Q9\_DDTW]} \\
+Qwen-3.6-27B untuned & \resulttbd{[TBD:E\_Q27\_SPPL]} & \resulttbd{[TBD:E\_Q27\_SFA]} & \resulttbd{[TBD:E\_Q27\_STX]} & \resulttbd{[TBD:E\_Q27\_SFG]} & \resulttbd{[TBD:E\_Q27\_DPPL]} & \resulttbd{[TBD:E\_Q27\_DFA]} & \resulttbd{[TBD:E\_Q27\_DDTW]} \\
+MuralPresenter-9B  & \resulttbd{[TBD:E\_M9\_SPPL]}  & \resulttbd{[TBD:E\_M9\_SFA]}  & \resulttbd{[TBD:E\_M9\_STX]}  & \resulttbd{[TBD:E\_M9\_SFG]}  & \resulttbd{[TBD:E\_M9\_DPPL]}  & \resulttbd{[TBD:E\_M9\_DFA]}  & \resulttbd{[TBD:E\_M9\_DDTW]} \\
+MuralPresenter-27B & \resulttbd{[TBD:E\_M27\_SPPL]} & \resulttbd{[TBD:E\_M27\_SFA]} & \resulttbd{[TBD:E\_M27\_STX]} & \resulttbd{[TBD:E\_M27\_SFG]} & \resulttbd{[TBD:E\_M27\_DPPL]} & \resulttbd{[TBD:E\_M27\_DFA]} & \resulttbd{[TBD:E\_M27\_DDTW]} \\
+\bottomrule
+\end{tabularx}
+\endgroup
+\end{center}
+
+\paragraph{ThreadBench dimension contract.} Table~\ref{tab:thread} reports the two official aggregates and the two effective Final group scores. Every run additionally retains the following dimension scores in \texttt{score\_result.json}; these are diagnostics, not a third aggregate.
+
+\begin{center}\small
+\begin{tabular}{lp{0.75\linewidth}}
+\toprule Group & Dimensions \\
+\midrule
+Intermediate & Material/Research; Deck Planning; Image Asset Preparation; Slide Production and Local Verification \\
+Final Deck & Knowledge; Audience/Goal Fit; Content Selection/Density; Narrative/Transitions; Pacing/Redundancy; Cross-page Semantic Consistency; Global Visual Consistency \\
+Final Page & Information Hierarchy/Density; Text--Image Relationship/Visual Encoding; Composition/Alignment/Whitespace; Typography/Color/Readability; Technical Completeness/Asset Quality \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{Intermediate criteria and scoring mechanics.} The compact main-text account omits the
+criterion-level inventory shown below. Each criterion expands into topic-, requirement-, image-task-,
+or page-specific units; the Judge receives only the anchors and evidence relevant to that unit.
+
+\begin{center}\small
+\begin{tabularx}{\linewidth}{@{}p{0.18\linewidth}p{0.15\linewidth}X@{}}
+\toprule Dimension & Criteria & Evidence tested \\
+\midrule
+Material/Research & R01, R02 & Evidence coverage, source verification, conflict handling, and transfer into planning \\
+Deck Planning & P01, P02 & Hard-requirement mapping, narrative structure, and per-page task specification \\
+Image Preparation & I01, I02 & Task definition, acquisition strategy, inspection, selection, and page-level usage \\
+Slide Production & S01 & Real rendering, defect detection, repair, and re-render confirmation \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+The Judge matches evidence to explicit anchors before deterministic code derives 0/0.5/1 atomic
+scores; Knowledge is binary. N/A means semantically inapplicable and cannot substitute for a missing
+required artifact. Atomic scores average into criteria and dimensions. Under v004, a major unit scored
+0.5 or 0 deducts 0.1 or 0.2, respectively, from its dimension, with total deductions capped at 0.5 per
+dimension. Deck and Page each receive the weakest-dimension decay defined in \S5, while Intermediate
+does not. Optional Preaudit is non-scoring and passes only criterion-relevant defects to the formal
+Judge. The released fields \texttt{intermediate\_case\_specific} and
+\texttt{final\_output\_case\_specific} remain separate outputs.
+
+\subsection{MuralPresenter-9B vs.\ MuralPresenter-27B Data/Model Ledger}
+
+The table separates the evidence boundaries of the two sources. The 9B uses the controlled three-track synthesis pipeline and a 1K post-QC corpus; the 27B uses six heterogeneous historical batches at substantially larger scale. For the 27B, trajectories were generated predominantly by a higher-capability proprietary frontier teacher; the exact identity is withheld for commercial confidentiality reasons.
+
+\begin{center}
+\small
+\begingroup
+\let\texttt\resulttbd
+\setlength{\tabcolsep}{4pt}
+\begin{tabularx}{\linewidth}{@{}p{0.20\linewidth}XX@{}}
+\toprule
+Item & MuralPresenter-9B & MuralPresenter-27B \\
+\midrule
+Data source & controllable three-track synthesis (\S4) & six heterogeneous historical batches \\
+Tasks & \resulttbd{[TBD:9B\_TASKS]} & 17{,}171 \\
+Valid trajectories & --- & 304{,}275 \\
+SFT candidate tasks & --- & 16{,}073 (93.6\%) \\
+Base training trajectories & 1{,}000 (post-QC) & 293{,}436 \\
+Training exposures & \resulttbd{[TBD:9B\_EXPOSURES]} & 318{,}422 \\
+Rollout backbone & DeepSeek-V4-Flash & higher-capability proprietary frontier teacher (identity withheld) \\
+Visual critic / QC & Gemini-3.5-Flash & Gemini-3.5 as QC scorer only \\
+Base model & Qwen-3.5-9B & Qwen-3.5-27B \\
+GPU-hours & \resulttbd{[TBD:9B\_GPUH]} & about 1{,}604 \\
+Status & trained & trained \\
+\bottomrule
+\end{tabularx}
+\endgroup
+\end{center}
+
+Here ``training exposures'' denotes samples entering optimization after filtering and length packing, a different quantity from ``base training trajectories''; if the 9B does no resampling/length packing, this entry is ---.
+
+\subsection{Reproducibility Ledger}
+
+For all reported runs, we freeze and record candidate systems and versions, benchmark/material hashes, renderer and model settings, inference budget and concurrency, Judge prompt and rubric, human-annotation protocol, and every criterion-, dimension-, group-, and case-level result. The current public contract specifies one formal case, which limits domain-level inference despite completed human--Judge calibration. The PersonaHub \(\times\) O*NET track is part of the frozen 9B construction corpus. Operational accounting (wall-clock, calls, tokens, estimated cost, context overlap, renders, concurrency) supports reproducibility but does not replace the separate Intermediate and Final scores or their dimension traces.
+
+\paragraph{Run profile and trajectory-capture boundary.} The harness separates delivery-oriented inference from training-data synthesis. In inference mode, the model-facing working history may compact stale text and tool outputs and release consumed image payloads; exact tool results and the immutable execution Trace remain persisted for audit. In synthesis mode, history compaction and image dropping are disabled so that the context actually observed by the model matches the exported trajectory. An exact-raw recorder additionally stores the final provider request body, response bytes before SDK parsing, retry attempts, provider-exposed auxiliary vision traces, and content-addressed image evidence. A per-Agent integrity precheck gates conversion and rejects incomplete call--asset--response chains. This is an implementation and data-governance boundary, not a claimed algorithmic contribution; ``raw'' covers only provider-visible traffic and persisted artifacts, not hidden provider state.

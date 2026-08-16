@@ -1,0 +1,4 @@
+interface:
+  display_name: "PPT HTML Deck Builder"
+  short_description: "Build HTML decks with visual or DOM-only judging"
+  default_prompt: "Use $ppt-skill-html to build one canonical HTML deck with the Harness-selected visual or no-visual profile, and review every page through the unified DOM-sketch judge before deterministic delivery."

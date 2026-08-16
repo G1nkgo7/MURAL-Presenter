@@ -1,0 +1,38 @@
+.env
+.env.bak
+.env.local
+/model_envs/
+/.lh-presenter-runtime/
+/.static_ppt-runtime/
+/.static_ppt-runtime-recovery/
+/.smoke-tests/
+__pycache__/
+*.py[cod]
+*.tmp
+/.pytest_cache/
+/tests/
+/dry-run-output/
+/.supervision/
+/data/
+/data_old/
+/output/
+/renders/
+**/outputs/
+**/evaluations/
+
+# Local presentation hub is maintained outside the benchmark source release.
+/benchmark_hub/
+/lh_presentbench_dashboard/
+
+# Local curation note; not part of the current THREAD-Bench release.
+/examples/复用案例 2（DeepResearchBench II）.md
+
+/docs/figures/
+/rubric/figures/
+/.tmp*/
+.DS_Store
+*.log
+*.bak
+*.bak.*
+*.bak_*
+*.bak-*

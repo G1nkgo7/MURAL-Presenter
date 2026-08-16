@@ -1,0 +1,69 @@
+Create a publication-quality workflow figure for a top-tier machine-learning or NLP systems paper.
+
+CANVAS AND STYLE
+- Wide 16:9 landscape canvas, clean white background, no overall title inside the image.
+- Refined flat-vector editorial infographic with precise alignment, slender arrows, gentle rounded corners, subtle paper-card depth, generous whitespace, and crisp sans-serif typography.
+- Use the visual grammar of a strong academic pipeline figure: a small number of softly tinted stage regions, concrete artifacts, clear ownership, and a compact rendered-artifact review loop.
+- Restrained palette: deep navy #24323A for text/outlines, research blue #3E73AE for preparation, teal #2F8F85 for parallel production, muted amber #D99A3B for assembly/review, pale blue/teal/cream stage backgrounds.
+
+COMPOSITION
+Create three left-to-right stage regions occupying approximately 34%, 38%, and 28% of the width. Use short headers, compact artifact cards, and simple abstract agent glyphs. Do not use person or robot characters.
+
+STAGE 1
+- Header exactly: “1  Prepare”
+- At the far left, show two input cards labeled exactly “User brief” and “Source files”.
+- Show four compact role nodes: “Material”, “Research”, “Orchestrator”, and “Image”.
+- “Material” is reached from Source files and has the small qualifier “conditional”.
+- “Research” is reached from User brief and has the small qualifier “required”.
+- Both feed “Orchestrator”.
+- “Image” branches from Orchestrator and has the small qualifier “optional”.
+- Orchestrator emits three clean artifact cards labeled exactly “Deck plan”, “Shared style”, and “Page briefs”.
+
+STAGE 2
+- Header exactly: “2  Produce pages”
+- From Page briefs, fan out to three aligned page-worker cards labeled exactly “Page 01”, “Page 02”, and “Page N”.
+- Each worker also receives a thin connection from Shared style.
+- No worker-to-worker arrows.
+- Each worker produces one compact rendered slide thumbnail. The three outputs visually fan in toward Stage 3.
+- Along the bottom of the whole figure, include a thin neutral infrastructure rail labeled exactly “Harness”; treat it as infrastructure, not another semantic agent.
+
+STAGE 3
+- Header exactly: “3  Assemble & review”
+- The page outputs enter a node labeled exactly “Finalize & render”.
+- Show a small complete-deck stack and a six-thumbnail contact sheet labeled exactly “Contact sheet”.
+- The contact sheet flows to an abstract review node labeled exactly “Review”.
+- Review flows to a final artifact labeled exactly “Final deck”.
+- Add one restrained dashed feedback arrow from Review back to Orchestrator, labeled exactly “revise plan”.
+- In a tiny unobtrusive legend, show a solid line labeled exactly “enforced” and a dashed line labeled exactly “audited”.
+
+TEXT REQUIREMENT
+Render only these text strings, verbatim, with no spelling changes and no extra words:
+“1  Prepare”
+“2  Produce pages”
+“3  Assemble & review”
+“User brief”
+“Source files”
+“Material”
+“conditional”
+“Research”
+“required”
+“Orchestrator”
+“Image”
+“optional”
+“Deck plan”
+“Shared style”
+“Page briefs”
+“Page 01”
+“Page 02”
+“Page N”
+“Harness”
+“Finalize & render”
+“Contact sheet”
+“Review”
+“Final deck”
+“revise plan”
+“enforced”
+“audited”
+
+CONSTRAINTS
+No mascots, no raccoons, no robots, no human characters, no brand logos, no watermark, no speech bubbles, no slogans, no decorative scene, no glossy 3D rendering, no gradients, no green checkmarks, no red crosses, no rankings, and no dense file-name inventory. Do not imply that declared read views are hard sandboxes. Keep arrows orthogonal or gently curved, prevent crossings, and preserve a clear left-to-right reading order at two-column paper width.

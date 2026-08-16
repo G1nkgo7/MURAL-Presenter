@@ -1,0 +1,164 @@
+contract_version: long_horizon_agentic_intermediate_judge_packets_v2
+rubric: long_horizon_agentic_intermediate_rubric_v2
+
+objective:
+  - 6个PPT中间产物能力维度分别调用Judge，一个主Judge只评价一个产物族或一种语义传递关系。
+  - Judge输入只来自run目录中真实存在的相对路径，不使用评测侧生成索引替代被评产物。
+  - 长任务按research文件、page plan、image request或speech page section分片，避免超上下文。
+  - 不评价Agent数量、并发、token、耗时、成本、CSS工程质量、Harness架构或最终页面效果。
+
+run_path_contract:
+  path_base: <run_dir>/
+  identity_sources: [_trace/orchestrator/config.json, _trace/orchestrator/system_prompt.md]
+  rules:
+    - 所有required_run_relative_paths均相对于本次run目录。
+    - 评分使用attempt生成时的Skill/System Prompt；不得读取后来变化的versions/current推断历史要求。
+    - 路径可按对象或section截取，但Judge evidence_refs必须回写真实run相对路径。
+    - Skill合同不要求的路径或评分点记not_applicable；合同要求但模型未生成记model_missing。
+    - 评测程序可以解析、切片和做覆盖统计，但不得把解析结果冒充模型中间产物输入Judge。
+
+global_packet_rules:
+  - 每个packet携带dimension定义、point scale、exact query、attempt Skill身份和精确真实路径。
+  - 只从声明路径提取相关section，不向Judge发送完整messages、完整tool log或整个workspace。
+  - 所有required对象必须进入某个shard，禁止Judge自选代表样本。
+  - Reducer只读取map verdict JSON；map evidence_refs始终指向原始run相对路径。
+  - Judge只给当前packet声明的语义point scores；其中P1_1、P2_1、P3_1严格只允许0/1。唯一确定性point P4_1由runner直接读取真实文件计算。
+  - Judge不计算维度加权分、总分或N/A。
+
+packets:
+  plan_quality:
+    dimension: P1
+    judge_point_ids: [P1_1_QUERY_AND_HARD_CONSTRAINT_FIDELITY, P1_2_PLAN_QUALITY_AND_ACTIONABILITY]
+    mode: map_reduce
+    required_run_relative_paths: [plan/deck.md, plan/slide_*.md, plan/assets.json, research/knowledge-brief.md]
+    map:
+      shard_unit: plan/slide_*.md
+      max_files_per_shard: 3
+      max_text_tokens: 7000
+      include_from_each_shard: [对应plan/slide_NN.md全文或相关section, plan/deck.md相关章节, plan/assets.json中对应asset条目, research/knowledge-brief.md中对应claim]
+      output: [per_page_plan_verdicts, point_observations, defects, evidence_refs]
+    reducer:
+      max_text_tokens: 5000
+      required: [map_outputs, plan/deck.md]
+      output: [point_scores, plan_quality, systemic_defects, strengths, evidence_refs]
+
+  research_quality:
+    dimension: P2
+    judge_point_ids: [P2_1_RESEARCH_GROUNDING_INTEGRITY, P2_2_RESEARCH_QUALITY_AND_PLAN_USE]
+    mode: map_reduce
+    required_run_relative_paths: [research/research_*.md, research/knowledge-brief.md, plan/deck.md, plan/slide_*.md]
+    conditional_run_relative_paths: [research/materials_*.md]
+    map:
+      shard_unit: research/research_*.md或research/materials_*.md
+      max_files_per_shard: 1
+      max_text_tokens: 7500
+      include_from_each_shard: [一份research或materials文件, research/knowledge-brief.md中对应综合, plan/deck.md或plan/slide_NN.md中对应消费片段]
+      output: [point_observations, source_quality, extraction_defects, uncertainty_handling, plan_use, evidence_refs]
+    reducer:
+      max_text_tokens: 5500
+      required: [map_outputs, research/knowledge-brief.md]
+      output: [point_scores, research_and_synthesis_quality, critical_failures, strengths, defects, evidence_refs]
+
+  image_request_quality:
+    dimension: P3
+    judge_point_ids: [P3_1_IMAGE_TOOL_DECISION_VALIDITY, P3_2_IMAGE_SEARCH_KEYWORD_QUALITY, P3_3_IMAGE_GENERATION_PROMPT_QUALITY]
+    mode: map_reduce
+    required_run_relative_paths: [plan/slide_*.md, plan/assets.json, plan/visual-system.json, base.css, assets/catalog_*.md, _trace/subagents/image_*/tool_log.json]
+    map:
+      shard_unit: plan/assets.json中的asset条目
+      max_objects_per_shard: 4
+      max_text_tokens: 6500
+      include_from_each_shard:
+        - plan/assets.json中对应asset条目
+        - plan/slide_NN.md中对应Semantic visual need
+        - _trace/subagents/image_*/tool_log.json中对应web_search query或image_generate prompt
+        - assets/catalog_*.md中对应asset记录
+        - 生图时附plan/visual-system.json及base.css的相关token/art-direction片段
+      forbidden: [assets/by-id/*图片像素, renders/*, slides/*]
+      output: [per_request_verdicts, point_observations_by_mode, defects, evidence_refs]
+    reducer:
+      max_text_tokens: 4500
+      required: [map_outputs]
+      rule: 无search或generate request时对应point=N/A；不得把另一mode的质量代入。
+      output: [point_scores, search_keyword_quality, generation_prompt_quality, critical_failures, evidence_refs]
+
+  speech_quality:
+    dimension: P4
+    judge_point_ids: [P4_2_SPEECH_QUALITY_AND_PLAN_ALIGNMENT]
+    mode: map_reduce
+    required_run_relative_paths: [speech.md, plan/deck.md, plan/slide_*.md, research/knowledge-brief.md]
+    map:
+      shard_unit: speech.md中的逐页section
+      max_objects_per_shard: 4
+      max_text_tokens: 6500
+      include_from_each_shard: [speech.md对应页section, plan/slide_NN.md对应页, plan/deck.md相关beat, research/knowledge-brief.md中引用到的claim]
+      output: [per_page_speech_verdicts, point_observations, factual_or_transition_defects, evidence_refs]
+    reducer:
+      max_text_tokens: 4500
+      required: [map_outputs, speech.md的页序/转场/时长摘要]
+      output: [point_scores, speech_quality, systemic_alignment_defects, strengths, evidence_refs]
+
+  visual_system_quality:
+    dimension: P5
+    judge_point_ids: [P5_1_BASE_CSS_DESIGN_TOKEN_QUALITY, P5_2_BASE_CSS_IMAGE_REQUEST_COHERENCE]
+    mode: map_reduce_when_image_requests_gt_8
+    required_run_relative_paths: [plan/visual-system.json, base.css, plan/deck.md, plan/slide_*.md, plan/assets.json, assets/catalog_*.md, _trace/subagents/image_*/tool_log.json]
+    map:
+      shard_unit: image request；无image request时为单个Visual System包
+      max_objects_per_shard: 8
+      max_text_tokens: 7000
+      include_from_each_shard:
+        - plan/visual-system.json
+        - base.css中的:root token与art-direction相关片段
+        - plan/deck.md的主题/受众/场合摘要
+        - plan/slide_NN.md的Semantic visual need
+        - plan/assets.json对应条目
+        - _trace/subagents/image_*/tool_log.json中的实际query/prompt
+        - assets/catalog_*.md对应记录
+      forbidden: [base.css完整结构规则, assets/by-id/*图片像素, renders/*, slides/*]
+      output: [visual_system_observations, per_request_coherence, defects, evidence_refs]
+    reducer:
+      max_text_tokens: 4500
+      required: [map_outputs]
+      output: [point_scores, visual_system_quality, image_request_coherence, strengths, defects, evidence_refs]
+
+  cross_artifact_consistency:
+    dimension: P6
+    judge_point_ids: [P6_1_CROSS_ARTIFACT_SEMANTIC_CONSISTENCY]
+    mode: map_reduce
+    required_run_relative_paths: [research/knowledge-brief.md, plan/deck.md, plan/slide_*.md, plan/assets.json, speech.md, plan/visual-system.json, base.css, assets/catalog_*.md, _trace/subagents/image_*/tool_log.json]
+    map:
+      shard_unit: canonical page
+      max_objects_per_shard: 3
+      max_text_tokens: 7000
+      include_from_each_shard:
+        - research/knowledge-brief.md中该页使用的claim
+        - plan/deck.md中该页role/beat
+        - plan/slide_NN.md
+        - speech.md对应页section
+        - plan/assets.json及assets/catalog_*.md中的对应asset
+        - _trace/subagents/image_*/tool_log.json中的对应keyword/prompt
+        - plan/visual-system.json及base.css的相关视觉词元片段
+      forbidden: [完整research文件集, 完整tool log集, assets/by-id/*图片像素, renders/*, slides/*]
+      output: [per_page_cross_artifact_verdicts, semantic_drift, wrong_consumer_findings, evidence_refs]
+    reducer:
+      max_text_tokens: 5000
+      required: [map_outputs, plan/deck.md]
+      output: [point_scores, cross_artifact_consistency, critical_drift, strengths, defects, evidence_refs]
+
+sharding:
+  partition: 按页号、research文件名或asset_id确定性切片。
+  full_coverage: required objects coverage=100%。
+  boundary_context: 可携带相邻对象作只读上下文，但不得重复计分。
+  anti_overflow:
+    - 调用前估算token数，超限继续切shard，不截断对象列表。
+    - 单个research来源摘录默认不超过500 tokens。
+    - 单个plan、speech或tool-call片段默认不超过800 tokens。
+    - tool_log只截取对应web_search/image_generate调用，不发送整份日志。
+
+judge_response:
+  point_score_rule: 每个point score必须属于该point声明的scale profile。
+  required_fields: [rubric_id, dimension_id, point_scores, covered_ids, strengths, defects, evidence_refs, confidence]
+  point_score_fields: [point_id, score, evidence_refs, rationale]
+  confidence_allowed: [high, medium, low]
+  total_score_calculation: runner_only

@@ -142,6 +142,12 @@ def test_v04_registers_paired_quality_iteration(tmp_path):
     assert skill["pairing"] == pipeline["pairing"] == "mural-presenter-v0.4-adaptive"
     assert skill["name"] == "mural-presenter-v0-4"
     assert skill["runtime_env"]["CLEAN_CHILD_CONCURRENCY"] == "12"
+    assert skill["runtime_env"]["CLEAN_DOCTOR_LIVE"] == "1"
+    assert skill["runtime_env"]["CLEAN_DOCTOR_FAIL_ON_CONFIGURED_OPTIONAL"] == "1"
+    assert skill["runtime_env"]["CLEAN_DOCTOR_CACHE_DIR"].endswith(
+        "environment-doctor"
+    )
+    assert "core/environment_doctor.py" in skill["harness_required_files"]
     assert "mural-presenter-v0-4/assets/vendor/echarts.min.js" in skill["required_files"]
     assert "mural-presenter-v0-4/scripts/_internal/cli.py" in skill["required_files"]
 
@@ -158,11 +164,18 @@ def test_v04_registers_paired_quality_iteration(tmp_path):
     assert job["pipeline_version"] == "mural-presenter-v0.4-harness"
 
 
+def test_presentbench_v3_and_v04_share_concurrency_controls():
+    v3 = engine.SKILLS["visual-craft-v3-speech"]["runtime_env"]
+    v04 = engine.SKILLS["mural-presenter-v0.4"]["runtime_env"]
+    assert v3["MAX_CONCURRENT_CHILDREN"] == v04["CLEAN_CHILD_CONCURRENCY"] == "12"
+    assert v3["TURN_TOOL_PARALLEL"] == v04["CLEAN_REMOTE_TOOL_CONCURRENCY"] == "4"
+
+
 def test_second_deployment_model_uses_its_own_endpoint_and_thinking_transport(
     monkeypatch,
 ):
     prefix = "SENSENOVA_MODEL2"
-    monkeypatch.setenv(f"{prefix}_BASE_URL", "https://model.example.test/v1/")
+    monkeypatch.setenv(f"{prefix}_BASE_URL", "http://192.0.2.10:8000/v1/")
     monkeypatch.setenv(f"{prefix}_NAME", "pptagent-test")
     monkeypatch.setenv(f"{prefix}_DISPLAY_NAME", "PPTAgent 2")
     monkeypatch.setenv(f"{prefix}_SLIDE_CONCURRENCY", "4")
@@ -173,7 +186,7 @@ def test_second_deployment_model_uses_its_own_endpoint_and_thinking_transport(
     assert model is not None
     assert model["label"] == "PPTAgent 2"
     assert model["engine_model"] == "pptagent-test"
-    assert model["base_url"] == "https://model.example.test/v1"
+    assert model["base_url"] == "http://192.0.2.10:8000/v1"
     assert model["thinking_transport"] == "chat_template_kwargs"
     assert model["slide_concurrency"] == 4
 

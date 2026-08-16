@@ -45,3 +45,33 @@ data/cache/
 artifacts/runs/
 artifacts/cache/
 artifacts/exports/
+
+# Local rollout state and generated benchmark outputs
+/artifacts/
+/_outputs/
+/webui/studio/data/
+/benchmark/PresentBench/smoke/results/
+/benchmark/ThreadBench/**/results/
+/harnesses/*/logs/
+
+# Internal research snapshots and source-reference exports
+/research/
+/references/
+/paper/history/
+/paper/plan/
+/paper/*overleaf.zip
+/paper/manuscript/rendered_review*/
+/paper/manuscript/review_*.png
+
+# Local handoff and debugging notes
+HANDOFF-*.md
+*-FIX-PLAN.md
+REFINE-ROOTCAUSE.md
+
+# Fonts without confirmed public redistribution rights
+fonts/AaJinRiHuaQing-ChunLanMaoKun-2.ttf
+fonts/DuanNingYingBiKaiShuCuTi-2.ttf
+fonts/JinNianYeYaoJiaYouYa-2.ttf
+fonts/RuanMengXiaoGuoDong-2.ttf
+fonts/叶根友钢笔行书简体_爱给网_aigei_com.ttf
+fonts/迷你简硬笔行书字体下载_爱给网_aigei_com.ttf

@@ -176,9 +176,11 @@ def _font_sources() -> dict[str, object]:
             finally:
                 font.close()
             weight_axis = axes.get("wght")
+            # One source is bundled for every requested Noto delivery weight.
+            # A static Regular file cannot honestly stand in for 700/900; the
+            # source must expose a real axis that covers the delivery range.
             valid = bool(
-                (weight_axis and weight_axis[0] <= 400 and weight_axis[1] >= 900)
-                or (not weight_axis and static_weight >= 400)
+                weight_axis and weight_axis[0] <= 400 and weight_axis[1] >= 900
             )
             return {
                 "static_weight": static_weight,
@@ -261,12 +263,26 @@ def detect_runtime_capabilities(
     ):
         evidence_scope = "attachment_only"
         research_reason = "direct_text_complete_no_unresolved"
-    search_configured = _configured("SERPER_API_KEY")
+    doctor = (
+        dict(cfg.get("_environment_doctor"))
+        if isinstance(cfg.get("_environment_doctor"), dict)
+        else {}
+    )
+    doctor_capabilities = (
+        dict(doctor.get("capabilities"))
+        if doctor.get("checked") is True and isinstance(doctor.get("capabilities"), dict)
+        else {}
+    )
+    search_configured = _configured("SERPER_API_KEY") and bool(
+        doctor_capabilities.get("web_search", True)
+    )
     search_enabled = search_configured and evidence_scope in {"open_research", "verify_external"}
     research_enabled = search_enabled
     image_key = _configured("IMAGE_API_KEY") or _configured("OPENAI_API_KEY")
     image_generation_enabled = bool(
-        cfg.get("enable_image_gen", config.ENABLE_IMAGE_GEN) and image_key
+        cfg.get("enable_image_gen", config.ENABLE_IMAGE_GEN)
+        and image_key
+        and doctor_capabilities.get("image_generate", True)
     )
     # Material can hand off reusable figures/photos even when external search
     # and generation are both disabled.
@@ -401,6 +417,10 @@ def detect_runtime_capabilities(
             ),
         },
         "environment": {
+            "doctor_checked": doctor.get("checked") is True,
+            "doctor_ready": doctor.get("ready") is True,
+            "doctor_status": doctor.get("status", "not_run"),
+            "doctor_fingerprint": doctor.get("config_fingerprint", ""),
             "python": sys.executable,
             "model_backend": os.environ.get("MODEL_BACKEND", "anthropic").strip().lower() or "anthropic",
             "model_configured": bool(cfg.get("model")),

@@ -46,13 +46,16 @@ Grouped 可以读取兄弟页面以兑现同一责任链；跨单元不得读取
 ## 实现
 
 - 只编辑分配责任单元内的 `slides/slide_NN.html`，单元外页面只读也禁止。
+- 不读取或修改 `speech.md`，也不修改逐页计划中的 `## 初版口语讲稿`。页面制作只以
+  已冻结的屏显文案、证据、视觉需求和构图合同为准；不能因为讲稿解释过某件事，就删掉
+  页面上必要的结论或决定性证据。
 - 保留根 metadata、共享结构包装、定版页头/页脚与 fill markers。
 - 不改变标题原文；可以在标题/副标题内部加入 `<br>` 或带 class 的 `<span>` 来建立层级。
 - 第一次渲染前，先在 fill markers 内写完最终正文和构图。
 - 建立一个主要阅读事件；根据证据选择图片、图表、机制、对比、案例、时间线或编辑式
   排版，不默认使用卡片墙。
 - 附件中的关键定义、方法、发现、数字或结论若承担本页论证，必须在屏幕上可读；
-  `speech.md` 只补上下文和来源，不能替代重点内容。
+  初版口语讲稿只补上下文和转场，不能替代重点内容。
 - 这个视觉事件必须承担信息：已解析位图应成为构图锚点，而不是角落缩略图；
   `needs_bitmap:false` 应完成真正的图表、地图、机制、时间线或关系图，不是在通用卡片上添加
   图标；文字主导页需要有意识的排印结构，它是节奏选择，不是缺少想法时的降级。
@@ -81,7 +84,10 @@ Grouped 可以读取兄弟页面以兑现同一责任链；跨单元不得读取
   `<script src="assets/vendor/echarts.min.js"></script>`，再在内联脚本中调用
   `echarts.init(...)`；只看见文件存在并不会自动加载。系列色通过 `getComputedStyle` 从
   `--series-1…6` 读取为直接 hex 值（ECharts 无法解析 `var()`/`color-mix()`）。每页最多
-  一个 ECharts 实例。ECharts `rich`/formatter 的样式标识只用字母、数字与下划线；
+  一个 ECharts 实例。图表宿主在初始化时必须已有明确的 CSS 宽高或 `min-height`；初始化
+  后在下一帧调用一次 `resize()`，不能把零尺寸容器误判成渲染器不支持脚本。若首张 PNG
+  仍只有空图框，直接用同一数据改成静态内联 SVG 并在下一状态验证，不在 ECharts、Canvas
+  与混合 fallback 之间反复试验。ECharts `rich`/formatter 的样式标识只用字母、数字与下划线；
   不得写 `{tag-open|OPEN}` 这类带连字符的 key，否则 Canvas 会把模板语法原样画出来。
   **ECharts 数据忠实性**：附件来源的定量图表只使用 Material/Research 明确提供的精确
   数值；禁止合成"看起来合理"的数据曲线、峰值或采样点。如果逐页证据只有定性描述
@@ -223,10 +229,13 @@ python skills/mural-presenter-v0-4/scripts/slide.py render . --page NN
 python skills/mural-presenter-v0-4/scripts/slide.py render-group . --group GROUP --pages NN,NN
 ```
 
-Single 普通页使用 `render --page`；Grouped 内容组以及 `bookends/dividers` 特殊记忆组
-使用 `render-group`，它生成
-组内各页 PNG 与一张组联系表。Grouped 每一版先逐页打开当前单页 PNG，确认每页自身成立，
-再打开当前组联系表检查组内一致性；联系表不能替代逐页检查。不要运行 `build`、`finalize`、`audit`、整册渲染或
+Single 普通页使用 `render --page`。Grouped 内容组以及 `bookends/dividers` 特殊记忆组
+必须按分配页顺序逐页制作：完成当前页 HTML 后运行 `render --page NN`，打开该页全分辨率
+PNG，集中修复并复验；该页 Critic 返回 `ready`，或三个有效像素状态耗尽并保留开放 issue
+后，才进入下一页。全部成员都完成单页闭环后，最后运行一次 `render-group` 生成组联系表。
+组联系表只检查跨页视觉 DNA、层级节奏、密度、重复几何与转场，不判断或关闭单页的文字
+重叠、裁切、字号、边缘安全或图片主体问题。两者冲突时，单页全分辨率结论为准；只有该页
+变化后的全分辨率 PNG 才能关闭其 issue。不要运行 `build`、`finalize`、`audit`、整册渲染或
 渲染器内部命令；不得读取 `scripts/**`，也不要读取整册 `render.json` 或临时渲染目录。
 本角色不能执行 Orchestrator、Image、Review 入口或 `_internal/**`。
 若本页单页预览正确、后续整册截图却不一致，报告 `render_capture` 及证据，不要为了

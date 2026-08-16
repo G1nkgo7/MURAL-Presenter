@@ -1,0 +1,80 @@
+% !TeX program = xelatex
+\documentclass{article}
+\usepackage{iclr2026_conference,times}
+
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{amssymb}
+\usepackage{amsmath}
+\usepackage{fontspec}
+\setmainfont{Tinos}[
+  Path=fonts/,
+  Extension=.ttf,
+  UprightFont=Tinos-Regular,
+  BoldFont=Tinos-Bold,
+  ItalicFont=Tinos-Italic,
+  BoldItalicFont=Tinos-BoldItalic,
+]
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{enumitem}
+\usepackage{pifont}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,calc}
+
+\emergencystretch=1.2em
+\setlist{nosep,leftmargin=*}
+\setlength{\textfloatsep}{10pt plus 2pt minus 2pt}
+\setlength{\dbltextfloatsep}{6pt plus 2pt minus 2pt}
+\setlength{\dblfloatsep}{6pt plus 2pt minus 2pt}
+\setlength{\abovecaptionskip}{4pt}
+\setlength{\belowcaptionskip}{0pt}
+% The ICLR style enables \flushbottom. With non-breakable [H] result tables,
+% that stretches section/table glue into conspicuous holes. Keep the normal
+% inter-block spacing and leave any unavoidable remainder at the page foot.
+\raggedbottom
+
+\definecolor{auditblue}{HTML}{0077BB}
+\definecolor{auditteal}{HTML}{009988}
+\definecolor{auditorange}{HTML}{EE7733}
+
+% Tinos does not expose an OpenType small-caps face. Scale the interior capitals
+% explicitly so the M and P remain full-size in the paper-title lockup.
+\newcommand{\MuralPresenterLogo}{\mbox{M\raisebox{0.08ex}{\scalebox{0.78}{URAL}}P\raisebox{0.08ex}{\scalebox{0.78}{RESENTER}}}}
+\newcommand{\sys}{MuralPresenter}
+\newcommand{\fullsys}{\MuralPresenterLogo}
+\newcommand{\bench}{ThreadBench}
+\hyphenation{ThreadBench}
+\newcommand{\tbd}[1]{\textcolor{auditorange}{\textsc{[TBD-#1]}}}
+% Preserve unique placeholder IDs in source while keeping result tables readable.
+\newcommand{\resulttbd}[1]{\textcolor{auditorange}{\textsc{TBD}}}
+\newcommand{\pilot}[1]{\textcolor{auditteal}{\textsc{#1}}}
+
+\title{\fullsys: Multi-Agent Unified\\
+Reasoning and Authoring for Long-Horizon\\
+Presentations}
+
+\author{Anonymous authors}
+
+%\iclrfinalcopy
+\begin{document}
+
+\maketitle
+
+\input{chapters_en/01_introduction_related}
+\input{chapters_en/02_method}
+\input{chapters_en/03_benchmark_experiments}
+\input{chapters_en/04_discussion_conclusion}
+\label{main:end}
+
+\bibliographystyle{iclr2026_conference}
+\bibliography{references}
+
+\appendix
+\input{chapters_en/05_appendix}
+
+\end{document}

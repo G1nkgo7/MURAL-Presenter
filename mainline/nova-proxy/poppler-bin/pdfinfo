@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+: "${POPPLER_ROOT:?POPPLER_ROOT is required for the run-local Poppler wrapper}"
+lib="${POPPLER_ROOT}/usr/lib/x86_64-linux-gnu"
+exec env LD_LIBRARY_PATH="${lib}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}" \
+  "${POPPLER_ROOT}/usr/bin/$(basename "$0")" "$@"

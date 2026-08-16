@@ -1,0 +1,747 @@
+% =====================================================================
+%  references.bib — 技术报告参考文献(arXiv id 均已核对到题名对应)
+%  核对说明(2026-07-13 复核,来源见括注):
+%   - SlideAgent(2510.26615)是"文档理解"不是生成 → 用 SlideGen(2512.04529,DBLP 确认)。
+%   - PosterGen = CVPR 2026 (Findings)(CVF proceedings 已确认)→ inproceedings。
+%   - RAFT / ReST-EM 是 TMLR(journal),保持 article。
+%   - AgentTuning = Findings of ACL 2024 pp.3053-3077;Agent-FLAN = Findings of ACL 2024
+%     pp.9354-9366(ACL Anthology 已确认)→ 改 inproceedings。
+%   - Learning to Present(2603.16839)= 直接同域竞品(单模型 GRPO 蒸 Opus→Qwen2.5-Coder-7B,HTML),已补引。
+%   - ReST-EM preprint 2023 / TMLR 2024;按你惯例选 year。
+%   - 2026-07-15 补引(逐条联网核到官方记录):PPTAgent 改 EMNLP 2025(pp.14402-14418,补 Wenkai Zhang)、
+%     DeepSlide(2605.15202)、SlideBot(AAAI 2026)、DECKBench(2602.13318)、MapCoder-Lite(Findings EACL 2026,
+%     pp.6569-6596)、Structured Agent Distillation(2505.13820)、AgentDistill(2506.14728)、
+%     Poddar NAACL 2025(pp.12688-12704)、FUEL/Wu ACL 2025(pp.10560-10576)。
+% =====================================================================
+
+% ---------- Bucket 0: self-verification / self-correction limits (added for NovaPresent refiner motivation) ----------
+@article{liu2023lostmiddle,
+  title   = {Lost in the Middle: How Language Models Use Long Contexts},
+  author  = {Liu, Nelson F. and Lin, Kevin and Hewitt, John and Paranjape, Ashwin and Bevilacqua, Michele and Petroni, Fabio and Liang, Percy},
+  journal = {Transactions of the Association for Computational Linguistics},
+  year    = {2023}
+}
+
+@inproceedings{hsieh2024ruler,
+  title     = {{RULER}: What's the Real Context Size of Your Long-Context Language Models?},
+  author    = {Hsieh, Cheng-Ping and Sun, Simeng and Kriman, Samuel and Acharya, Shantanu and Rekesh, Dima and Jia, Fei and Zhang, Yang and Ginsburg, Boris},
+  booktitle = {Conference on Language Modeling},
+  year      = {2024}
+}
+
+@inproceedings{kim2026longhorizon,
+  title     = {On Training Large Language Models for Long-Horizon Tasks: An Empirical Study of Horizon Length},
+  author    = {Kim, Sunghwan and Cho, Junhee and Kwak, Beong-woo and Kwon, Taeyoon and Wang, Liang and Yang, Nan and Zhang, Xingxing and Wei, Furu and Yeo, Jinyoung},
+  booktitle = {International Conference on Machine Learning},
+  year      = {2026}
+}
+
+@article{wei2025turnreward,
+  title   = {Reinforcing Multi-Turn Reasoning in {LLM} Agents via Turn-Level Reward Design},
+  author  = {Wei, Quan and Zeng, Siliang and Li, Chenliang and Brown, William and Frunza, Oana and Deng, Wei and Schneider, Anderson and Nevmyvaka, Yuriy and Zhao, Yang Katie and Garcia, Alfredo and Hong, Mingyi},
+  journal = {arXiv preprint arXiv:2505.11821},
+  year    = {2025}
+}
+
+@inproceedings{huang2024selfcorrect,
+  title     = {Large Language Models Cannot Self-Correct Reasoning Yet},
+  author    = {Huang, Jie and Chen, Xinyun and Mishra, Swaroop and Zheng, Huaixiu Steven and Yu, Adams Wei and Song, Xinying and Zhou, Denny},
+  booktitle = {International Conference on Learning Representations (ICLR)},
+  year      = {2024},
+  note      = {arXiv:2310.01798}
+}
+@article{stechly2024selfverify,
+  title     = {On the Self-Verification Limitations of Large Language Models on Reasoning and Planning Tasks},
+  author    = {Stechly, Kaya and Valmeekam, Karthik and Kambhampati, Subbarao},
+  journal   = {arXiv preprint arXiv:2402.08115},
+  year      = {2024}
+}
+
+% ---------- Bucket 1: slide / poster / presentation generation ----------
+@inproceedings{zheng2025pptagent,
+  title     = {PPTAgent: Generating and Evaluating Presentations Beyond Text-to-Slides},
+  author    = {Zheng, Hao and Guan, Xinyan and Kong, Hao and Zhang, Wenkai and Zheng, Jia and Zhou, Weixiang and Lin, Hongyu and Lu, Yaojie and Han, Xianpei and Sun, Le},
+  booktitle = {Proceedings of the 2025 Conference on Empirical Methods in Natural Language Processing (EMNLP)},
+  pages     = {14402--14418},
+  year      = {2025}
+}
+@inproceedings{ge2025autopresent,
+  title     = {AutoPresent: Designing Structured Visuals from Scratch},
+  author    = {Ge, Jiaxin and Wang, Zora Zhiruo and Zhou, Xuhui and Peng, Yi-Hao and Subramanian, Sanjay and Tan, Qinyue and Sap, Maarten and Suhr, Alane and Fried, Daniel and Neubig, Graham and Darrell, Trevor},
+  booktitle = {IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},
+  year      = {2025}
+}
+@inproceedings{pang2025paper2poster,
+  title     = {Paper2Poster: Towards Multimodal Poster Automation from Scientific Papers},
+  author    = {Pang, Wei and Lin, Kevin Qinghong and Jian, Xiangru and He, Xi and Torr, Philip},
+  booktitle = {Advances in Neural Information Processing Systems (NeurIPS), Datasets and Benchmarks Track},
+  year      = {2025}
+}
+@inproceedings{zhang2025postergen,
+  title     = {PosterGen: Aesthetic-Aware Multi-Modal Paper-to-Poster Generation via Multi-Agent LLMs},
+  author    = {Zhang, Zhilin and Zhang, Xiang and Wei, Jiaqi and Xu, Yiwei and You, Chenyu},
+  booktitle = {IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR), Findings},
+  year      = {2026}
+}
+@article{liang2025slidegen,
+  title   = {SlideGen: Collaborative Multimodal Agents for Scientific Slide Generation},
+  author  = {Liang, Xin and Zhang, Xiang and Xu, Yiwei and Sun, Siqi and You, Chenyu},
+  journal = {arXiv preprint arXiv:2512.04529},
+  year    = {2025}
+}
+@article{anandakumar2026learningtopresent,
+  title   = {Learning to Present: Inverse Specification Rewards for Agentic Slide Generation},
+  author  = {Ananda Kumar, Karthik Ragunath and Arunachalam, Subrahmanyam},
+  journal = {arXiv preprint arXiv:2603.16839},
+  year    = {2026}
+}
+
+@article{chen2026presentbench,
+  title   = {PresentBench: A Fine-Grained Rubric-Based Benchmark for Slide Generation},
+  author  = {Chen, Xin-Sheng and Zhu, Jiayu and Li, Pei-lin and Wang, Hanzheng and Yang, Shuojin and Guo, Meng-Hao},
+  journal = {arXiv preprint arXiv:2603.07244},
+  year    = {2026}
+}
+@article{yang2026deepslide,
+  title   = {DeepSlide: From Artifacts to Presentation Delivery},
+  author  = {Yang, Ming and Zhang, Zhiwei and Li, Jiahang and Liu, Haoseng and Cai, Yuzheng and Zheng, Weiguo},
+  journal = {arXiv preprint arXiv:2605.15202},
+  year    = {2026}
+}
+@inproceedings{xie2026slidebot,
+  title     = {SlideBot: A Multi-Agent Framework for Generating Informative, Reliable, Multi-Modal Presentations},
+  author    = {Xie, Eric and Waterfield, Danielle and Kennedy, Michael and Zhang, Aidong},
+  booktitle = {AAAI Conference on Artificial Intelligence (AAAI)},
+  year      = {2026}
+}
+@article{jang2026deckbench,
+  title   = {DECKBench: Benchmarking Multi-Agent Frameworks for Academic Slide Generation and Editing},
+  author  = {Jang, Daesik and Heisler, Morgan Lindsay and Xing, Linzi and Li, Yifei and Wang, Edward and Xiong, Ying and Zhang, Yong and Fan, Zhenan},
+  journal = {arXiv preprint arXiv:2602.13318},
+  year    = {2026}
+}
+@inproceedings{gandhi2026ppteval,
+  title     = {{PPT-Eval}: A Benchmark for Computer-Use Agents on {PowerPoint} Tasks},
+  author    = {Gandhi, Apurva and Suryanarayanan, Vishwas and Anwar, Raja Hasnain and Shaik, Firoz and Desai, Shubhang and Nguyen, Thong Q. and Raza, Muhammad Taqi and Chowdhary, Vishal and Neubig, Graham},
+  booktitle = {Forty-third International Conference on Machine Learning},
+  year      = {2026}
+}
+@article{zheng2026deeppresenter,
+  title   = {DeepPresenter: Environment-Grounded Reflection for Agentic Presentation Generation},
+  author  = {Zheng, Hao and Mo, Guozhao and Yan, Xinru and Yuan, Qianhao and Zhang, Wenkai and Chen, Xuanang and Lu, Yaojie and Lin, Hongyu and Han, Xianpei and Sun, Le},
+  journal = {arXiv preprint arXiv:2602.22839},
+  year    = {2026}
+}
+@inproceedings{fu2022doc2ppt,
+  title     = {DOC2PPT: Automatic Presentation Slides Generation from Scientific Documents},
+  author    = {Fu, Tsu-Jui and Wang, William Yang and McDuff, Daniel and Song, Yale},
+  booktitle = {AAAI Conference on Artificial Intelligence (AAAI)},
+  volume    = {36}, number = {1}, pages = {634--642},
+  year      = {2022}
+}
+@article{guo2023pptc,
+  title   = {PPTC Benchmark: Evaluating Large Language Models for PowerPoint Task Completion},
+  author  = {Guo, Yiduo and Zhang, Zekai and Liang, Yaobo and Zhao, Dongyan and Duan, Nan},
+  journal = {arXiv preprint arXiv:2311.01767},
+  year    = {2023}
+}
+
+% ---------- Bucket 2: agent / trajectory / process distillation ----------
+@article{chen2023fireact,
+  title={FireAct: Toward Language Agent Fine-tuning},
+  author={Chen, Baian and Shu, Chang and Shareghi, Ehsan and Collier, Nigel and Narasimhan, Karthik and Yao, Shunyu},
+  journal={arXiv preprint arXiv:2310.05915}, year={2023}
+}
+@inproceedings{zeng2023agenttuning,
+  title={AgentTuning: Enabling Generalized Agent Abilities for LLMs},
+  author={Zeng, Aohan and Liu, Mingdao and Lu, Rui and Wang, Bowen and Liu, Xiao and Dong, Yuxiao and Tang, Jie},
+  booktitle={Findings of the Association for Computational Linguistics: ACL 2024},
+  pages={3053--3077}, year={2024}
+}
+@article{yin2024lumos,
+  title={Lumos: Learning Agents with Unified Data, Modular Design, and Open-Source LLMs},
+  author={Yin, Da and Brahman, Faeze and Ravichander, Abhilasha and Chandu, Khyathi and Chang, Kai-Wei and Choi, Yejin and Lin, Bill Yuchen},
+  journal={arXiv preprint arXiv:2311.05657}, year={2024}
+}
+@inproceedings{chen2024agentflan,
+  title={Agent-FLAN: Designing Data and Methods of Effective Agent Tuning for Large Language Models},
+  author={Chen, Zehui and Liu, Kuikun and Wang, Qiuchen and Zhang, Wenwei and Liu, Jiangning and Lin, Dahua and Chen, Kai and Zhao, Feng},
+  booktitle={Findings of the Association for Computational Linguistics: ACL 2024},
+  pages={9354--9366}, year={2024}
+}
+@inproceedings{chen2024magdi,
+  title={MAGDi: Structured Distillation of Multi-Agent Interaction Graphs Improves Reasoning in Smaller Language Models},
+  author={Chen, Justin Chih-Yao and Saha, Swarnadeep and Stengel-Eskin, Elias and Bansal, Mohit},
+  booktitle={International Conference on Machine Learning (ICML)}, year={2024}
+}
+@inproceedings{hong2024metagpt,
+  title={MetaGPT: Meta Programming for a Multi-Agent Collaborative Framework},
+  author={Hong, Sirui and Zhuge, Mingchen and Chen, Jonathan and Zheng, Xiawu and Cheng, Yuheng and Zhang, Ceyao and Wang, Jinlin and Wang, Zili and Yau, Steven Ka Shing and Lin, Zijuan and Zhou, Liyang and Ran, Chenyu and Xiao, Lingfeng and Wu, Chenglin and Schmidhuber, J{\"u}rgen},
+  booktitle={International Conference on Learning Representations (ICLR)}, year={2024}
+}
+@article{wang2023voyager,
+  title={Voyager: An Open-Ended Embodied Agent with Large Language Models},
+  author={Wang, Guanzhi and Xie, Yuqi and Jiang, Yunfan and Mandlekar, Ajay and Xiao, Chaowei and Zhu, Yuke and Fan, Linxi and Anandkumar, Anima},
+  journal={arXiv preprint arXiv:2305.16291}, year={2023}
+}
+@article{wu2023autogen,
+  title={AutoGen: Enabling Next-Gen LLM Applications via Multi-Agent Conversation},
+  author={Wu, Qingyun and Bansal, Gagan and Zhang, Jieyu and Wu, Yiran and Li, Beibin and Zhu, Erkang and Jiang, Li and Zhang, Xiaoyun and Zhang, Shaokun and Liu, Jiale and Awadallah, Ahmed Hassan and White, Ryen W and Burger, Doug and Wang, Chi},
+  journal={arXiv preprint arXiv:2308.08155}, year={2023}
+}
+@inproceedings{qian2024chatdev,
+  title={ChatDev: Communicative Agents for Software Development},
+  author={Qian, Chen and Liu, Wei and Liu, Hongzhang and Chen, Nuo and Dang, Yufan and Li, Jiahao and Yang, Cheng and Chen, Weize and Su, Yusheng and Cong, Xin and Xu, Juyuan and Li, Dahai and Liu, Zhiyuan and Sun, Maosong},
+  booktitle={Annual Meeting of the Association for Computational Linguistics (ACL)}, year={2024}
+}
+@inproceedings{li2023camel,
+  title={{CAMEL}: Communicative Agents for ``Mind'' Exploration of Large Language Model Society},
+  author={Li, Guohao and Hammoud, Hasan Abed Al Kader and Itani, Hani and Khizbullin, Dmitrii and Ghanem, Bernard},
+  booktitle={Advances in Neural Information Processing Systems (NeurIPS)}, year={2023}
+}
+@article{sumers2024coala,
+  title={Cognitive Architectures for Language Agents},
+  author={Sumers, Theodore R and Yao, Shunyu and Narasimhan, Karthik and Griffiths, Thomas L},
+  journal={Transactions on Machine Learning Research (TMLR)}, year={2024}
+}
+@article{schwartz2020greenai,
+  title={Green {AI}},
+  author={Schwartz, Roy and Dodge, Jesse and Smith, Noah A and Etzioni, Oren},
+  journal={Communications of the ACM}, volume={63}, number={12}, pages={54--63}, year={2020}
+}
+@inproceedings{strubell2019energy,
+  title={Energy and Policy Considerations for Deep Learning in {NLP}},
+  author={Strubell, Emma and Ganesh, Ananya and McCallum, Andrew},
+  booktitle={Annual Meeting of the Association for Computational Linguistics (ACL)}, year={2019}
+}
+@inproceedings{poddar2025sustainable,
+  title={Towards Sustainable {NLP}: Insights from Benchmarking Inference Energy in Large Language Models},
+  author={Poddar, Soham and Koley, Paramita and Misra, Janardan and Ganguly, Niloy and Ghosh, Saptarshi},
+  booktitle={Proceedings of the 2025 Conference of the Nations of the Americas Chapter of the Association for Computational Linguistics: Human Language Technologies (NAACL-HLT)},
+  pages={12688--12704}, year={2025}
+}
+@inproceedings{wu2025fuel,
+  title={Unveiling Environmental Impacts of Large Language Model Serving: A Functional Unit View},
+  author={Wu, Yanran and Hua, Inez and Ding, Yi},
+  booktitle={Annual Meeting of the Association for Computational Linguistics (ACL)},
+  pages={10560--10576}, year={2025}
+}
+@article{li2025chainofagents,
+  title={Chain-of-Agents: End-to-End Agent Foundation Models via Multi-Agent Distillation and Agentic RL},
+  author={Li, Weizhen and Lin, Jianbo and Jiang, Zhuosong and others},
+  journal={arXiv preprint arXiv:2508.13167}, year={2025}
+}
+@inproceedings{kang2025agentdistillation,
+  title={Distilling LLM Agent into Small Models with Retrieval and Code Tools},
+  author={Kang, Minki and Jeong, Jongwon and Lee, Seanie and Cho, Jaewoong and Hwang, Sung Ju},
+  booktitle={Advances in Neural Information Processing Systems (NeurIPS)}, year={2025}
+}
+@inproceedings{lee2026mapcoderlite,
+  title={MapCoder-Lite: Distilling Multi-Agent Coding into a Single Small LLM},
+  author={Lee, Woongkyu and Cho, Junhee and Choi, Jungwook},
+  booktitle={Findings of the Association for Computational Linguistics: EACL 2026},
+  pages={6569--6596}, year={2026}
+}
+@article{liu2025structured,
+  title={Structured Agent Distillation for Large Language Model},
+  author={Liu, Jun and Kong, Zhenglun and Dong, Peiyan and Yang, Changdi and Li, Tianqi and Tang, Hao and Yuan, Geng and Niu, Wei and Zhang, Wenbin and Zhao, Pu and Lin, Xue and Huang, Dong and Wang, Yanzhi},
+  journal={arXiv preprint arXiv:2505.13820}, year={2025}
+}
+@article{qiu2025agentdistill,
+  title={AgentDistill: Training-Free Agent Distillation with Generalizable MCP Boxes},
+  author={Qiu, Jiahao and Juan, Xinzhe and Wang, Yimin and Yang, Ling and Qi, Xuan and Zhang, Tongcheng and Guo, Jiacheng and Lu, Yifu and Yao, Zixin and Wang, Hongru and Liu, Shilong and Jiang, Xun and Leqi, Liu and Wang, Mengdi},
+  journal={arXiv preprint arXiv:2506.14728}, year={2025}
+}
+@article{mukherjee2023orca,
+  title={Orca: Progressive Learning from Complex Explanation Traces of GPT-4},
+  author={Mukherjee, Subhabrata and Mitra, Arindam and Jawahar, Ganesh and Agarwal, Sahaj and Palangi, Hamid and Awadallah, Ahmed},
+  journal={arXiv preprint arXiv:2306.02707}, year={2023}
+}
+@article{belcak2025slm,
+  title={Small Language Models are the Future of Agentic AI},
+  author={Belcak, Peter and others},
+  journal={arXiv preprint arXiv:2506.02153}, year={2025}
+}
+
+% ---------- Bucket 3: long-to-short / self-correction internalization ----------
+@article{yu2024distilling,
+  title={Distilling System 2 into System 1},
+  author={Yu, Ping and Xu, Jing and Weston, Jason and Kulikov, Ilia},
+  journal={arXiv preprint arXiv:2407.06023}, year={2024}
+}
+@article{deng2023implicit,
+  title={Implicit Chain of Thought Reasoning via Knowledge Distillation},
+  author={Deng, Yuntian and Prasad, Kiran and Fernandez, Roland and Smolensky, Paul and Chaudhary, Vishrav and Shieber, Stuart},
+  journal={arXiv preprint arXiv:2311.01460}, year={2023}
+}
+@article{deng2024internalize,
+  title={From Explicit CoT to Implicit CoT: Learning to Internalize CoT Step by Step},
+  author={Deng, Yuntian and Choi, Yejin and Shieber, Stuart},
+  journal={arXiv preprint arXiv:2405.14838}, year={2024}
+}
+@article{cheng2024compressed,
+  title={Compressed Chain of Thought: Efficient Reasoning Through Dense Representations},
+  author={Cheng, Jeffrey and Van Durme, Benjamin},
+  journal={arXiv preprint arXiv:2412.13171}, year={2024}
+}
+@inproceedings{xia2025tokenskip,
+  title={TokenSkip: Controllable Chain-of-Thought Compression in LLMs},
+  author={Xia, Heming and Leong, Chak Tou and Wang, Wenjie and Li, Yongqi and Li, Wenjie},
+  booktitle={Conference on Empirical Methods in Natural Language Processing (EMNLP)}, year={2025}
+}
+@inproceedings{kang2025c3ot,
+  title={C3oT: Generating Shorter Chain-of-Thought without Compromising Effectiveness},
+  author={Kang, Yu and Sun, Xianghui and Chen, Liangyu and Zou, Wei},
+  booktitle={AAAI Conference on Artificial Intelligence (AAAI)}, year={2025}
+}
+@inproceedings{madaan2023selfrefine,
+  title={Self-Refine: Iterative Refinement with Self-Feedback},
+  author={Madaan, Aman and Tandon, Niket and Gupta, Prakhar and Hallinan, Skyler and Gao, Luyu and Wiegreffe, Sarah and Alon, Uri and Dziri, Nouha and Prabhumoye, Shrimai and Yang, Yiming and Gupta, Shashank and Majumder, Bodhisattwa Prasad and Hermann, Katherine and Welleck, Sean and Yazdanbakhsh, Amir and Clark, Peter},
+  booktitle={Advances in Neural Information Processing Systems (NeurIPS)}, year={2023}
+}
+@inproceedings{kumar2025score,
+  title={Training Language Models to Self-Correct via Reinforcement Learning},
+  author={Kumar, Aviral and Zhuang, Vincent and Agarwal, Rishabh and others},
+  booktitle={International Conference on Learning Representations (ICLR)}, year={2025}
+}
+
+% ---------- Bucket 4: LLM / VLM-as-a-judge & generation evaluation ----------
+@inproceedings{zheng2023judging,
+  title={Judging LLM-as-a-Judge with MT-Bench and Chatbot Arena},
+  author={Zheng, Lianmin and Chiang, Wei-Lin and Sheng, Ying and Zhuang, Siyuan and Wu, Zhanghao and Zhuang, Yonghao and Lin, Zi and Li, Zhuohan and Li, Dacheng and Xing, Eric P. and Zhang, Hao and Gonzalez, Joseph E. and Stoica, Ion},
+  booktitle={Advances in Neural Information Processing Systems (NeurIPS), Datasets and Benchmarks Track}, year={2023}
+}
+@inproceedings{liu2023geval,
+  title={G-Eval: NLG Evaluation using GPT-4 with Better Human Alignment},
+  author={Liu, Yang and Iter, Dan and Xu, Yichong and Wang, Shuohang and Xu, Ruochen and Zhu, Chenguang},
+  booktitle={Conference on Empirical Methods in Natural Language Processing (EMNLP)}, year={2023}
+}
+@inproceedings{chiang2023alternative,
+  title={Can Large Language Models Be an Alternative to Human Evaluations?},
+  author={Chiang, Cheng-Han and Lee, Hung-yi},
+  booktitle={Annual Meeting of the Association for Computational Linguistics (ACL)}, year={2023}
+}
+@inproceedings{ye2024flask,
+  title={FLASK: Fine-grained Language Model Evaluation based on Alignment Skill Sets},
+  author={Ye, Seonghyeon and Kim, Doyoung and Kim, Sungdong and Hwang, Hyeonbin and Kim, Seungone and Jo, Yongrae and Thorne, James and Kim, Juho and Seo, Minjoon},
+  booktitle={International Conference on Learning Representations (ICLR)}, year={2024}
+}
+@inproceedings{kim2024prometheus2,
+  title={Prometheus 2: An Open Source Language Model Specialized in Evaluating Other Language Models},
+  author={Kim, Seungone and Suk, Juyoung and Longpre, Shayne and Lin, Bill Yuchen and Shin, Jamin and Welleck, Sean and Neubig, Graham and Lee, Moontae and Lee, Kyungjae and Seo, Minjoon},
+  booktitle={Conference on Empirical Methods in Natural Language Processing (EMNLP)}, year={2024}
+}
+@inproceedings{chen2024mllm,
+  title={MLLM-as-a-Judge: Assessing Multimodal LLM-as-a-Judge with Vision-Language Benchmark},
+  author={Chen, Dongping and Chen, Ruoxi and Zhang, Shilin and Liu, Yinuo and Wang, Yaochen and Zhou, Huichi and Zhang, Qihui and Wan, Yao and Zhou, Pan and Sun, Lichao},
+  booktitle={International Conference on Machine Learning (ICML)}, year={2024}
+}
+@inproceedings{lee2024prometheusvision,
+  title={Prometheus-Vision: Vision-Language Model as a Judge for Fine-Grained Evaluation},
+  author={Lee, Seongyun and Kim, Seungone and Park, Sue Hyun and Kim, Geewook and Seo, Minjoon},
+  booktitle={Findings of the Association for Computational Linguistics: ACL 2024}, year={2024}
+}
+@inproceedings{dubois2024lengthcontrolled,
+  title={Length-Controlled AlpacaEval: A Simple Way to Debias Automatic Evaluators},
+  author={Dubois, Yann and Galambosi, Bal{\'a}zs and Liang, Percy and Hashimoto, Tatsunori B.},
+  booktitle={Conference on Language Modeling (COLM)}, year={2024}
+}
+
+% ---------- Bucket 5: foundations ----------
+@inproceedings{yao2023react,
+  title={ReAct: Synergizing Reasoning and Acting in Language Models},
+  author={Yao, Shunyu and Zhao, Jeffrey and Yu, Dian and Du, Nan and Shafran, Izhak and Narasimhan, Karthik and Cao, Yuan},
+  booktitle={International Conference on Learning Representations (ICLR)}, year={2023}
+}
+@inproceedings{shinn2023reflexion,
+  title={Reflexion: Language Agents with Verbal Reinforcement Learning},
+  author={Shinn, Noah and Cassano, Federico and Berman, Edward and Gopinath, Ashwin and Narasimhan, Karthik and Yao, Shunyu},
+  booktitle={Advances in Neural Information Processing Systems (NeurIPS)}, year={2023}
+}
+@inproceedings{zelikman2022star,
+  title={STaR: Bootstrapping Reasoning with Reasoning},
+  author={Zelikman, Eric and Wu, Yuhuai and Mu, Jesse and Goodman, Noah D.},
+  booktitle={Advances in Neural Information Processing Systems (NeurIPS)}, year={2022}
+}
+@article{dong2023raft,
+  title={RAFT: Reward rAnked FineTuning for Generative Foundation Model Alignment},
+  author={Dong, Hanze and Xiong, Wei and Goyal, Deepanshu and Zhang, Yihan and Chow, Winnie and Pan, Rui and Diao, Shizhe and Zhang, Jipeng and Shum, Kashun and Zhang, Tong},
+  journal={Transactions on Machine Learning Research (TMLR)}, year={2023}
+}
+@article{singh2024restem,
+  title={Beyond Human Data: Scaling Self-Training for Problem-Solving with Language Models},
+  author={Singh, Avi and Co-Reyes, John D. and Agarwal, Rishabh and others},
+  journal={Transactions on Machine Learning Research (TMLR)}, year={2024}
+}
+@inproceedings{ouyang2022instructgpt,
+  title={Training Language Models to Follow Instructions with Human Feedback},
+  author={Ouyang, Long and Wu, Jeff and Jiang, Xu and Almeida, Diogo and Wainwright, Carroll L. and others},
+  booktitle={Advances in Neural Information Processing Systems (NeurIPS)}, year={2022}
+}
+@inproceedings{wei2022flan,
+  title={Finetuned Language Models Are Zero-Shot Learners},
+  author={Wei, Jason and Bosma, Maarten and Zhao, Vincent Y. and Guu, Kelvin and Yu, Adams Wei and Lester, Brian and Du, Nan and Dai, Andrew M. and Le, Quoc V.},
+  booktitle={International Conference on Learning Representations (ICLR)}, year={2022}
+}
+@inproceedings{wang2023selfinstruct,
+  title={Self-Instruct: Aligning Language Models with Self-Generated Instructions},
+  author={Wang, Yizhong and Kordi, Yeganeh and Mishra, Swaroop and Liu, Alisa and Smith, Noah A. and Khashabi, Daniel and Hajishirzi, Hannaneh},
+  booktitle={Annual Meeting of the Association for Computational Linguistics (ACL)}, year={2023}
+}
+
+@inproceedings{rafailov2023dpo,
+  title={Direct Preference Optimization: Your Language Model is Secretly a Reward Model},
+  author={Rafailov, Rafael and Sharma, Archit and Mitchell, Eric and Ermon, Stefano and Manning, Christopher D. and Finn, Chelsea},
+  booktitle={Advances in Neural Information Processing Systems (NeurIPS)}, year={2023}
+}
+
+% --- verified 2026-07-15 (arXiv export API + GitHub); non-peer-reviewed: two arXiv preprints + one software repo ---
+@misc{zhang2026swarmskills,
+  title={Swarm Skills: A Portable, Self-Evolving Multi-Agent System Specification for Coordination Engineering},
+  author={Zhang, Xinyu and Dou, Zhicheng and Li, Deyang and Tao, Jianjun and Cheng, Shuo and Shi, Ruifeng and Liu, Fangchao and Hu, Enrui and Ding, Yangkai and Wang, Hongbo and Ye, Qi and Jin, Xuefeng and Zhao, Zhangchun},
+  year={2026}, eprint={2605.10052}, archivePrefix={arXiv}, primaryClass={cs.AI},
+  note={arXiv preprint arXiv:2605.10052}
+}
+@misc{xiao2026researchstudioreel,
+  title={ResearchStudio-Reel: Automate the Last Mile of Research from Paper to Poster, Video, and Blog},
+  author={Xiao, Lingao and Dai, Yalun and Huang, Yangyu and Zhao, Qihao and Wu, Wenshan and He, Hugo and Chen, Ruishuo and Jiang, Jin and Ma, Qianli and Zhang, Jiahuan and Zhang, Xin and Xin, Ying and Ou, Yang and Xia, Yan and Li, Scarlett and Huang, Longbo and Zhang, Zhipeng and He, Yang and Hui, Yap Kim and Lu, Yan},
+  year={2026}, eprint={2607.04438}, archivePrefix={arXiv}, primaryClass={cs.CL},
+  note={arXiv preprint arXiv:2607.04438}
+}
+@misc{sunbigfly2026pptagentskills,
+  title={ppt-agent-skills: A code-driven presentation generation framework},
+  author={{sunbigfly}},
+  year={2026}, howpublished={\url{https://github.com/sunbigfly/ppt-agent-skills}},
+  note={Open-source software; accessed 2026-07-15}
+}
+
+@misc{pan2026aeslides,
+  title        = {AeSlides: Incentivizing Aesthetic Layout in {LLM}-Based Slide Generation via Verifiable Rewards},
+  author       = {Yiming Pan and Chengwei Hu and Xuancheng Huang and Can Huang and Mingming Zhao and Yuean Bi and Xiaohan Zhang and Aohan Zeng and Linmei Hu},
+  year         = {2026},
+  eprint       = {2604.22840},
+  archivePrefix= {arXiv},
+  journal      = {arXiv preprint arXiv:2604.22840}
+}
+
+@misc{orlanski2026slopcodebench,
+  title        = {SlopCodeBench: Benchmarking How Coding Agents Degrade Over Long-Horizon Iterative Tasks},
+  author       = {Gabriel Orlanski and Devjeet Roy and Alexander Yun and Changho Shin and Alex Gu and Albert Ge and Dyah Adila and Nicholas Roberts and Frederic Sala and Aws Albarghouthi},
+  year         = {2026},
+  eprint       = {2603.24755},
+  archivePrefix= {arXiv},
+  journal      = {arXiv preprint arXiv:2603.24755}
+}
+
+@misc{gandhi2026steer,
+  title        = {Steer, Don't Solve: Training Small Critic Models for Large Code Agents},
+  author       = {Shubham Gandhi and Yiqing Xie and Atharva Naik and Ruichen Zhu and Carolyn Rose},
+  year         = {2026},
+  eprint       = {2606.21811},
+  archivePrefix= {arXiv},
+  journal      = {arXiv preprint arXiv:2606.21811}
+}
+
+@misc{jin2026memslides,
+  title        = {MemSlides: A Hierarchical Memory Driven Agent Framework for Personalized Slide Generation with Multi-turn Local Revision},
+  author       = {Ye Jin and Yangyang Xu and Jun Zhu and Yibo Yang},
+  year         = {2026},
+  eprint       = {2606.17162},
+  archivePrefix= {arXiv},
+  journal      = {arXiv preprint arXiv:2606.17162}
+}
+
+@misc{zhao2026unipptbench,
+  title        = {UniPPTBench: A Unified Benchmark for Presentation Generation Across Diverse Input Settings},
+  author       = {Bo Zhao and Maosheng Pang and Chen Zhang and Huan Yang and Yixin Cao and Wei Ji},
+  year         = {2026},
+  eprint       = {2605.17356},
+  archivePrefix= {arXiv},
+  journal      = {arXiv preprint arXiv:2605.17356}
+}
+
+@misc{liu2025evopresent,
+  title        = {Presenting a Paper is an Art: Self-Improvement Aesthetic Agents for Academic Presentations},
+  author       = {Chengzhi Liu and Yuzhe Yang and Kaiwen Zhou and Zhen Zhang and Yue Fan and Yanan Xie and Peng Qi and Xin Eric Wang},
+  year         = {2025},
+  eprint       = {2510.05571},
+  archivePrefix= {arXiv},
+  journal      = {arXiv preprint arXiv:2510.05571}
+}
+
+@misc{sinha2026illusion,
+  title        = {The Illusion of Diminishing Returns: Measuring Long Horizon Execution in {LLM}s},
+  author       = {Akshit Sinha and Arvindh Arun and Shashwat Goel and Steffen Staab and Jonas Geiping},
+  year         = {2026},
+  eprint       = {2509.09677},
+  archivePrefix= {arXiv},
+  journal      = {arXiv preprint arXiv:2509.09677}
+}
+
+@misc{gu2026trajectory,
+  title        = {What Do Agents Learn from Trajectory-{SFT}: Semantics or Interfaces?},
+  author       = {Weizheng Gu and Chengze Li and Zhuohao Yu and Mengyuan Sun and Zhibang Yang and Wei Wang and Hongrui Jia and Shikun Zhang and Wei Ye},
+  year         = {2026},
+  eprint       = {2602.01611},
+  archivePrefix= {arXiv},
+  journal      = {arXiv preprint arXiv:2602.01611}
+}
+
+@misc{wang2023mathshepherd,
+  title        = {Math-Shepherd: Verify and Reinforce {LLM}s Step-by-step without Human Annotations},
+  author       = {Peiyi Wang and Lei Li and Zhihong Shao and R.X. Xu and Damai Dai and Yifei Li and Deli Chen and Y. Wu and Zhifang Sui},
+  year         = {2023},
+  eprint       = {2312.08935},
+  archivePrefix= {arXiv},
+  journal      = {arXiv preprint arXiv:2312.08935}
+}
+
+@misc{lu2025webgenagent,
+  title        = {WebGen-Agent: Enhancing Interactive Website Generation with Multi-Level Feedback and Step-Level Reinforcement Learning},
+  author       = {Zimu Lu and Houxing Ren and Yunqiao Yang and Ke Wang and Zhuofan Zong and Junting Pan and Mingjie Zhan and Hongsheng Li},
+  year         = {2025},
+  eprint       = {2509.22644},
+  archivePrefix= {arXiv},
+  journal      = {arXiv preprint arXiv:2509.22644}
+}
+
+@misc{lauffer2025oec,
+  title        = {Imitation Learning for Multi-turn {LM} Agents via On-policy Expert Corrections},
+  author       = {Niklas Lauffer and Xiang Deng and Srivatsa Kundurthy and Brad Kenstler and Jeff Da},
+  year         = {2025},
+  eprint       = {2512.14895},
+  archivePrefix= {arXiv},
+  journal      = {arXiv preprint arXiv:2512.14895}
+}
+
+@misc{dixit2026aletheia,
+  title        = {Project Aletheia: Verifier-Guided Distillation of Backtracking for Small Language Models},
+  author       = {Aradhya Dixit and Tianxi Liang and Jai Telang},
+  year         = {2026},
+  eprint       = {2601.14290},
+  archivePrefix= {arXiv},
+  journal      = {arXiv preprint arXiv:2601.14290}
+}
+
+@misc{kwa2025metr,
+  title        = {Measuring {AI} Ability to Complete Long Software Tasks},
+  author       = {Thomas Kwa and Ben West and Joel Becker and Amy Deng and Katharyn Garcia and Max Hasin and Sami Jawhar and Megan Kinniment and Nate Rush and Sydney Von Arx and others},
+  year         = {2025},
+  eprint       = {2503.14499},
+  archivePrefix= {arXiv},
+  journal      = {arXiv preprint arXiv:2503.14499}
+}
+
+@misc{lehnert2024beyondAstar,
+  title        = {Beyond {A*}: Better Planning with Transformers via Search Dynamics Bootstrapping},
+  author       = {Lucas Lehnert and Sainbayar Sukhbaatar and DiJia Su and Qinqing Zheng and Paul Mcvay and Michael Rabbat and Yuandong Tian},
+  year         = {2024},
+  eprint       = {2402.14083},
+  archivePrefix= {arXiv},
+  journal      = {arXiv preprint arXiv:2402.14083}
+}
+
+@misc{su2024dualformer,
+  title        = {Dualformer: Controllable Fast and Slow Thinking by Learning with Randomized Reasoning Traces},
+  author       = {DiJia Su and Sainbayar Sukhbaatar and Michael Rabbat and Yuandong Tian and Qinqing Zheng},
+  year         = {2024},
+  eprint       = {2410.09918},
+  archivePrefix= {arXiv},
+  journal      = {arXiv preprint arXiv:2410.09918}
+}
+
+@misc{yu2024distillsystem2,
+  title        = {Distilling System 2 into System 1},
+  author       = {Ping Yu and Jing Xu and Jason Weston and Ilia Kulikov},
+  year         = {2024},
+  eprint       = {2407.06023},
+  archivePrefix= {arXiv},
+  journal      = {arXiv preprint arXiv:2407.06023}
+}
+
+@misc{sun2025contextfolding,
+  title        = {Scaling Long-Horizon {LLM} Agent via Context-Folding},
+  author       = {Weiwei Sun and Miao Lu and Zhan Ling and Kang Liu and Xuesong Yao and Yiming Yang and Jiecao Chen},
+  year         = {2025},
+  eprint       = {2510.11967},
+  archivePrefix= {arXiv},
+  journal      = {arXiv preprint arXiv:2510.11967}
+}
+
+@misc{kang2026acon,
+  title        = {{ACON}: Optimizing Context Compression for Long-horizon {LLM} Agents},
+  author       = {Minki Kang and Wei-Ning Chen and Dongge Han and Huseyin A. Inan and Lukas Wutschitz and Yanzhi Chen and Robert Sim and Saravan Rajmohan},
+  year         = {2026},
+  eprint       = {2510.00615},
+  archivePrefix= {arXiv},
+  journal      = {arXiv preprint arXiv:2510.00615}
+}
+
+@inproceedings{cui2026designfirst,
+  title        = {Design First, Code Later: Aesthetically Pleasing Template-Free Slides Generation},
+  author       = {Zhiyao Cui and Chenxu Wang and Shuyue Hu and Yiqun Zhang and Wenqi Shao and Qiaosheng Zhang and Zhen Wang},
+  booktitle    = {Findings of the Association for Computational Linguistics: ACL 2026},
+  month        = jul,
+  year         = {2026},
+  address      = {San Diego, California, United States},
+  publisher    = {Association for Computational Linguistics},
+  pages        = {30470--30490},
+  doi          = {10.18653/v1/2026.findings-acl.1524},
+  url          = {https://aclanthology.org/2026.findings-acl.1524/}
+}
+
+@misc{chen2025atlas,
+  title        = {{ATLaS}: Agent Tuning via Learning Critical Steps},
+  author       = {Zhixun Chen and Ming Li and Yuxuan Huang and Yali Du and Meng Fang and Tianyi Zhou},
+  year         = {2025},
+  eprint       = {2503.02197},
+  archivePrefix= {arXiv},
+  journal      = {arXiv preprint arXiv:2503.02197}
+}
+
+@misc{ozden2026arcdeck,
+  title        = {Narrative-Driven Paper-to-Slide Generation via {ArcDeck}},
+  author       = {Tarik Can Ozden and Sachidanand VS and Furkan Horoz and Ozgur Kara and Junho Kim and James Matthew Rehg},
+  year         = {2026},
+  eprint       = {2604.11969},
+  archivePrefix= {arXiv},
+  journal      = {arXiv preprint arXiv:2604.11969}
+}
+
+@inproceedings{pan2022reward,
+  title        = {The Effects of Reward Misspecification: Mapping and Mitigating Misaligned Models},
+  author       = {Alexander Pan and Kush Bhatia and Jacob Steinhardt},
+  booktitle    = {International Conference on Learning Representations},
+  year         = {2022},
+  eprint       = {2201.03544},
+  archivePrefix= {arXiv},
+  journal      = {arXiv preprint arXiv:2201.03544}
+}
+
+@misc{sullivan2025grpo,
+  title        = {{GRPO} is Secretly a Process Reward Model},
+  author       = {Michael Sullivan and Alexander Koller},
+  year         = {2025},
+  eprint       = {2509.21154},
+  archivePrefix= {arXiv},
+  journal      = {arXiv preprint arXiv:2509.21154}
+}
+
+@misc{guo2025recast,
+  title        = {{RECAST}: Expanding the Boundaries of {LLMs}' Complex Instruction Following with Multi-Constraint Data},
+  author       = {Zhengkang Guo and Wenhao Liu and Mingchen Xie and Jingwen Xu and Zisu Huang and Muzhao Tian and Jianhan Xu and Yuanzhe Shen and Qi Qian and Muling Wu and Xiaohua Wang and Changze Lv and He-Da Wang and Hu Yao and Xiaoqing Zheng and Xuanjing Huang},
+  year         = {2025},
+  eprint       = {2505.19030},
+  archivePrefix= {arXiv},
+  journal      = {arXiv preprint arXiv:2505.19030}
+}
+
+@misc{chen2025acerl,
+  title        = {{ACE-RL}: Adaptive Constraint-Enhanced Reward for Long-form Generation Reinforcement Learning},
+  author       = {Jianghao Chen and Wei Sun and Qixiang Yin and Zhixing Tan and Jiajun Zhang},
+  year         = {2025},
+  eprint       = {2509.04903},
+  archivePrefix= {arXiv},
+  journal      = {arXiv preprint arXiv:2509.04903}
+}
+
+@misc{zhou2026autochecklist,
+  title        = {AutoChecklist: Composable Pipelines for Checklist Generation and Scoring with {LLM}-as-a-Judge},
+  author       = {Karen Zhou and Chenhao Tan},
+  year         = {2026},
+  eprint       = {2603.07019},
+  archivePrefix= {arXiv},
+  journal      = {arXiv preprint arXiv:2603.07019}
+}
+
+% ---------- LongHorizon-Presenter first-draft additions; official ACL metadata checked 2026-07-28 ----------
+@inproceedings{bandyopadhyay-etal-2024-enhancing-presentation,
+  title     = {Enhancing Presentation Slide Generation by {LLM}s with a Multi-Staged End-to-End Approach},
+  author    = {Bandyopadhyay, Sambaran and Maheshwari, Himanshu and Natarajan, Anandhavelu and Saxena, Apoorv},
+  booktitle = {Proceedings of the 17th International Natural Language Generation Conference},
+  year      = {2024},
+  address   = {Tokyo, Japan},
+  publisher = {Association for Computational Linguistics},
+  pages     = {222--229},
+  doi       = {10.18653/v1/2024.inlg-main.18},
+  url       = {https://aclanthology.org/2024.inlg-main.18/}
+}
+
+@inproceedings{maheshwari-etal-2024-presentations,
+  title     = {Presentations Are Not Always Linear! {GNN} Meets {LLM} for Text Document-to-Presentation Transformation with Attribution},
+  author    = {Maheshwari, Himanshu and Bandyopadhyay, Sambaran and Garimella, Aparna and Natarajan, Anandhavelu},
+  booktitle = {Findings of the Association for Computational Linguistics: EMNLP 2024},
+  year      = {2024},
+  address   = {Miami, Florida, USA},
+  publisher = {Association for Computational Linguistics},
+  pages     = {15948--15962},
+  doi       = {10.18653/v1/2024.findings-emnlp.936},
+  url       = {https://aclanthology.org/2024.findings-emnlp.936/}
+}
+
+@inproceedings{xu-etal-2025-pregenie,
+  title     = {{P}re{G}enie: An Agentic Framework for High-quality Visual Presentation Generation},
+  author    = {Xu, Xiaojie and Xu, Xinli and Chen, Sirui and Chen, Haoyu and Zhang, Fan and Chen, Ying-Cong},
+  booktitle = {Findings of the Association for Computational Linguistics: EMNLP 2025},
+  year      = {2025},
+  address   = {Suzhou, China},
+  publisher = {Association for Computational Linguistics},
+  pages     = {3045--3063},
+  doi       = {10.18653/v1/2025.findings-emnlp.165},
+  url       = {https://aclanthology.org/2025.findings-emnlp.165/}
+}
+
+@article{kim2025scalingagents,
+  title   = {Towards a Science of Scaling Agent Systems},
+  author  = {Kim, Yubin and Gu, Ken and Park, Chanwoo and Park, Chunjong and Schmidgall, Samuel and Heydari, A. Ali and Yan, Yao and Zhang, Zhihan and Zhuang, Yuchen and Malhotra, Mark and Liang, Paul Pu and Park, Hae Won and Yang, Yuzhe and Xu, Xuhai and Du, Yilun and Patel, Shwetak and Althoff, Tim and McDuff, Daniel and Liu, Xin},
+  journal = {arXiv preprint arXiv:2512.08296},
+  year    = {2025},
+  url     = {https://arxiv.org/abs/2512.08296}
+}
+
+@misc{ma2026longhorizonharness,
+  title         = {{LongHorizon-Harness}: Advancing Long-Horizon Agents for Real-World Tasks},
+  author        = {Ma, Ziyu and Huang, Hailang and Zou, Shun and Wang, Yong and Yang, Shidong and Hu, Yiming and Wei, Fei and Chu, Xiangxiang},
+  year          = {2026},
+  eprint        = {2608.01964},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.CV},
+  doi           = {10.48550/arXiv.2608.01964},
+  url           = {https://arxiv.org/abs/2608.01964},
+  note          = {arXiv:2608.01964v1}
+}
+
+@misc{gupta2026lhbench,
+  title         = {{LH-Bench}: Skill-Grounded Evaluation of Long-Horizon Agents on Subjective Enterprise Tasks},
+  author        = {Gupta, Ishan and Chandwani, Abhishek},
+  year          = {2026},
+  eprint        = {2603.22744},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.AI},
+  doi           = {10.48550/arXiv.2603.22744},
+  url           = {https://arxiv.org/abs/2603.22744},
+  note          = {arXiv:2603.22744v2}
+}
+
+@article{yang2026slidesgenbench,
+  title   = {{SlidesGen-Bench}: Evaluating Slides Generation via Computational and Quantitative Metrics},
+  author  = {Yang, Yunqiao and Li, Wenbo and Ren, Houxing and Lu, Zimu and Wang, Ke and Huang, Zhiyuan and Zong, Zhuofan and Zhan, Mingjie and Li, Hongsheng},
+  journal = {arXiv preprint arXiv:2601.09487},
+  year    = {2026},
+  url     = {https://arxiv.org/abs/2601.09487}
+}
+
+@article{ofengenden2025pptarena,
+  title   = {{PPTArena}: A Benchmark for Agentic {PowerPoint} Editing},
+  author  = {Ofengenden, Michael and Man, Yunze and Pang, Ziqi and Wang, Yu-Xiong},
+  journal = {arXiv preprint arXiv:2512.03042},
+  year    = {2025},
+  url     = {https://arxiv.org/abs/2512.03042}
+}
+
+@article{zhao2024mswift,
+  title={{SWIFT}: A Scalable Lightweight Infrastructure for Fine-Tuning},
+  author={Zhao, Yuze and Huang, Jintao and Hu, Jinghan and others},
+  journal={arXiv preprint arXiv:2408.05517},
+  year={2024}
+}

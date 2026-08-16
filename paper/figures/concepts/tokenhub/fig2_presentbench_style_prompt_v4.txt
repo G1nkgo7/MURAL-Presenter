@@ -1,0 +1,58 @@
+Use case: style-transfer
+Asset type: two-column academic-paper workflow figure
+
+INPUT ROLES
+- Image 1 is the edit target and the sole source of workflow content, roles, labels, and arrow relationships.
+- Image 2 is a visual-style reference only. Learn its high-level graphical grammar, but do not copy its people, robots, logos, exact icons, wording, or layout.
+
+PRIMARY REQUEST
+Restyle Image 1 as a polished PresentBench-inspired academic workflow while preserving and correcting the SensePresenter production semantics.
+
+STYLE TO TRANSFER
+- Three large left-to-right stage regions with pale pastel fills and thick rounded color-matched borders.
+- Stage 1 pale sage with a deep olive border; Stage 2 pale cream with an ochre border; Stage 3 pale peach with a burnt-orange border.
+- Large dark academic serif stage headers, compact legible sans-serif node labels.
+- Concrete flat illustrations for user brief, source files, deck plan, page briefs, rendered slide thumbnails, contact sheet, and final deck.
+- Strong outline treatment, sparse arrows, and clear nested boxes, with visual density similar to the reference pipeline.
+- Solid dark teal arrows for normal production flow; blue dotted connectors only for audited read paths; one distinct solid orange feedback arrow for plan revision.
+
+WORKFLOW INVARIANTS
+- Keep the three headers exactly: “1  Prepare”, “2  Produce pages”, “3  Assemble & review”.
+- Stage 1 contains “User brief”, “Source files”, “Research” with “required”, “Material” with “conditional”, “Orchestrator”, “Image” with “optional”, then “Deck plan”, “Shared style”, and “Page briefs”.
+- Stage 2 fans Page briefs out to “Page 01”, “Page 02”, and “Page N”; each produces one rendered slide thumbnail; no worker-to-worker arrows.
+- Stage 3 performs “Finalize & render”, then shows “Contact sheet”, then “Review”, then “Final deck”.
+- Draw one solid orange feedback arrow from Review back to Orchestrator and label it exactly “revise plan”.
+- Keep the bottom “Harness” rail as infrastructure.
+- Keep a small legend with solid “enforced” and blue dotted “audited”.
+
+TEXT
+Render only these strings, exactly:
+“1  Prepare”
+“2  Produce pages”
+“3  Assemble & review”
+“User brief”
+“Source files”
+“Material”
+“conditional”
+“Research”
+“required”
+“Orchestrator”
+“Image”
+“optional”
+“Deck plan”
+“Shared style”
+“Page briefs”
+“Page 01”
+“Page 02”
+“Page N”
+“Harness”
+“Finalize & render”
+“Contact sheet”
+“Review”
+“Final deck”
+“revise plan”
+“enforced”
+“audited”
+
+CONSTRAINTS
+No overall title. No new words. No numeric version suffix. No people, mascots, raccoons, robots, branded model marks, Gemini-like star, speech bubbles, red crosses, green checks, rankings, or decorative narrative scenes. Do not copy any reference icon exactly. Preserve a clean left-to-right flow and two-column readability. The orange revision path must remain visually distinct from blue dotted audited paths.

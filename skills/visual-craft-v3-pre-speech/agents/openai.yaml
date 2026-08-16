@@ -1,0 +1,4 @@
+interface:
+  display_name: "PPT HTML Deck Builder"
+  short_description: "Generate polished HTML slide decks"
+  default_prompt: "Use $ppt-skill-html to turn this brief into a polished HTML slide deck."

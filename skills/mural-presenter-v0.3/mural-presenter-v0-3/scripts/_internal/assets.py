@@ -21,3 +21,4 @@ __all__ = [
     "register_user_image",
     "remove_checkerboard",
 ]
+

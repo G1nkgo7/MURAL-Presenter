@@ -95,31 +95,6 @@ The revision router selects the smallest reliable scope:
 - **Group replay** when several related slides or their shared visual language must change.
 - **Deck replan** only when the request changes deck-level decisions or structure.
 
-## Frozen release inference and synthesis profiles (optional)
-
-The frozen Harness has one entrypoint and two explicit execution profiles:
-
-- `--mode inference` is the default serving/WebUI path. It releases consumed image blocks and
-  compacts old active context to reduce repeated tokens and latency while retaining debug traces.
-- `--mode synthesis` is the training-data path. It disables those lossy context-maintenance
-  operations, stores reconstructable per-agent message/image traces, hashes every image snapshot,
-  and rejects the entire sample if the orchestrator or any child trajectory is incomplete.
-
-```bash
-cd harnesses/mural-presenter
-
-# Fast delivery
-uv run python infer.py --query "Create an 8-slide deck" \
-  --batch demo-infer --mode inference
-
-# Lossless training-trajectory synthesis
-uv run python infer.py --input /absolute/path/to/briefs.jsonl \
-  --batch train-synthesis-v1 --workers 4 --mode synthesis
-```
-
-See the [Harness operating guide](harnesses/mural-presenter/README.md) for the exact lossless
-boundary, resume rules, output tree, integrity gates, and environment overrides.
-
 ## Run inference (default: MURAL Presenter v0.2)
 
 The recommended inference pair is:
@@ -134,13 +109,6 @@ The Orchestrator selects an instruction edition on its first `SKILL.md` read and
 deck. This routing does **not** determine the output language; the query or a JSONL row's `lang`
 field does.
 
-v0.2 uses the same Skill, model settings, one-Slide-Agent-per-page topology, tools, and quality
-gates in both modes. `--mode inference` is the default and may release consumed images and compact
-old active context. `--mode synthesis` disables those lossy operations and requires complete root
-and child multimodal traces plus a SHA-256 image manifest; an incomplete trajectory is rejected.
-DeepSeek reasoning without a signature is preserved in the saved trajectory but is not replayed
-to the API, while signed reasoning remains replayable.
-
 ```bash
 cd harnesses/mural-presenter-v0.2
 cp .env.example .env                  # fill model credentials; never commit .env
@@ -150,17 +118,12 @@ uv run --no-project playwright install chromium
 # One deck
 uv run --no-project python infer.py \
   --query "Create an 8-slide presentation about RAVE" \
-  --batch demo-v02 --workers 1 --mode inference
+  --batch demo-v02 --workers 1
 
 # JSONL batch: each line contains at least {"qid":"...","query":"..."}
 uv run --no-project python infer.py \
   --queries /absolute/path/to/briefs.jsonl \
   --batch bench-v02 --workers 4
-
-# Lossless multimodal training trajectories
-uv run --no-project python infer.py \
-  --queries /absolute/path/to/briefs.jsonl \
-  --batch synthesis-v02 --workers 4 --mode synthesis
 ```
 
 Optional JSONL fields include `lang`, `slide_count`, and `materials`/`attachments` (an array of
@@ -172,8 +135,8 @@ existing mutable run directory.
 The v0.2 [Harness guide](harnesses/mural-presenter-v0.2/README.md) documents credentials, image
 and search services, vision routing for text-only models, thinking/runtime limits, artifacts, and
 resume behavior. The frozen release pair at `skills/mural-presenter/` +
-`harnesses/mural-presenter/` remains available as a compatibility fallback, but is not the default
-inference path.
+`harnesses/mural-presenter/` remains available for explicit inference/synthesis profile work, but
+is not the default inference path.
 
 ## Why HTML?
 
@@ -202,13 +165,12 @@ evidence boundary and [THREAD-Bench overview](docs/thread-bench.md) for the plan
 | [`webui/`](webui/) | Active SenseNova Present WebUI wired to the canonical root Skill/Harness pair |
 | [`skills/mural-presenter/`](skills/mural-presenter/) | Frozen lifecycle Skill: orchestration contract, role cards, references, assets, and deterministic deck tools |
 | [`harnesses/mural-presenter/`](harnesses/mural-presenter/) | Paired multi-agent execution Harness used by SenseNova Present |
-| [`fonts/`](fonts/) | Allow-listed OFL/open-source fonts required by the public runtime and tests |
 | [`services/api/`](services/api/) | Target extraction boundary between the WebUI and reusable MURAL runtimes |
 | [`scripts/`](scripts/) | Thin future CLI entrypoints; reusable logic belongs in `src/` |
 | [`tests/`](tests/) | Unit, integration, end-to-end, and fixture conventions |
 | [`data/`](data/) | Dataset layout and release rules; generated data is not committed |
 | [`artifacts/`](artifacts/) | Run-artifact contract; generated runs and exports are ignored |
-| [`benchmarks/thread_bench/`](benchmarks/thread_bench/) | Public THREAD-Bench interface contract |
+| [`benchmark/ThreadBench/`](benchmark/ThreadBench/) | Working THREAD-Bench repository: rubrics, judges, case contracts, and aggregation |
 | [`assets/logo/`](assets/logo/) | Primary mascot, compact mark, lockups, and reproducible exports |
 | [`assets/figures/`](assets/figures/) | Publication figures in PNG and PDF |
 | [`docs/`](docs/) | Method, benchmark, branding, and release notes |

@@ -1,0 +1,76 @@
+% !TeX program = xelatex
+\documentclass{article}
+\usepackage{iclr2026_conference,times}
+
+\usepackage{fontspec}
+\usepackage{xeCJK}
+\setCJKmainfont[
+  Path=fonts/,
+  BoldFont=NotoSerifCJKsc-Bold.otf
+]{NotoSerifCJKsc-Regular.otf}
+
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{amssymb}
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{enumitem}
+\usepackage{pifont}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,calc}
+
+\emergencystretch=1.2em
+\setlist{nosep,leftmargin=*}
+\setlength{\textfloatsep}{10pt plus 2pt minus 2pt}
+\setlength{\dbltextfloatsep}{6pt plus 2pt minus 2pt}
+\setlength{\dblfloatsep}{6pt plus 2pt minus 2pt}
+\setlength{\abovecaptionskip}{4pt}
+\setlength{\belowcaptionskip}{0pt}
+% ICLR 模板默认使用 \flushbottom；遇到不可拆分的 [H] 表格时，会把正文块间距
+% 过度拉伸。改为 \raggedbottom，使不可避免的余白只留在页尾。
+\raggedbottom
+
+\definecolor{auditblue}{HTML}{0077BB}
+\definecolor{auditteal}{HTML}{009988}
+\definecolor{auditorange}{HTML}{EE7733}
+
+% The Latin lockup uses explicit optical small capitals so M and P remain prominent.
+\newcommand{\MuralPresenterLogo}{\mbox{M\raisebox{0.08ex}{\scalebox{0.78}{URAL}}P\raisebox{0.08ex}{\scalebox{0.78}{RESENTER}}}}
+\newcommand{\sys}{MuralPresenter}
+\newcommand{\fullsys}{\MuralPresenterLogo}
+\newcommand{\bench}{ThreadBench}
+\hyphenation{ThreadBench}
+\newcommand{\tbd}[1]{\textcolor{auditorange}{\textsc{[TBD-#1]}}}
+% Preserve unique placeholder IDs in source while keeping result tables readable.
+\newcommand{\resulttbd}[1]{\textcolor{auditorange}{\textsc{TBD}}}
+\newcommand{\pilot}[1]{\textcolor{auditteal}{\textsc{#1}}}
+
+\title{\fullsys: Multi-Agent Unified\\
+Reasoning and Authoring for Long-Horizon\\
+Presentations}
+
+\author{Anonymous authors \\ Paper under double-blind review}
+
+%\iclrfinalcopy
+\begin{document}
+
+\maketitle
+\vspace{-0.5em}
+
+\input{chapters/01_introduction_related}
+\input{chapters/02_method}
+\input{chapters/03_benchmark_experiments}
+\input{chapters/04_discussion_conclusion}
+
+\bibliographystyle{iclr2026_conference}
+\bibliography{references}
+
+\appendix
+\input{chapters/05_appendix}
+
+\end{document}

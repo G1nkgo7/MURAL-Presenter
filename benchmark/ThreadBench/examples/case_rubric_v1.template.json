@@ -1,0 +1,62 @@
+{
+  "contract_version": "case_special_rubric_v1",
+  "case_revision": "v001",
+  "case_id": "<replace_with_case_id>",
+  "instruction": "instruction.md",
+  "case_scale": {
+    "min": 0,
+    "max": 100,
+    "aggregation": "arithmetic_mean",
+    "bands": [
+      {
+        "level": "not_met",
+        "min": 0,
+        "max": 19,
+        "description": "几乎没有满足该指标，核心对象缺失、不可用或方向完全错误。"
+      },
+      {
+        "level": "weak",
+        "min": 20,
+        "max": 39,
+        "description": "只满足少量表层要求，主要组成部分缺失或存在严重错误。"
+      },
+      {
+        "level": "partial",
+        "min": 40,
+        "max": 59,
+        "description": "约一半要求得到满足，但仍有影响理解或使用的实质缺漏。"
+      },
+      {
+        "level": "mostly",
+        "min": 60,
+        "max": 79,
+        "description": "大部分要求得到满足，剩余问题清楚可见但未破坏主体。"
+      },
+      {
+        "level": "fully",
+        "min": 80,
+        "max": 100,
+        "description": "完整满足要求；80 是基线完整，90 表示执行扎实，95 表示仅有极小改进空间，100 仅用于无可观察缺陷。"
+      }
+    ]
+  },
+  "review": {
+    "confidence_threshold": 0.7
+  },
+  "criteria": [
+    {
+      "name": "<replace_with_human_readable_criterion_name>",
+      "evaluation_mode": "<visual_or_html>",
+      "criticality": "<standard_or_critical>",
+      "requirement": "<describe_the_observable_requirement_derived_from_the_current_instruction>",
+      "evaluation": "<describe_the_primary_evidence_source_the_exact_checks_allowed_equivalent_expressions_tolerances_explicit_non_requirements_and_failure_examples>",
+      "anchors": {
+        "not_met": "0–19: <describe_what_is_missing_unusable_or_fundamentally_wrong>",
+        "weak": "20–39: <describe_the_small_subset_that_may_be_present_and_the_major_missing_or_wrong_parts>",
+        "partial": "40–59: <describe_roughly_half_completion_with_concrete_material_omissions_or_errors>",
+        "mostly": "60–79: <describe_near_complete_fulfillment_and_the_limited_observable_defects_allowed_in_this_band>",
+        "fully": "80–100: <describe_genuinely_excellent_fulfillment_95_to_99_as_near_benchmark_and_100_as_extremely_rare_with_no_observable_improvement>"
+      }
+    }
+  ]
+}

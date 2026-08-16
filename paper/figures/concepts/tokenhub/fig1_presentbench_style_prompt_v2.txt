@@ -1,0 +1,45 @@
+Use case: style-transfer
+Asset type: two-column academic-paper conceptual figure
+
+INPUT ROLES
+- Image 1 is the edit target and the sole source of semantic content, labels, panel order, objects, and arrow relationships.
+- Image 2 is a visual-style reference only. Learn its high-level graphical grammar, but do not copy its characters, logos, exact icons, wording, or layout.
+
+PRIMARY REQUEST
+Restyle Image 1 as a polished PresentBench-inspired academic comparison figure while preserving its complete three-panel topology.
+
+STYLE TO TRANSFER
+- Three large softly tinted comparison regions with thick, rounded, color-matched outer borders.
+- Equal visual weight for all three panels.
+- Pale rose-gray for Sequential, pale warm cream for Full-context parallel, and pale mint-blue for SensePresenter; use colors as organization only, never as good/bad judgment.
+- Large dark academic serif panel headers, compact highly legible sans-serif supporting labels.
+- Concrete but simple flat document and slide illustrations with strong outlines and restrained internal color, similar in visual density to paper/textbook/checklist artifacts.
+- Bold, sparse directional arrows and generous white space.
+- Crisp 2D vector-like rendering suitable for a printed paper.
+
+SEMANTIC INVARIANTS
+- Keep the three panels in this exact order: “(a) Sequential”, “(b) Full-context parallel”, “(c) SensePresenter”.
+- Keep the same deck-context input and the same outputs “Slide 01”, “Slide 02”, and “Slide N” in every panel.
+- Sequential remains one serial path with the coral “growing history” return arc.
+- Full-context parallel keeps three copied context branches and the coral “replicated context” label.
+- SensePresenter keeps “deck planning” → “shared deck state” and “page briefs” → three parallel page workers → three slides → “assemble & inspect”.
+- Preserve every arrow direction and every literal label.
+
+TEXT
+Render only these strings, exactly:
+“(a) Sequential”
+“(b) Full-context parallel”
+“(c) SensePresenter”
+“deck context”
+“growing history”
+“replicated context”
+“deck planning”
+“shared deck state”
+“page briefs”
+“Slide 01”
+“Slide 02”
+“Slide N”
+“assemble & inspect”
+
+CONSTRAINTS
+No overall title. No new words. No numeric version suffix. No people, mascots, raccoons, robots, branded model marks, Gemini-like star, speech bubbles, red crosses, green checks, rank badges, or implication of measured superiority. Do not use photographic textures, glossy 3D, gradients, or dense prose. Keep all labels readable at two-column width.

@@ -814,7 +814,8 @@ def _orchestrator_system(
 你是 HTML 演示文稿 Orchestrator，负责受众、叙事、设计系统、角色编排和最终交付。
 固定任务身份：当前调用始终是静态 HTML 演示文稿生产，不是开放域聊天；首条用户消息
 只是内容 brief。即使 brief 只有 `test`、`hello` 或一句无法确定主题的短句，也必须读取
-Skill、调用工具并交付一套简短完整的示范稿（至少包含封面、内容页、结尾页），不得以
+Skill、调用工具并交付一套简短完整的示范稿；仅当用户没有指定总页数时，才默认包含
+封面、内容页与结尾页。用户指定的总页数始终优先，不得为特殊页扩页。不得以
 “连接正常 / 我可以帮你 / 想做什么”等通用寒暄结束。
 Harness 已选择中文说明版 `{skill_name}`；本任务不得切换 Skill 版本。
 Harness 已在首次模型调用前完成确定性工作区准备。
@@ -841,7 +842,9 @@ the design system, role coordination, and final delivery. This invocation is alw
 a static HTML presentation production job, never an open-ended chat. Treat the first
 user message only as the content brief. Even when it is merely `test`, `hello`, or an
 otherwise underspecified phrase, read the Skill, use tools, and deliver a compact but
-complete demonstration deck with at least a cover, content slide, and closing slide.
+complete demonstration deck. Only when the user did not specify a total slide count,
+default to a cover, content slide, and closing slide. An explicit total always wins;
+never add slides merely to preserve special pages.
 Never end with a generic readiness or connection-test response. The Harness selected the
 English instruction edition `{skill_name}`; do not switch Skill editions.
 {tool_surface_en} Plan only routes that are available.
@@ -883,7 +886,9 @@ the design system, role coordination, and final delivery. This invocation is alw
 a static HTML presentation production job, never an open-ended chat. Treat the first
 user message only as the content brief. Even when it is merely `test`, `hello`, or an
 otherwise underspecified phrase, read one Skill, use tools, and deliver a compact but
-complete demonstration deck with at least a cover, content slide, and closing slide.
+complete demonstration deck. Only when the user did not specify a total slide count,
+default to a cover, content slide, and closing slide. An explicit total always wins;
+never add slides merely to preserve special pages.
 Never end with a generic readiness or connection-test response.
 Runtime tool surface: web_search/web_extract are {'enabled' if search_enabled else 'disabled'};
 image_generate is {'enabled' if image_generation_enabled else 'disabled'}. Plan only routes that are available.
@@ -1240,11 +1245,14 @@ class Agent:
         self.role_card_injected = bool(role_card)
         if self.role == "research" and _is_current_variant_skill_name(self.skill_name):
             self.research_brief_char_limit = tools.research_brief_char_limit(self)
+            _hard_ceiling = tools.research_brief_hard_ceiling(self)
             self.system = (
                 f"{self.system.rstrip()}\n\n"
-                "Harness 交接约束：`research/knowledge-brief.md` 本任务最多 "
-                f"{self.research_brief_char_limit} 字符；这只是上限，不是长度目标。"
-                "每条事实只保留一次。首次成功写入唯一 brief 后，本 Research 会话由 "
+                "Harness 交接约束：`research/knowledge-brief.md` 推荐预算 "
+                f"{self.research_brief_char_limit} 字符，绝对安全上限 "
+                f"{_hard_ceiling} 字符。6–12 KB 为目标，不要故意写满。"
+                "首次写入超出推荐预算但未达绝对上限时仍被接受并立即锁定，不允许重写。"
+                "首次成功写入唯一 brief 后，本 Research 会话由 "
                 "Harness 确定性收口，不要继续搜索、重复写或另写总结。\n"
             )
         else:
@@ -1358,6 +1366,7 @@ class Agent:
 
         self.final_text = ""
         self.exit_reason: str | None = None
+        self.turn = 0
         self.peak_input_tokens = 0
         self.last_input_tokens = 0
         self.forced_summary = False
@@ -1420,6 +1429,8 @@ class Agent:
         # Agent; it must not be confused with review_r2/review_r3 retries.
         self.review_revision_rounds = 0
         self.review_mutation_since_contact_scan = False
+        self.review_patches_since_finalize = 0
+        self.review_closure_only = False
         self.revision_route = ""
         self.ownership_topology = ""
 
@@ -1704,6 +1715,33 @@ def _messages_for_model(messages: list[dict]) -> list[dict]:
     return replay if changed else messages
 
 
+REVIEW_CLOSURE_ONLY_TURN_FRACTION = 0.70
+REVIEW_CLOSURE_TAIL_BUDGET = 6
+
+
+def _review_should_enter_closure_only(agent: Agent, turn: int) -> bool:
+    """Return whether Review should be restricted to closure-only tools.
+
+    Trigger only when Review has unfinalized patches and has used at least 70%
+    of its turn budget. Individual patch calls are implementation operations,
+    not effective pixel revision rounds; the authoritative three-round limit is
+    ``review_revision_rounds``.
+
+    This is a process safety rail that prevents unbounded mutation loops.
+    """
+    if str(getattr(agent, "role", "") or "").lower() != "review":
+        return False
+    if bool(getattr(agent, "review_closure_only", False)):
+        return True
+    patches = int(getattr(agent, "review_patches_since_finalize", 0) or 0)
+    if patches == 0:
+        return False
+    budget = agent.max_turns
+    if turn >= int(budget * REVIEW_CLOSURE_ONLY_TURN_FRACTION):
+        return True
+    return False
+
+
 def _review_budget_pending_page_views(agent: Agent) -> list[int]:
     """Return required pages whose current pixels still need final inspection."""
     if str(getattr(agent, "role", "") or "").lower() != "review":
@@ -1747,6 +1785,26 @@ def _call(
 ):
     visible_tools = agent.tool_schemas if with_tools else None
     model_messages = _messages_for_model(messages)
+    if str(getattr(agent, "role", "") or "").lower() == "slide":
+        # A Grouped owner closes one page at a time.  Keep this state on the
+        # Agent so the tool layer can reject out-of-order writes/renders even
+        # when a model emits several calls in one response.
+        agent.active_slide_page = _slide_group_active_page(agent)
+        if with_tools and int(agent.active_slide_page or 0) > 0:
+            model_messages = [
+                *model_messages,
+                {
+                    "role": "user",
+                    "content": (
+                        "[Harness grouped page cursor] Finish the current full-resolution "
+                        f"page loop for P{int(agent.active_slide_page):02d} before authoring "
+                        "or rendering another member. A page closes only on a current-hash "
+                        "ready verdict, or after its three checked states are exhausted and "
+                        "the open issue is preserved for Review. The group contact sheet is "
+                        "a later cross-page consistency check and cannot overrule this page."
+                    ),
+                },
+            ]
     if (
         with_tools
         and str(getattr(agent, "role", "") or "").lower() == "image"
@@ -1823,6 +1881,37 @@ def _call(
         agent.log(
             "[final delivery stop line] tools hidden after current reviewed delivery: "
             + delivery_close_status
+        )
+    REVIEW_CLOSURE_ONLY_TOOLS = {"terminal", "vision_analyze"}
+    if (
+        with_tools
+        and not delivery_close_status
+        and _review_should_enter_closure_only(agent, int(getattr(agent, "turn", 0) or 0))
+    ):
+        agent.review_closure_only = True
+        visible_tools = [
+            schema for schema in (visible_tools or [])
+            if schema.get("name") in REVIEW_CLOSURE_ONLY_TOOLS
+        ]
+        model_messages = [
+            *model_messages,
+            {
+                "role": "user",
+                "content": (
+                    "[Harness closure-only mode] You have unfinalized patches and are "
+                    "approaching the turn budget. Only finalize and Vision inspection "
+                    "are available now.\n"
+                    "Required sequence: (1) finalize current files, (2) inspect the new "
+                    "contact sheet and every changed/required page at full resolution, "
+                    "(3) return structured status: ready or needs_improvement.\n"
+                    "Do NOT attempt further patches — they will be rejected."
+                ),
+            },
+        ]
+        agent.log(
+            "[review closure-only] patch/read_file removed; "
+            f"patches_since_finalize={agent.review_patches_since_finalize} "
+            f"turn={agent.turn}/{agent.max_turns}"
         )
     if with_tools and pending is not None:
         required_path, required_offset = pending
@@ -2365,7 +2454,7 @@ def _slide_assignment_envelope(
     if normalize_language(language) == "zh":
         contract = (
             f"[Harness 页面所有权合同] 本 Agent 唯一且完整负责：{labels}。"
-            "结构化 pages 高于下方自然语言 goal；即使 goal 只点名其中一页，也必须完成"
+            "结构化 pages 高于前面的自然语言 goal；即使 goal 只点名其中一页，也必须完成"
             "全部分配页的 HTML、render 与当前像素检查。"
         )
         if group_id:
@@ -2377,7 +2466,7 @@ def _slide_assignment_envelope(
     else:
         contract = (
             f"[Harness page-ownership contract] This Agent exclusively owns all of: {labels}. "
-            "The structured pages field overrides narrower wording in the free-form goal; "
+            "The structured pages field overrides narrower wording in the preceding free-form goal; "
             "author, render, and inspect every assigned page."
         )
         if group_id:
@@ -2385,7 +2474,14 @@ def _slide_assignment_envelope(
                 f" This is the `{group_id}` visual-memory group; after all members are complete, "
                 "run render-group, inspect the current group contact sheet, and close group coherence."
             )
-    return f"{contract}\n\n{task}"
+    # Keep the authoritative ownership receipt *after* the model-authored
+    # free-form goal.  A real run (#165) delegated bookends [01,10] while the
+    # goal's last paragraph incorrectly claimed that P10 was already complete.
+    # Smaller models followed that later sentence and never authored P10 even
+    # though the leading receipt said otherwise.  Repeating the compact,
+    # structured contract at the end resolves the prompt conflict without
+    # parsing or rejecting the Orchestrator's prose.
+    return f"{task}\n\n{contract}"
 
 
 def _persisted_trace_attempts(parent: Agent, label: str) -> int:
@@ -2573,27 +2669,65 @@ def _run_child(parent: Agent, index: int, spec: dict) -> dict:
             "由 Slide 降级并交给最终 Review。"
         )
         child.finish_snapshot()
+    review_stale_pixels = (
+        role == "review"
+        and not ok
+        and _is_durable_review_exit(child.exit_reason)
+        and int(getattr(child, "review_patches_since_finalize", 0) or 0) > 0
+    )
+    if review_stale_pixels:
+        child.final_text = (
+            "status: needs_orchestrator\n"
+            "pages: stale — mutations after last finalize\n"
+            "issue_type: review_incomplete_current_pixels\n"
+            "evidence: Review ended with unfinalized mutations; "
+            f"exit_reason={child.exit_reason}, "
+            f"patches_since_finalize={child.review_patches_since_finalize}\n"
+            "proposed_fix: resumable closure — finalize current files and "
+            "inspect current pixels before delivery\n"
+            "blocking: no\n"
+            "final_pixels_inspected: no"
+        )
+        child.exit_reason = "review_incomplete_current_pixels"
+        child.log(
+            "[review incomplete pixels] Review ended with unfinalized mutations; "
+            f"patches_since_finalize={child.review_patches_since_finalize}"
+        )
+        child.finish_snapshot()
     if (
         role == "review"
         and not ok
-        and str(child.exit_reason or "")
-        in {"incomplete_closure", "stalled_repetition", "max_turns"}
-        and _review_has_current_inspected_delivery(child)
+        and not review_stale_pixels
+        and _is_durable_review_exit(child.exit_reason)
+        and _review_has_current_contact_delivery(child)
     ):
+        fullres_complete = _review_has_current_inspected_delivery(child)
+        review_gap = _review_required_view_gap(child)
         findings = _review_manifest_quality_findings(child)
         open_issues = _open_vision_issues(child)
         evidence_parts = [
             f"bounded Review ended with {child.exit_reason}",
             "the latest finalize succeeded",
-            "the current contact sheet and every mandatory full-resolution page were inspected",
+            (
+                "the current contact sheet and every mandatory full-resolution page were inspected"
+                if fullres_complete
+                else "the current contact sheet was inspected but mandatory full-resolution coverage is incomplete"
+            ),
         ]
+        if review_gap and not fullres_complete:
+            evidence_parts.append("unclosed Review coverage: " + review_gap[:900])
         if findings:
             evidence_parts.append("deterministic findings remain: " + "; ".join(findings))
         if open_issues:
             evidence_parts.append(f"open Vision issues remain: {len(open_issues)}")
+        pages_text = (
+            "inspected delivery surface"
+            if fullres_complete
+            else "current contact sheet; incomplete mandatory full-resolution coverage"
+        )
         child.final_text = (
             "status: needs_orchestrator\n"
-            "pages: inspected delivery surface\n"
+            f"pages: {pages_text}\n"
             "issue_type: bounded_review_incomplete\n"
             "evidence: " + "; ".join(evidence_parts) + "\n"
             "proposed_fix: retain the current usable deck and address the remaining issue ledger in a later edit\n"
@@ -2602,8 +2736,9 @@ def _run_child(parent: Agent, index: int, spec: dict) -> dict:
         )
         child.exit_reason = "needs_orchestrator"
         child.log(
-            "[durable review handoff] Review 在有当前 finalize 与完整必看像素证据后"
-            "触发有界止损；保留为 needs_improvement，不创建相同输入的 Review。"
+            "[durable review handoff] Review 已有当前 finalize 与整册联系表证据；"
+            "触发有界止损时，未完成的必看单页显式保留为 needs_improvement，"
+            "不创建相同输入的 Review，也不把部分检查冒充 ready。"
         )
         child.finish_snapshot()
     material_status = ""
@@ -2713,7 +2848,7 @@ def _run_child(parent: Agent, index: int, spec: dict) -> dict:
                 "[quality downgrade] Review 的普通 ready 不能覆盖当前 render.json 中"
                 "仍存在的确定性质量问题或未关闭 Vision issue；降级为 needs_improvement。"
             )
-        if review_status == "needs_orchestrator" or review_gap:
+        if (review_status == "needs_orchestrator" or review_gap) and not review_stale_pixels:
             ok = False
             child.exit_reason = (
                 "needs_orchestrator"
@@ -2988,15 +3123,20 @@ def _open_vision_issues(parent: Agent) -> list[dict]:
         return []
     return [
         dict(item) for item in payload.get("issues", [])
-        if isinstance(item, dict) and item.get("status") == "open"
+        if (
+            isinstance(item, dict)
+            and item.get("status") == "open"
+            and isinstance(item.get("page"), int)
+            and not isinstance(item.get("page"), bool)
+            and int(item.get("page")) > 0
+        )
     ] if isinstance(payload, dict) else []
 
 
 def _mandatory_fullres_review_pages(parent: Agent) -> set[int]:
-    """Image-heavy, dense, and deterministically flagged pages need full pixels."""
+    """Identity-critical and high-confidence flagged pages need full pixels."""
     root = Path(parent.ws)
     pages: set[int] = set()
-    page_types: dict[int, str] = {}
     for path in sorted((root / "plan").glob("slide_[0-9][0-9].md")):
         try:
             text = path.read_text(encoding="utf-8", errors="replace")
@@ -3006,48 +3146,17 @@ def _mandatory_fullres_review_pages(parent: Agent) -> set[int]:
         if not match:
             continue
         page = int(match.group(1))
-        page_type_match = re.search(
-            r"(?mi)^\s*-\s*page_type\s*:\s*([^\s#]+)", text
-        )
-        page_types[page] = (
-            page_type_match.group(1).strip().lower()
-            if page_type_match else "content"
-        )
         if re.search(r"(?mi)^\s*-\s*needs_bitmap\s*:\s*true\s*$", text):
-            pages.add(page)
-        if re.search(r"(?mi)^\s*-\s*composition\s*:\s*(?:matrix|data-focus)\s*$", text):
             pages.add(page)
     try:
         manifest = json.loads((root / "renders/render.json").read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         manifest = {}
-    for row in manifest.get("pages", []) if isinstance(manifest, dict) else []:
-        if not isinstance(row, dict):
-            continue
-        geometry = row.get("geometry") if isinstance(row.get("geometry"), dict) else {}
-        boxes = geometry.get("text_boxes") if isinstance(geometry.get("text_boxes"), list) else []
-        text_chars = sum(len(str(box.get("text") or "")) for box in boxes if isinstance(box, dict))
-        try:
-            page = int(row.get("page"))
-        except (TypeError, ValueError):
-            page = 0
-        # Contact sheets already cover global rhythm and the dedicated special
-        # sheet covers cover/divider/closing pages.  Reserve expensive
-        # full-resolution reads for genuinely dense content instead of making
-        # ordinary metadata-heavy covers mandatory merely because they contain
-        # ten small text nodes.
-        if (
-            page > 0
-            and page_types.get(page, "content")
-            not in {"cover", "closing", "section-divider"}
-            and (len(boxes) >= 14 or text_chars >= 900)
-        ):
-            pages.add(page)
-    geometry = manifest.get("special_page_geometry") if isinstance(manifest, dict) else {}
-    for warning in geometry.get("warnings", []) if isinstance(geometry, dict) else []:
-        match = re.search(r"\bpage\s+(\d+)\b", str(warning))
-        if match:
-            pages.add(int(match.group(1)))
+    # The contact sheet covers every page. Generic type-size, possible-DOM,
+    # composition and raw-density warnings are model-facing context, not proof
+    # that a full-resolution page is mandatory. Durable Slide/Vision handoffs
+    # are unioned by the caller; only high-confidence manifest findings below
+    # are promoted here.
     layout_defects = manifest.get("layout_defects") if isinstance(manifest, dict) else {}
     if isinstance(layout_defects, dict):
         for page_text, defects in layout_defects.items():
@@ -3119,6 +3228,26 @@ def _review_has_current_inspected_delivery(agent: Agent) -> bool:
     return True
 
 
+def _review_has_current_contact_delivery(agent: Agent) -> bool:
+    """Return whether Review has a current whole-deck delivery surface.
+
+    This is the bounded ``needs_improvement`` floor, not the ``ready`` gate.
+    It requires a successful finalize after the last edit and a fresh
+    whole-deck contact-sheet inspection. Missing mandatory full-resolution
+    pages remain explicit unresolved evidence and can never be promoted to
+    ``ready``, but they also do not make an otherwise usable Deck fail as an
+    infrastructure error after the single Review lifecycle has stopped.
+    """
+    if str(getattr(agent, "role", "") or "").lower() != "review":
+        return False
+    return bool(
+        getattr(agent, "finalize_succeeded", False)
+        and getattr(agent, "final_render_after_review", False)
+        and getattr(agent, "final_view_after_review", False)
+        and getattr(agent, "review_contact_sheet_inspected", False)
+    )
+
+
 def _review_manifest_quality_findings(agent: Agent) -> list[str]:
     """Return current deterministic quality findings that forbid plain ready.
 
@@ -3147,7 +3276,109 @@ def _review_manifest_quality_findings(agent: Agent) -> list[str]:
         )
         if pages:
             findings.append(f"{key}:" + ",".join(pages))
+    console_errors = manifest.get("console_errors") if isinstance(manifest, dict) else None
+    if isinstance(console_errors, list) and console_errors:
+        findings.append(f"console_errors:{len(console_errors)}")
     return findings
+
+
+def _render_console_errors(ws: str) -> list[str]:
+    """Extract top-level console_errors from render.json for Review injection."""
+    try:
+        manifest = json.loads(
+            (Path(ws) / "renders" / "render.json").read_text(encoding="utf-8")
+        )
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return []
+    errors = manifest.get("console_errors") if isinstance(manifest, dict) else None
+    if not isinstance(errors, list) or not errors:
+        return []
+    return [str(e)[:200] for e in errors[:8]]
+
+
+def _pages_with_active_media(ws: str) -> set[int]:
+    """Return page numbers that have Canvas, ECharts, or SVG media in render.json."""
+    try:
+        manifest = json.loads(
+            (Path(ws) / "renders" / "render.json").read_text(encoding="utf-8")
+        )
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return set()
+    pages: set[int] = set()
+    for item in manifest.get("pages", []) if isinstance(manifest, dict) else []:
+        if not isinstance(item, dict):
+            continue
+        geo = item.get("geometry")
+        if not isinstance(geo, dict):
+            continue
+        inv = geo.get("media_inventory", {})
+        if not isinstance(inv, dict):
+            continue
+        kinds = set(inv.get("kinds", []))
+        if kinds.intersection({"canvas", "echarts", "svg"}):
+            page_num = item.get("page") or geo.get("page_number")
+            if isinstance(page_num, int) and page_num > 0:
+                pages.add(page_num)
+    return pages
+
+def _review_typography_evidence(ws: str, language: str) -> str:
+    """Build the typography evidence tag injected into Review task text.
+
+    Pure function: reads render.json from *ws*, formats at most 8 pages with
+    up to 3 items each, returns the full XML tag string or empty string.
+    """
+    try:
+        manifest = json.loads(
+            (Path(ws) / "renders" / "render.json").read_text(encoding="utf-8")
+        )
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return ""
+    typo_flags = manifest.get("typography_flags") if isinstance(manifest, dict) else None
+    if not isinstance(typo_flags, dict) or not typo_flags:
+        return ""
+    severe_summary: list[str] = []
+    for page_key, evidence_list in sorted(typo_flags.items()):
+        if not evidence_list:
+            continue
+        if isinstance(evidence_list, list):
+            items = ", ".join(str(e)[:80] for e in evidence_list[:3])
+        else:
+            items = str(evidence_list)[:200]
+        severe_summary.append(f"P{page_key}: {items}")
+    if not severe_summary:
+        return ""
+    typo_text = "; ".join(severe_summary[:8])
+    if language == "zh":
+        return (
+            "<harness_typography_evidence>"
+            "以下页面在 render.json 中有投影字号"
+            "警告（< 20px 正文/标签/图例），"
+            "属于 Skill 明确禁止的尺寸。不能以"
+            "“有意为之的报告风格”笼统"
+            "关闭；必须针对每页给出像素"
+            "级理由或修复。"
+            f"\n{typo_text}</harness_typography_evidence>"
+        )
+    return (
+        "<harness_typography_evidence>The following pages have projection-"
+        "readability typography warnings (< 20px body/labels/legends) which "
+        "the Skill explicitly prohibits. Generic dismissal such as 'intentional "
+        "report style' is insufficient; provide a page-specific pixel reason or "
+        f"repair.\n{typo_text}</harness_typography_evidence>"
+    )
+
+
+DURABLE_REVIEW_EXIT_REASONS: frozenset[str] = frozenset({
+    "incomplete_closure",
+    "stalled_repetition",
+    "max_turns",
+    "required_review_page_not_inspected",
+})
+
+
+def _is_durable_review_exit(reason: str) -> bool:
+    """Return whether a Review exit reason qualifies for durable handoff."""
+    return str(reason or "") in DURABLE_REVIEW_EXIT_REASONS
 
 
 def _auto_retry_unstarted_slide_interruptions(
@@ -3337,6 +3568,29 @@ def _review_verification_allowed(parent: Agent, previous: dict) -> tuple[bool, s
     return True, ""
 
 
+def _reconcile_review_issues_ledger(parent: Agent) -> None:
+    """Sync review-issues.json with current vision state after Review completion."""
+    ledger_path = Path(parent.ws) / "_trace" / "review-issues.json"
+    if not ledger_path.is_file():
+        return
+    try:
+        ledger = json.loads(ledger_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return
+    still_open = [
+        str(issue.get("id"))
+        for issue in _open_vision_issues(parent)
+        if issue.get("id")
+    ]
+    ledger["open_vision_issue_ids"] = still_open
+    if not still_open:
+        for issue in ledger.get("issues", []):
+            if isinstance(issue, dict) and issue.get("status") == "repair_required":
+                issue["status"] = "closed_by_review"
+        ledger["status"] = "resolved"
+    _write_json(ledger_path, ledger)
+
+
 def _invalidate_review_after_image_repair(parent: Agent) -> None:
     """Reopen Review after its external asset repair changed the deck."""
     parent.review_completed = False
@@ -3413,8 +3667,6 @@ def _orchestrator_delivery_close_status(agent: Agent) -> str:
     )
     repair_state = Path(agent.ws) / "_trace" / "image-repair-state.json"
     if issue_type == "asset_quality" and not repair_state.is_file():
-        # One explicit cross-role route remains. Do not force delivery before
-        # the Orchestrator has had a chance to consume it.
         return ""
     return str(getattr(agent, "quality_status", "") or "ready")
 
@@ -3442,6 +3694,8 @@ def _review_preflight_repair_pages(parent: Agent) -> tuple[int, ...]:
             "_validate_page_css",
             "page css",
             "fragment contract",
+            "changed scaffold-owned",
+            "root classes",
         )
     ):
         return ()
@@ -3492,8 +3746,8 @@ def _revision_delegation_error(parent: Agent, specs: list[dict]) -> str:
             encoding="utf-8", errors="replace"
         ).strip():
             return (
-                "复杂编辑路由尚未建立影响图。先只读检查现有计划、页面、素材、讲稿与渲染，"
-                "把事实、叙事、页序、全局样式、素材、页面和讲稿的影响范围写入 "
+                "复杂编辑路由尚未建立影响图。先只读检查现有计划、页面、素材、逐页计划中的初版口语讲稿与渲染，"
+                "把事实、叙事、页序、全局样式、素材、页面和初版口语讲稿的影响范围写入 "
                 "`plan/revision-impact.md`，再只委派实际受影响的角色。"
             )
         parent.revision_route = "complex_edit"
@@ -3603,6 +3857,10 @@ def _delegate(parent: Agent, args: dict) -> str:
             )
         repair_issues = _pending_slide_repair_issues(parent)
         vision_issues = _open_vision_issues(parent)
+        console_errors = _render_console_errors(parent.ws)
+        console_error_pages = (
+            _pages_with_active_media(parent.ws) if console_errors else set()
+        )
         required_pages = sorted(
             {
                 int(page)
@@ -3614,9 +3872,10 @@ def _delegate(parent: Agent, args: dict) -> str:
                 for issue in vision_issues
                 if isinstance(issue.get("page"), int) and issue["page"] > 0
             }).union(_mandatory_fullres_review_pages(parent)).union(review_preflight_pages)
+            .union(console_error_pages)
         )
         spec["required_review_pages"] = required_pages
-        if required_pages:
+        if required_pages or console_errors:
             ledger_path = Path(parent.ws) / "_trace" / "review-issues.json"
             injected_issues = {
                 "required_review_pages": required_pages,
@@ -3630,6 +3889,8 @@ def _delegate(parent: Agent, args: dict) -> str:
                     for issue in vision_issues
                 ],
             }
+            if console_errors:
+                injected_issues["console_errors"] = console_errors
             _write_json(
                 ledger_path,
                 {
@@ -3661,6 +3922,11 @@ def _delegate(parent: Agent, args: dict) -> str:
                 "and reopen their current final pixels before returning ready."
                 f"\n<harness_review_issues>{issue_text}</harness_review_issues>"
             )
+        _typo_evidence = _review_typography_evidence(
+            parent.ws, parent.skill_language or "zh"
+        )
+        if _typo_evidence:
+            review_task += "\n" + _typo_evidence
         spec["task"] = review_task
 
     # Labels are durable responsibility identities. A Slide that returned
@@ -4119,7 +4385,23 @@ def _delegate(parent: Agent, args: dict) -> str:
         while jobs:
             job = next(futures.as_completed(tuple(jobs)))
             index = jobs.pop(job)
-            result = job.result()
+            try:
+                result = job.result()
+            except Exception as child_exc:  # noqa: BLE001
+                spec = specs[index]
+                label = str(spec.get("label") or f"child_{index}")
+                parent.log(
+                    f"[child crash] {label}: {type(child_exc).__name__}: {child_exc}"
+                )
+                result = {
+                    "label": label,
+                    "role": str(spec.get("role", "")).lower(),
+                    "ok": False,
+                    "status": "child_exception",
+                    "exit_reason": "child_exception",
+                    "attempt": _persisted_trace_attempts(parent, label),
+                    "summary": f"{type(child_exc).__name__}: {child_exc}"[-800:],
+                }
             results[index] = result
             if index == image_index and not released:
                 released = True
@@ -4230,6 +4512,16 @@ def _delegate(parent: Agent, args: dict) -> str:
                 "attempt": result.get("attempt"),
             }
     if any(
+        str(spec.get("role", "")).lower() == "review"
+        and str(result.get("exit_reason") or "") == "review_incomplete_current_pixels"
+        for spec, result in zip(specs, results)
+    ):
+        parent.review_terminal_failure = True
+        parent.log(
+            "[review terminal failure] closure tail exhausted with stale pixels; "
+            "deterministic stop — no further tool calls permitted"
+        )
+    if any(
         str(spec.get("role", "")).lower() == "review" and bool(result.get("ok"))
         for spec, result in zip(specs, results)
     ):
@@ -4254,6 +4546,7 @@ def _delegate(parent: Agent, args: dict) -> str:
             parent.finalize_failure = str(
                 review_result.get("finalize_failure") or ""
             )[-1200:]
+        _reconcile_review_issues_ledger(parent)
     if any(
         str(spec.get("role", "")).lower() == "material" and bool(result.get("ok"))
         for spec, result in zip(specs, results)
@@ -4429,8 +4722,97 @@ def _rendered_pages_from_command(command: str) -> set[int]:
     return pages
 
 
+def _grouped_exhausted_page_tool_error(
+    agent: Agent,
+    tool_name: str,
+    args: dict,
+) -> str:
+    """Freeze only exhausted Group members while siblings remain editable.
+
+    The three checked authoring states are page-local.  Hiding every tool when
+    one Group member reaches that line strands unfinished siblings; leaving all
+    tools open lets the model blindly mutate the exhausted page.  This helper
+    takes the middle path: preserve that page's last verified bytes and point
+    the same Agent at the next unfinished member.  It is a lifecycle guard, not
+    an aesthetic acceptance gate.
+    """
+    if str(getattr(agent, "role", "") or "").lower() != "slide":
+        return ""
+    assigned = tuple(
+        int(page) for page in (getattr(agent, "assigned_slide_pages", ()) or ())
+    )
+    if len(assigned) < 2 or not str(
+        getattr(agent, "slide_group_id", "") or ""
+    ).strip():
+        return ""
+
+    target_pages: set[int] = set()
+    if tool_name in {"write_file", "patch"}:
+        normalized = str(args.get("path") or "").replace("\\", "/").lstrip("./")
+        match = re.fullmatch(r"slides/slide_(\d+)\.html", normalized)
+        if match:
+            target_pages.add(int(match.group(1)))
+    elif tool_name == "terminal":
+        command = str(args.get("command") or args.get("cmd") or "")
+        # render-group is the required cached consistency pass after every
+        # member has closed; it must remain available even though it mentions
+        # the already-frozen pages.
+        if not re.search(r"(?:deck|slide)\.py\s+render-group\s+\.", command):
+            target_pages.update(_rendered_pages_from_command(command))
+    if not target_pages:
+        return ""
+
+    exhausted: list[int] = []
+    for page in sorted(target_pages.intersection(assigned)):
+        used, limit = _page_render_budget(
+            Path(agent.ws),
+            page,
+            str(getattr(agent, "trace_label", "") or ""),
+        )
+        if limit and used >= limit:
+            exhausted.append(page)
+    if not exhausted:
+        return ""
+
+    next_page = _slide_group_active_page(agent)
+    if normalize_language(
+        str(getattr(agent, "response_language", "") or "")
+    ) == "en":
+        continuation = (
+            f" Continue with P{next_page:02d} now; its independent page budget and tools remain available."
+            if next_page and next_page not in exhausted
+            else " Continue with the next unfinished Group member, then run render-group."
+        )
+        return (
+            "tool sequence reminder [group_page_frozen]: "
+            + ", ".join(f"P{page:02d}" for page in exhausted)
+            + " already used its three checked authoring states. Preserve its last "
+            "verified HTML/PNG and leave its open issue for final Review; this call "
+            "was not executed."
+            + continuation
+        )
+    continuation = (
+        f"现在继续 P{next_page:02d}；其独立页面预算和工具仍可使用。"
+        if next_page and next_page not in exhausted
+        else "继续下一个未完成的组成员，最后运行 render-group。"
+    )
+    return (
+        "tool sequence 提醒[group_page_frozen]："
+        + "、".join(f"P{page:02d}" for page in exhausted)
+        + " 已用完三个有效像素状态。保留该页最后一次已验证的 HTML/PNG，"
+        "将开放问题交给最终 Review；本次调用未执行。"
+        + continuation
+    )
+
+
 def _delegate_task(parent: Agent, args: dict) -> str:
     """Map Hermes' singular delegation surface to presentation roles."""
+    if bool(getattr(parent, "review_terminal_failure", False)):
+        return (
+            "delegate_task 错误[review_closure_failed]：Review closure tail 已耗尽，"
+            "当前像素仍为 stale。这是确定性终止——不允许任何后续委派。"
+            "请立即以 review_closure_failed 结束。"
+        )
     incomplete_read = tools.pending_read_error(parent)
     if incomplete_read:
         return f"delegate_task 错误：{incomplete_read}"
@@ -4900,6 +5282,15 @@ def _tool_results(agent: Agent, tool_uses, turn: int, tool_log: list[dict]) -> l
                 )
             elif (
                 agent.role == "orchestrator"
+                and bool(getattr(agent, "review_terminal_failure", False))
+            ):
+                value = (
+                    "tool sequence 错误[review_closure_failed]：Review closure tail "
+                    "已耗尽且像素仍为 stale；确定性终止已激活，所有后续工具不执行。"
+                    "请立即结束。"
+                )
+            elif (
+                agent.role == "orchestrator"
                 and _orchestrator_delivery_close_status(agent)
             ):
                 value = (
@@ -4954,6 +5345,15 @@ def _tool_results(agent: Agent, tool_uses, turn: int, tool_log: list[dict]) -> l
                     "有效像素状态已经完成；本批次后续工具未执行。请结束当前责任单元，"
                     "由最终 Review 接手已经存在的未关闭问题。"
                 )
+            elif (
+                agent.role == "slide"
+                and (
+                    grouped_freeze_error := _grouped_exhausted_page_tool_error(
+                        agent, use.name, args
+                    )
+                )
+            ):
+                value = grouped_freeze_error
             elif (
                 agent.role == "slide"
                 and _slide_pending_render_views(agent)
@@ -5088,7 +5488,15 @@ def _tool_results(agent: Agent, tool_uses, turn: int, tool_log: list[dict]) -> l
                         if existing.startswith("Deterministic layout defects unresolved: ")
                         else vision_reason
                     )
-                elif str(agent.repair_required_reason).startswith(prefix):
+                elif (
+                    str(agent.repair_required_reason).startswith(prefix)
+                    and re.search(r"(?:^|/)renders/slide_0*\d+\.png$", source_key)
+                    and not _unresolved_vision_critic_issues(agent)
+                ):
+                    # A ready group montage cannot erase a finer page-local
+                    # finding. Clear the transient reason only after the
+                    # repaired full-resolution page itself closes every
+                    # current-hash Critic obligation.
                     agent.repair_required_reason = ""
         if (
             local_revision_reviewer
@@ -5115,6 +5523,8 @@ def _tool_results(agent: Agent, tool_uses, turn: int, tool_log: list[dict]) -> l
             agent.finalize_attempted = True
             agent.finalize_succeeded = tool_succeeded
             agent.finalize_failure = "" if tool_succeeded else value_text[-1200:]
+            if tool_succeeded and agent.role == "review":
+                agent.review_patches_since_finalize = 0
             if local_revision_reviewer and tool_succeeded:
                 agent.final_render_after_review = True
                 agent.review_completed = bool(agent.final_view_after_review)
@@ -5239,6 +5649,9 @@ def _tool_results(agent: Agent, tool_uses, turn: int, tool_log: list[dict]) -> l
         ):
             agent.review_changed = True
             agent.review_mutation_since_contact_scan = True
+            agent.review_patches_since_finalize = int(
+                getattr(agent, "review_patches_since_finalize", 0) or 0
+            ) + 1
             agent.final_render_after_review = False
             agent.final_view_after_review = False
             agent.finalize_succeeded = False
@@ -5427,13 +5840,23 @@ def _update_vision_issue_ledger(
     ):
         return
     if (
-        str(getattr(agent, "role", "") or "").lower() == "review"
+        str(getattr(agent, "role", "") or "").lower() in {"review", "slide"}
         and re.fullmatch(
             r"renders/contact-sheet(?:-[a-z0-9_-]+)?\.png",
             normalized_source,
             flags=re.I,
         )
     ):
+        return
+    page_match = re.search(
+        r"(?:^|/)renders/slide_0*(\d+)\.png$", normalized_source, flags=re.I
+    )
+    # Source documents, attachment page renders, catalog assets and contact
+    # sheets are diagnostic surfaces owned by Material/Image.  They may guide
+    # acquisition, but only current authored slide pixels are durable Review
+    # obligations.  Persisting source findings as page=None made an immutable
+    # paper defect look like an uncloseable final-page defect.
+    if not page_match:
         return
     path = Path(agent.ws) / "_trace" / "vision-issues.json"
     try:
@@ -5443,8 +5866,7 @@ def _update_vision_issue_ledger(
     records = payload.get("issues") if isinstance(payload, dict) else None
     if not isinstance(records, list):
         records = []
-    page_match = re.search(r"(?:^|/)renders/slide_0*(\d+)\.png$", source)
-    page = int(page_match.group(1)) if page_match else None
+    page = int(page_match.group(1))
     verdict = str(critic_result.get("verdict") or "uncertain").lower()
     issues = []
     for item in critic_result.get("issues", []):
@@ -5578,6 +6000,61 @@ def _page_render_budget(
     )
 
 
+def _slide_page_current_verdict(agent: Agent, page: int) -> str:
+    """Return the Critic verdict for the current full-resolution page bytes."""
+    source = f"renders/slide_{int(page):02d}.png"
+    record = dict(getattr(agent, "vision_critic_results", {}) or {}).get(source)
+    if not isinstance(record, dict):
+        return ""
+    expected = str(record.get("source_sha256") or "")
+    current = _file_content_digest(Path(agent.ws) / source)
+    if not current or (expected and expected != current):
+        return ""
+    return str(record.get("verdict") or "").strip().lower()
+
+
+def _slide_page_authoring_terminal(agent: Agent, page: int) -> bool:
+    """Whether one Grouped member may yield to the next member.
+
+    Page-local full-resolution evidence is authoritative.  A group montage is
+    deliberately absent from this decision: it can judge rhythm/coherence only.
+    """
+    html_path = Path(agent.ws) / "slides" / f"slide_{int(page):02d}.html"
+    current_html = _file_content_digest(html_path)
+    rendered_html = str(
+        dict(getattr(agent, "rendered_output_hashes", {}) or {}).get(int(page), "") or ""
+    )
+    viewed_html = str(
+        dict(getattr(agent, "viewed_output_hashes", {}) or {}).get(int(page), "") or ""
+    )
+    if not current_html or current_html != rendered_html or viewed_html != rendered_html:
+        return False
+    verdict = _slide_page_current_verdict(agent, int(page))
+    if verdict == "ready" and _slide_render_quality_actions(agent, int(page)) == 0:
+        return True
+    used, limit = _page_render_budget(
+        Path(agent.ws), int(page), str(getattr(agent, "trace_label", "") or "")
+    )
+    return bool(limit and used >= limit and verdict in {"repair_required", "uncertain"})
+
+
+def _slide_group_active_page(agent: Agent) -> int:
+    """Return the one page a Grouped Slide owner may currently mutate/render."""
+    if str(getattr(agent, "role", "") or "").lower() != "slide":
+        return 0
+    pages = tuple(int(page) for page in (getattr(agent, "assigned_slide_pages", ()) or ()))
+    if len(pages) < 2 or not str(getattr(agent, "slide_group_id", "") or "").strip():
+        return pages[0] if len(pages) == 1 else 0
+    # Compatibility for recovered legacy receipts that predate per-page path
+    # ownership. New v0.4 children always carry this map.
+    if not hasattr(agent, "expected_output_paths"):
+        return 0
+    for page in pages:
+        if not _slide_page_authoring_terminal(agent, page):
+            return int(page)
+    return 0
+
+
 def _slide_repair_issue(agent: Agent) -> dict | None:
     """Return a structured non-fatal repair handoff for a Slide child."""
     if agent.role != "slide":
@@ -5649,13 +6126,17 @@ def _slide_pending_render_views(agent: Agent) -> tuple[int, ...]:
         return ()
     rendered = dict(getattr(agent, "rendered_output_hashes", {}) or {})
     viewed = dict(getattr(agent, "viewed_output_hashes", {}) or {})
-    return tuple(
+    pending = tuple(
         int(page)
         for page in tuple(getattr(agent, "assigned_slide_pages", ()) or ())
         if str(rendered.get(int(page), "") or "")
         and str(rendered.get(int(page), "") or "")
         != str(viewed.get(int(page), "") or "")
     )
+    active = _slide_group_active_page(agent)
+    if len(tuple(getattr(agent, "assigned_slide_pages", ()) or ())) > 1 and active:
+        return tuple(page for page in pending if page == active)
+    return pending
 
 
 def _slide_pending_group_view(agent: Agent) -> str:
@@ -5664,13 +6145,23 @@ def _slide_pending_group_view(agent: Agent) -> str:
         return ""
     pages = tuple(getattr(agent, "assigned_slide_pages", ()) or ())
     group_id = str(getattr(agent, "slide_group_id", "") or "").strip().lower()
-    if len(pages) < 2 or not group_id or _slide_pending_render_views(agent):
+    if (
+        len(pages) < 2
+        or not group_id
+        or _slide_pending_render_views(agent)
+        or _slide_group_active_page(agent)
+    ):
         return ""
     relative = f"renders/contact-sheet-group-{group_id}.png"
     sheet = Path(agent.ws) / relative
     current_sheet_hash = _file_content_digest(sheet)
     if not current_sheet_hash:
-        return ""
+        # Every member has reached a page-local terminal state, so the only
+        # remaining Group responsibility is to create the consistency sheet.
+        # Returning an empty value here used to let the generic three-state
+        # stop line hide every tool when all members had exhausted their page
+        # budgets, making render-group impossible.
+        return "__render_group_required__"
     rendered = dict(getattr(agent, "rendered_output_hashes", {}) or {})
     if hasattr(agent, "group_rendered_page_hashes"):
         generated_sheet_hash = str(
@@ -5720,11 +6211,20 @@ def _unresolved_vision_critic_issues(agent: Agent) -> list[tuple[str, dict]]:
     for source, record in dict(
         getattr(agent, "vision_critic_results", {}) or {}
     ).items():
+        normalized_source = str(source).replace("\\", "/")
+        # Image may inspect immutable attachment pages to choose a crop. Those
+        # observations are immediate evidence, not deliverables that Image can
+        # repair. Only current catalog assets may keep the Image role open.
+        if (
+            str(getattr(agent, "role", "") or "").lower() == "image"
+            and not normalized_source.startswith("assets/")
+        ):
+            continue
         # Image contact-sheet findings are candidate locators, not final
         # evidence.  Only full-resolution catalog assets may keep Image open.
         if (
             str(getattr(agent, "role", "") or "").lower() == "image"
-            and str(source).replace("\\", "/") == "assets/contact-sheet.png"
+            and normalized_source == "assets/contact-sheet.png"
         ):
             continue
         if (
@@ -5914,10 +6414,10 @@ def _image_required_fullres_gap(agent: Agent) -> str:
             f"failed={sorted(declared_failed)}"
         )
         return ""
-    paths = sorted(set(re.findall(
-        r"(?mi)^\s*-\s*path\s*:\s*(assets/[^\s#]+)\s*$",
-        text,
-    )))
+    # Failed catalog entries are a truthful bounded handoff, not current
+    # deliverables.  Do not reopen visual inspection merely because an old
+    # rejected file still exists at their former path.
+    paths = sorted(set(catalog_ready_paths))
     results = dict(getattr(agent, "vision_critic_results", {}) or {})
     contact_sheet = "assets/contact-sheet.png"
     contact_record = results.get(contact_sheet)
@@ -6650,6 +7150,18 @@ def _finish_gap(agent: Agent) -> str:
             "基础设施中断时才允许一次 operational retry，否则保留明确失败并结束。"
         )
     if not agent.review_completed:
+        review_outcome = dict(getattr(agent, "child_outcomes", {}) or {}).get("review")
+        if (
+            isinstance(review_outcome, dict)
+            and str(review_outcome.get("exit_reason") or "")
+            == "review_incomplete_current_pixels"
+        ):
+            return (
+                "Review 已尝试但因未 finalize 的修改而以 review_incomplete_current_pixels "
+                "结束。当前像素是 stale 的，不能交付。这是一次性诚实失败——不要重复委派 "
+                "Review，不要声称 ready，不要 incomplete_closure 循环。以 Review closure "
+                "failed 诚实结束。"
+            )
         return (
             "Slide 阶段已发生，但唯一 Review 尚未完成。先整册 render，再委派一次 Review；"
             "同一输入上不得创建 review_r2/review_r3。Review 的检查、集中修复和复验在"
@@ -6715,6 +7227,7 @@ def _run_loop_impl(agent: Agent) -> bool:
         trace_messages.append(copy.deepcopy(message))
 
     for turn in range(agent.max_turns):
+        agent.turn = turn
         pending_at_turn_start = tools.pending_read_requirement(agent)
         if pending_at_turn_start is None and turn > 0 and (
             agent.last_input_tokens >= config.HISTORY_COMPACT_INPUT_TOKENS
@@ -6904,6 +7417,20 @@ def _run_loop_impl(agent: Agent) -> bool:
             )
         append_message({"role": "user", "content": tool_results})
         _flush(agent, trace_messages, tool_log)
+        if bool(getattr(agent, "review_terminal_failure", False)):
+            agent.final_text = (
+                "status: failed\n"
+                "issue_type: review_closure_failed\n"
+                "evidence: current pixels stale after bounded closure tail\n"
+                "blocking: yes\n"
+                "final_pixels_inspected: no"
+            )
+            agent.exit_reason = "review_closure_failed"
+            agent.log(
+                "[review_closure_failed] deterministic terminal stop — "
+                "review_terminal_failure flag set, loop exiting"
+            )
+            break
         if _research_handoff_written(agent, calls, tool_results):
             agent.final_text = (
                 "status: ready\n"
@@ -6922,6 +7449,57 @@ def _run_loop_impl(agent: Agent) -> bool:
             break
     else:
         agent.exit_reason = "max_turns"
+
+    # ─── Review closure tail ───────────────────────────────────────────
+    # When Review hits max_turns with unfinalized mutations and closure-only
+    # is already active, grant a bounded tail (same identity, no review_r2)
+    # whose only goal is: finalize + inspect current pixels + return status.
+    if (
+        agent.exit_reason == "max_turns"
+        and str(getattr(agent, "role", "") or "").lower() == "review"
+        and bool(getattr(agent, "review_closure_only", False))
+        and int(getattr(agent, "review_patches_since_finalize", 0) or 0) > 0
+    ):
+        agent.log(
+            f"[review closure tail] granting {REVIEW_CLOSURE_TAIL_BUDGET} "
+            f"extra closure-only turns; patches_since_finalize="
+            f"{agent.review_patches_since_finalize}"
+        )
+        agent.review_closure_tail_used = 0
+        for tail_turn in range(REVIEW_CLOSURE_TAIL_BUDGET):
+            agent.review_closure_tail_used = tail_turn + 1
+            agent.turn = agent.max_turns + tail_turn
+            response = _call(agent, messages, with_tools=True)
+            if response is None:
+                break
+            calls = [b for b in response.content if b.type == "tool_use"]
+            text_parts = [
+                b.text.strip()
+                for b in response.content
+                if b.type == "text" and b.text.strip()
+            ]
+            if text_parts:
+                agent.final_text = text_parts[-1]
+            append_message(
+                {"role": "assistant", "content": agent.blocks(response.content)}
+            )
+            if not calls:
+                agent.exit_reason = "text_response"
+                agent.log("[review closure tail] text response — tail complete")
+                break
+            tool_results = _tool_results(agent, calls, agent.turn, tool_log)
+            append_message({"role": "user", "content": tool_results})
+            _flush(agent, trace_messages, tool_log)
+            if int(getattr(agent, "review_patches_since_finalize", 0) or 0) == 0:
+                agent.log(
+                    "[review closure tail] finalize succeeded in tail — "
+                    "continuing to inspect pixels"
+                )
+        else:
+            agent.log(
+                "[review closure tail exhausted] still stale after "
+                f"{REVIEW_CLOSURE_TAIL_BUDGET} turns"
+            )
 
     if agent.exit_reason == "max_turns":
         append_message({"role": "user", "content": FINAL_PROMPT})
@@ -7510,9 +8088,9 @@ Original raw request:
 First inspect the existing plan, HTML, assets, speech, and current renders read-only. Classify the revision by impact, not page count, and lock exactly one route:
 
 1. Simple edit: the core argument, page order, page responsibilities, cross-page narrative, research/material/image evidence, deck-wide style, fonts, and shared structures all remain valid, and the bounded change is safe on a small known set of pages. Delegate exactly one `Review: mode=simple_edit; ...` containing the user revision, target pages, and invariants. Do not edit Slide HTML yourself and do not delegate Research, Material, Image, Slide, or another Review.
-2. Complex edit: any topic/entity correction, factual or evidence change, narrative/page-order responsibility change, new asset need, global style/font/shared-structure change, or uncertain impact. Before mutation, write `plan/revision-impact.md` mapping impact on facts, narrative, page order, global style, assets, pages, speech, and—when present—production groups. {complex_route_en} After affected pages close, finalize and delegate exactly one `Review: mode=final_review`.
+2. Complex edit: any topic/entity correction, factual or evidence change, narrative/page-order responsibility change, new asset need, global style/font/shared-structure change, or uncertain impact. Before mutation, write `plan/revision-impact.md` mapping impact on facts, narrative, page order, global style, assets, pages, the initial spoken-script sections in per-slide plans, and—when present—production groups. {complex_route_en} After affected pages close, finalize and delegate exactly one `Review: mode=final_review`.
 
-A correction such as changing what the named subject refers to is complex even when phrased in one sentence: rerun entity resolution, update all affected plans/evidence/assets/speech, and rebuild every affected page. Never treat it as a local wording patch. The Harness injects the original query and latest revision separately into Research. Finish with fresh final pixels, synchronized speech, and a rebuilt `present.html`."""
+A correction such as changing what the named subject refers to is complex even when phrased in one sentence: rerun entity resolution, update all affected plans/evidence/assets and the initial spoken-script sections in those plans, then rebuild every affected page. Never edit `speech.md` directly; derive it with `sync-speech`. Never treat the correction as a local wording patch. The Harness injects the original query and latest revision separately into Research. Finish with fresh final pixels, synchronized speech, and a rebuilt `present.html`."""
         return f"""这是对工作区现有静态演示的续编修订，不是从头生成。
 
 最新用户修改要求：
@@ -7524,9 +8102,9 @@ A correction such as changing what the named subject refers to is complex even w
 先只读检查现有 plan、HTML、素材、讲稿与当前渲染，再按影响而非页数锁定且只选择一条路由：
 
 1. 简单编辑：核心论点、页序、页面职责、跨页叙事、Research/Material/Image 证据、整册样式、字体和共享结构都继续有效，且修改范围明确、可在少量已知页面内安全完成。只委派唯一 `Review: mode=simple_edit; ...`，goal 必须包含用户要求、目标页和不可改变项。Orchestrator 不直接改 Slide HTML，也不委派 Research、Material、Image、Slide 或第二个 Review。
-2. 复杂编辑：主题/实体纠正、事实或证据变化、叙事/页序/页面职责变化、新素材需求、全局样式/字体/共享结构变化，或影响范围不确定，任一成立即走此路由。修改前写 `plan/revision-impact.md`，分别列出事实、叙事、页序、全局样式、素材、页面、讲稿以及存在时的 production group 影响。{complex_route_zh}受影响页面闭环后 finalize，最后只委派一次 `Review: mode=final_review`。
+2. 复杂编辑：主题/实体纠正、事实或证据变化、叙事/页序/页面职责变化、新素材需求、全局样式/字体/共享结构变化，或影响范围不确定，任一成立即走此路由。修改前写 `plan/revision-impact.md`，分别列出事实、叙事、页序、全局样式、素材、页面、逐页计划中的初版口语讲稿以及存在时的 production group 影响。{complex_route_zh}受影响页面闭环后 finalize，最后只委派一次 `Review: mode=final_review`。
 
-具名主题指代发生纠正时，即使用户只说一句也属于复杂编辑：必须重新消歧，更新全部受影响的计划、证据、素材和讲稿，并重做每张受影响页，不能当成局部换字。Harness 会把原始 query 和最新修改分别注入 Research。最后以新鲜最终像素、同步讲稿和重建后的 `present.html` 交付。"""
+具名主题指代发生纠正时，即使用户只说一句也属于复杂编辑：必须重新消歧，更新全部受影响的计划、证据、素材与计划中的初版口语讲稿，并重做每张受影响页；禁止直接编辑 `speech.md`，统一由 `sync-speech` 派生，不能当成局部换字。Harness 会把原始 query 和最新修改分别注入 Research。最后以新鲜最终像素、同步讲稿和重建后的 `present.html` 交付。"""
     grouped_instruction_en = ""
     grouped_instruction_zh = ""
     if grouped:
@@ -7567,6 +8145,8 @@ Treat the existing `plan/deck.md`, per-slide plans, HTML, assets, speech, and re
 把现有 `plan/deck.md`、逐页计划、HTML、素材、讲稿和渲染结果视为当前真相源。先定位受影响页面，保留未受影响页面及整册视觉语言；只修改满足追加要求所必需的计划、页面、素材与讲稿。复用已核验的 Research 和素材，只有追加要求带来新的事实或视觉缺口时才补充对应角色。修改后{review_instruction_zh}，确保 `present.html`、`speech.md`、PNG 与计划同步。不要删除、重写或重新设计无关页面。{grouped_instruction_zh}"""
 
 
+
+
 def run_sample(sample_id: str, seed: dict, workspace: str, cfg: dict) -> dict:
     cfg = dict(cfg)
     # Preserve the user's actual request independently from the Orchestrator's
@@ -7576,9 +8156,13 @@ def run_sample(sample_id: str, seed: dict, workspace: str, cfg: dict) -> dict:
         seed.get("user_query") or seed.get("query") or ""
     ).strip()
     try:
-        cfg["_requested_slide_count"] = max(0, int(seed.get("slide_count") or 0))
+        structured_slide_count = max(0, int(seed.get("slide_count") or 0))
     except (TypeError, ValueError):
-        cfg["_requested_slide_count"] = 0
+        structured_slide_count = 0
+    cfg["_requested_slide_count"] = structured_slide_count
+    cfg["_requested_slide_count_source"] = (
+        "seed.slide_count" if structured_slide_count else "unspecified"
+    )
     requested_scope = str(
         seed.get("evidence_scope") or cfg.get("evidence_scope") or ""
     ).strip().lower()

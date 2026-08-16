@@ -1,0 +1,6 @@
+suite,cases,medium,long,ultra,avg_slides,avg_dependency_groups,avg_source_target_checks
+constraint_coordination,10,2,5,3,17.6,5.5,14.7
+cross_slide_state,10,2,5,3,17.4,5.5,14.9
+grounded_synthesis,10,2,5,3,16.7,5.4,12.6
+narrative_logic,10,2,5,3,17.6,5.5,13.6
+visual_system,10,2,5,3,17.4,5.5,14.9

@@ -600,6 +600,13 @@ def _visual_craft_v3_skill(*, speech: bool) -> dict:
         "harness_required_files": required_harness,
         "pairing": f"{skill_key}-paired",
         "caps": ["attachments", "revision", "static_html"] + (["speech"] if speech else []),
+        # PresentBench compares V3 against MURAL under the same operational
+        # concurrency. V3 reads the legacy variable names while MURAL v0.4
+        # reads CLEAN_CHILD_CONCURRENCY/CLEAN_REMOTE_TOOL_CONCURRENCY.
+        "runtime_env": {
+            "MAX_CONCURRENT_CHILDREN": "12",
+            "TURN_TOOL_PARALLEL": "4",
+        },
     }
 
 
@@ -1175,6 +1182,7 @@ def _mural_v04_skill(
         "core/__init__.py",
         "core/agent_loop.py",
         "core/config.py",
+        "core/environment_doctor.py",
         "core/language.py",
         "core/model_call.py",
         "core/render_broker.py",
@@ -1239,6 +1247,9 @@ def _mural_v04_skill(
             "CLEAN_MAX_TOKENS": "40960",
             "CLEAN_MODEL_TIMEOUT": "600",
             "CLEAN_CHILD_WALL_TIMEOUT": "2400",
+            "CLEAN_DOCTOR_LIVE": "1",
+            "CLEAN_DOCTOR_FAIL_ON_CONFIGURED_OPTIONAL": "1",
+            "CLEAN_DOCTOR_CACHE_DIR": str(DATA_DIR / "environment-doctor"),
         },
     }
 

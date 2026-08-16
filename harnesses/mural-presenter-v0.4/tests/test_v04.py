@@ -52,21 +52,29 @@ from core.agent_loop import (  # noqa: E402
     _open_vision_issues,
     _orchestrator_delivery_close_status,
     _persisted_trace_attempts,
+    _reconcile_review_issues_ledger,
+    _render_console_errors,
+    _pages_with_active_media,
     _review_can_complete_needs_improvement,
     _review_budget_pending_page_views,
     _review_in_session_closure_nudge_limit,
+    _review_has_current_contact_delivery,
     _review_has_current_inspected_delivery,
     _review_manifest_quality_findings,
     _review_preflight_repair_pages,
     _review_required_view_gap,
     _review_self_repair_gap,
+    _review_typography_evidence,
     _render_input_digest,
     _review_delivery_fingerprint,
     _review_verification_allowed,
+    _research_handoff_written,
     _revision_delegation_error,
     _revision_prompt,
     _slide_authoring_stop_line,
     _slide_assignment_envelope,
+    _slide_group_active_page,
+    _grouped_exhausted_page_tool_error,
     _slide_pending_group_view,
     _slide_pending_render_views,
     _slide_deliverable_gap,
@@ -77,9 +85,14 @@ from core.agent_loop import (  # noqa: E402
     _unresolved_vision_critic_issues,
     _update_vision_issue_ledger,
     _artifact_completion_retry_allowed,
+    _is_durable_review_exit,
     _page_has_terminal_slide_failure,
     _outcome_for_page,
     _responsibility_pages_from_outcome,
+    _review_should_enter_closure_only,
+    DURABLE_REVIEW_EXIT_REASONS,
+    REVIEW_CLOSURE_ONLY_TURN_FRACTION,
+    REVIEW_CLOSURE_TAIL_BUDGET,
 )
 from core.run_batch import (  # noqa: E402
     _extract_material,
@@ -94,6 +107,81 @@ from core.runtime_capabilities import (  # noqa: E402
 )
 from core.trace_mode import write_trace  # noqa: E402
 from _internal import deck_core  # noqa: E402
+
+
+def test_sync_speech_strips_outer_markdown_fence_and_redundant_label(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    deck = {"language": "zh"}
+    plans = [
+        {
+            "number": 1,
+            "title": "结论",
+            "speech": (
+                "```markdown\n"
+                "讲稿内容\n\n"
+                "请直接朗读这一句，并保留内联 `agent.run()`。\n"
+                "```"
+            ),
+            "evidence": "",
+        }
+    ]
+    monkeypatch.setattr(deck_core, "_load_plans", lambda _root, _expected: (deck, plans))
+
+    deck_core.sync_speech(tmp_path, expected=1)
+
+    speech = (tmp_path / "speech.md").read_text(encoding="utf-8")
+    assert "```" not in speech
+    assert "讲稿内容" not in speech
+    assert "请直接朗读这一句" in speech
+    assert "`agent.run()`" in speech
+
+
+def test_initial_spoken_script_heading_is_canonical_with_legacy_compatibility() -> None:
+    canonical = deck_core._sections(
+        "## 初版口语讲稿\n这是可直接朗读的初版。\n"
+    )
+    english = deck_core._sections(
+        "## Initial spoken script\nThis is directly speakable.\n"
+    )
+    legacy = deck_core._sections("## 讲稿节拍\n旧快照仍可恢复。\n")
+
+    assert canonical["speech"] == "这是可直接朗读的初版。"
+    assert english["speech"] == "This is directly speakable."
+    assert legacy["speech"] == "旧快照仍可恢复。"
+
+
+@pytest.mark.parametrize("role", ["orchestrator", "review"])
+def test_agents_cannot_directly_edit_derived_speech_file(
+    tmp_path: Path,
+    role: str,
+) -> None:
+    class SpeechAgent:
+        skill_name = "mural-presenter-v0.4"
+        label = role
+        ws = str(tmp_path)
+
+        def __init__(self) -> None:
+            self.role = role
+
+        def safe(self, path: str) -> str:
+            return str(tmp_path / path)
+
+    agent = SpeechAgent()
+    write_result = tools.write_file(agent, "speech.md", "manual copy\n")
+    assert "确定性派生" in write_result
+    assert not (tmp_path / "speech.md").exists()
+
+    (tmp_path / "speech.md").write_text("derived\n", encoding="utf-8")
+    patch_result = tools.patch(
+        agent,
+        path="speech.md",
+        old_string="derived",
+        new_string="manual",
+    )
+    assert "确定性派生" in patch_result
+    assert (tmp_path / "speech.md").read_text(encoding="utf-8") == "derived\n"
 
 
 def test_build_config_records_effective_openai_model_endpoint(
@@ -1165,6 +1253,63 @@ def test_divider_with_one_follower_emits_soft_actionable_warning(
     assert "remove the standalone divider" in output
 
 
+def test_solo_cover_with_bookends_passes_validation(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Solo cover with production_group=bookends passes; no warning emitted."""
+    deck = {
+        "ownership_topology": "single",
+        "bitmap_strategy": "not-beneficial",
+        "bitmap_rationale": "all pages are code visual",
+        "language": "en",
+        "warnings": [],
+    }
+    plans = [
+        {"number": 1, "production_group": "bookends", "needs_bitmap": False,
+         "page_type": "cover", "composition_explicit": True,
+         "composition_blueprint": "hero", "composition": "freeform"},
+        {"number": 2, "production_group": "p2", "needs_bitmap": False,
+         "page_type": "content", "composition_explicit": True,
+         "composition_blueprint": "evidence", "composition": "data-focus"},
+    ]
+    with mock.patch.object(
+        deck_core, "_load_plans_for_validation", return_value=(deck, plans)
+    ):
+        assert deck_core.validate_plans(tmp_path, 2) == plans
+    output = capsys.readouterr().out
+    assert "status:PASS" in output
+    assert "solo cover" not in output
+
+
+def test_solo_cover_with_unique_group_emits_soft_warning(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Solo cover with non-bookends group passes but emits a soft warning."""
+    deck = {
+        "ownership_topology": "single",
+        "bitmap_strategy": "not-beneficial",
+        "bitmap_rationale": "all pages are code visual",
+        "language": "en",
+        "warnings": [],
+    }
+    plans = [
+        {"number": 1, "production_group": "cover-hero", "needs_bitmap": False,
+         "page_type": "cover", "composition_explicit": True,
+         "composition_blueprint": "hero", "composition": "freeform"},
+        {"number": 2, "production_group": "p2", "needs_bitmap": False,
+         "page_type": "content", "composition_explicit": True,
+         "composition_blueprint": "evidence", "composition": "data-focus"},
+    ]
+    with mock.patch.object(
+        deck_core, "_load_plans_for_validation", return_value=(deck, plans)
+    ):
+        assert deck_core.validate_plans(tmp_path, 2) == plans
+    output = capsys.readouterr().out
+    assert "status:PASS" in output
+    assert "solo cover" in output
+    assert "bookends is recommended" in output
+
+
 def test_plan_validation_aggregates_deck_and_page_parse_errors(
     tmp_path: Path,
 ) -> None:
@@ -1255,6 +1400,55 @@ def test_slide_write_guard_preserves_scaffold_owned_root_metadata(
             str(page),
             opening + "<main>done</main></section>",
         ) is None
+        assert tools._slide_root_contract_error(
+            agent,
+            "slides/slide_03.html",
+            str(page),
+            opening
+            + "<main><section class=\"finding\"><h2>Result</h2></section>"
+            + "<section class=\"evidence\"><p>Evidence</p></section></main></section>",
+        ) is None
+        sibling = (
+            opening
+            + "<main>done</main></section>"
+            + '<section class="slide"><main>extra root</main></section>'
+        )
+        error = tools._slide_root_contract_error(
+            agent, "slides/slide_03.html", str(page), sibling
+        )
+        assert error and "顶层兄弟节点" in error
+        unbalanced = opening + "<main><section>broken</main></section>"
+        assert tools._slide_root_contract_error(
+            agent, "slides/slide_03.html", str(page), unbalanced
+        )
+
+
+def test_renderer_contract_allows_nested_semantic_sections() -> None:
+    plan = {
+        "number": 5,
+        "page_type": "content",
+        "page_family": "mechanism",
+        "composition": "visual-split",
+        "canvas_variant": "base",
+        "title": "Two techniques",
+        "subtitle": "Evidence and search",
+        "eyebrow": "METHOD",
+        "show_footer": False,
+        "primary_visual_medium": "code-visual",
+    }
+    deck = {"pages": 10, "footer": ""}
+    skeleton = deck_core._slide_skeleton(plan, deck)
+    nested = skeleton.replace(
+        "<!-- SLIDE_AGENT_FILL_END -->",
+        '<section class="tech"><h2>Privileged information</h2></section>\n'
+        '<section class="tech"><h2>Adaptive search</h2></section>\n'
+        "        <!-- SLIDE_AGENT_FILL_END -->",
+    )
+    deck_core._validate_fragment(Path("slide_05.html"), 5, nested, plan, deck)
+
+    sibling = nested + '<section class="slide">extra root</section>'
+    with pytest.raises(ValueError, match="exactly one section fragment"):
+        deck_core._validate_fragment(Path("slide_05.html"), 5, sibling, plan, deck)
 
 
 def test_scaffold_force_cannot_destroy_authored_or_rendered_pages(
@@ -2807,6 +3001,114 @@ def test_single_topology_accepts_only_complete_special_memory_groups(
     assert "P01, P12" in envelope
     assert "必须完成全部分配页" in envelope
     assert "不得把任一成员称为另一个责任单元" in envelope
+    assert envelope.rfind("[Harness 页面所有权合同]") > envelope.rfind(
+        "只制作第 1 页封面。"
+    )
+
+
+def test_solo_bookends_delegation_accepted_at_runtime(
+    tmp_path: Path,
+) -> None:
+    """Solo cover with bookends can be dispatched as group_id=bookends pages=[1]."""
+    plan = tmp_path / "plan"
+    plan.mkdir()
+    (plan / "deck.md").write_text(
+        "# Deck\n## Resolved deck brief\n- ownership_topology: single\n",
+        encoding="utf-8",
+    )
+    (plan / "slide_01.md").write_text(
+        "# P1\n- page_type: cover\n- production_group: bookends\n",
+        encoding="utf-8",
+    )
+    (plan / "slide_02.md").write_text(
+        "# P2\n- page_type: content\n- production_group: p2\n",
+        encoding="utf-8",
+    )
+
+    class Parent:
+        skill_language = "zh"
+        skill_name = "mural-presenter-v0-4"
+        response_language = "zh"
+        query_language_hint = "zh"
+        ws = str(tmp_path)
+
+    with mock.patch("core.agent_loop._delegate", return_value="delegated") as delegate:
+        result = _delegate_task(Parent(), {"tasks": [
+            {"role": "slide", "group_id": "bookends", "pages": [1]},
+        ]})
+    assert result == "delegated"
+    assert delegate.call_args.args[1]["tasks"][0]["label"] == "slide_group_bookends"
+
+
+def test_group_exhausted_page_is_frozen_but_unfinished_sibling_remains_available(
+    tmp_path: Path,
+) -> None:
+    """Regression for deck #165: P01 must not consume or strand P10."""
+    states = tmp_path / "_trace" / "slide-render-states"
+    slides = tmp_path / "slides"
+    renders = tmp_path / "renders"
+    states.mkdir(parents=True)
+    slides.mkdir()
+    renders.mkdir()
+    p1 = slides / "slide_01.html"
+    p10 = slides / "slide_10.html"
+    p1.write_text("<section>verified P1</section>", encoding="utf-8")
+    p10.write_text("<section>scaffold P10</section>", encoding="utf-8")
+    p1_hash = hashlib.sha256(p1.read_bytes()).hexdigest()
+    p1_png = renders / "slide_01.png"
+    p1_png.write_bytes(b"verified-p1-pixels")
+    p1_png_hash = hashlib.sha256(p1_png.read_bytes()).hexdigest()
+    (states / "page_01.json").write_text(
+        json.dumps({
+            "authoring_attempt_limit": 3,
+            "authoring_hashes": ["a", "b", "c"],
+            "attempt_hashes": {"slide_group_bookends": ["a", "b", "c"]},
+        }),
+        encoding="utf-8",
+    )
+    agent = SimpleNamespace(
+        role="slide",
+        ws=str(tmp_path),
+        trace_label="slide_group_bookends",
+        assigned_slide_pages=(1, 10),
+        slide_group_id="bookends",
+        expected_output_paths={1: str(p1), 10: str(p10)},
+        rendered_output_hashes={1: p1_hash},
+        viewed_output_hashes={1: p1_hash},
+        vision_critic_results={
+            "renders/slide_01.png": {
+                "source_sha256": p1_png_hash,
+                "verdict": "repair_required",
+                "issues": [{"type": "missing_chart", "severity": "major"}],
+            }
+        },
+    )
+
+    assert _slide_group_active_page(agent) == 10
+    blocked_patch = _grouped_exhausted_page_tool_error(
+        agent, "patch", {"path": "slides/slide_01.html"}
+    )
+    blocked_render = _grouped_exhausted_page_tool_error(
+        agent,
+        "terminal",
+        {"command": "python skills/mural-presenter-v0-4/scripts/slide.py render . --page 1"},
+    )
+    assert "group_page_frozen" in blocked_patch
+    assert "P10" in blocked_patch
+    assert "group_page_frozen" in blocked_render
+    assert _grouped_exhausted_page_tool_error(
+        agent, "patch", {"path": "slides/slide_10.html"}
+    ) == ""
+    assert _grouped_exhausted_page_tool_error(
+        agent,
+        "terminal",
+        {
+            "command": (
+                "python skills/mural-presenter-v0-4/scripts/slide.py render-group . "
+                "--group bookends --pages 01,10"
+            )
+        },
+    ) == ""
 
 
 def test_single_topology_accepts_one_planned_divider_without_group_id(
@@ -3107,10 +3409,65 @@ def test_ready_minor_vision_observation_does_not_open_blocking_ledger(
             "evidence": "preview grid has an empty cell",
         }],
     })
-    payload = json.loads(
-        (tmp_path / "_trace/vision-issues.json").read_text(encoding="utf-8")
+    assert not (tmp_path / "_trace/vision-issues.json").exists()
+
+
+def test_source_image_findings_never_enter_final_slide_ledger(tmp_path: Path) -> None:
+    agent = SimpleNamespace(
+        ws=str(tmp_path),
+        trace_label="image",
+        role="image",
+        vision_critic_results={
+            "inputs/paper.pdf.pages/page_029.png": {
+                "verdict": "repair_required",
+                "summary": "immutable source label is clipped",
+                "source_sha256": "source-hash",
+            },
+        },
     )
-    assert payload["issues"] == []
+    result = {
+        "verdict": "repair_required",
+        "summary": "the immutable source has a clipped paper label",
+        "scan": {
+            "visible_subjects": ["paper chart"],
+            "text_regions": ["axis label"],
+            "regions": ["plot"],
+            "edges": {edge: "clear" for edge in ("top", "right", "bottom", "left")},
+        },
+        "issues": [{
+            "severity": "major",
+            "type": "source_label_clipping",
+            "location": "right edge",
+            "evidence": "label is clipped in the source paper page",
+        }],
+    }
+    _update_vision_issue_ledger(
+        agent,
+        "inputs/paper.pdf.pages/page_029.png",
+        "source-hash",
+        result,
+    )
+    _update_vision_issue_ledger(
+        agent,
+        "assets/figure9.png",
+        "asset-hash",
+        result,
+    )
+    assert not (tmp_path / "_trace/vision-issues.json").exists()
+    assert _unresolved_vision_critic_issues(agent) == []
+
+    trace = tmp_path / "_trace"
+    trace.mkdir()
+    (trace / "vision-issues.json").write_text(json.dumps({
+        "schema": "mural.vision-issues.v1",
+        "issues": [{
+            "id": "VIS-LEGACY",
+            "status": "open",
+            "page": None,
+            "source": "inputs/paper.pdf.pages/page_029.png",
+        }],
+    }))
+    assert _open_vision_issues(agent) == []
 
 
 def test_image_contact_sheet_is_triage_only_but_fullres_issue_blocks(
@@ -3769,6 +4126,12 @@ def test_review_edit_invalidates_finalize_pixels_and_contact_sheet(
 
     assert agent.review_revision_rounds == 1
     assert not agent.review_mutation_since_contact_scan
+
+    # Re-reading the same finalized contact sheet without a new mutation is
+    # inspection, not another effective repair round.
+    with mock.patch("core.agent_loop.tools.dispatch", return_value=vision_value):
+        _tool_results(agent, [vision_use], 3, [])
+    assert agent.review_revision_rounds == 1
 
 
 def test_review_three_round_stop_line_accepts_current_needs_improvement(
@@ -4652,7 +5015,7 @@ def test_canonical_evidence_pending_reads_auto_continue_without_model_turn(
     assert _auto_continue_read_allowed(agent, path) is expected
 
 
-def test_image_and_dense_pages_are_selected_for_full_resolution_review(
+def test_bitmap_and_high_confidence_findings_select_full_resolution_review(
     tmp_path: Path,
 ) -> None:
     (tmp_path / "plan").mkdir()
@@ -4674,7 +5037,7 @@ def test_image_and_dense_pages_are_selected_for_full_resolution_review(
         encoding="utf-8",
     )
     parent = SimpleNamespace(ws=str(tmp_path))
-    assert _mandatory_fullres_review_pages(parent) == {1, 2, 3}
+    assert _mandatory_fullres_review_pages(parent) == {1, 3}
 
 
 def test_metadata_heavy_cover_is_not_forced_to_fullres_without_warning(
@@ -4702,6 +5065,49 @@ def test_metadata_heavy_cover_is_not_forced_to_fullres_without_warning(
     )
     parent = SimpleNamespace(ws=str(tmp_path))
     assert _mandatory_fullres_review_pages(parent) == set()
+
+
+def test_generic_geometry_warnings_and_dense_composition_are_not_mandatory(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "plan").mkdir()
+    (tmp_path / "renders").mkdir()
+    (tmp_path / "plan/slide_02.md").write_text(
+        "- page_type: content\n- needs_bitmap: false\n- composition: matrix\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "renders/render.json").write_text(json.dumps({
+        "pages": [{"page": 2, "geometry": {
+            "text_boxes": [{"text": "dense" * 200} for _ in range(20)]
+        }}],
+        "special_page_geometry": {"warnings": [
+            "page 2: 20 body leaves below 24px",
+            "page 2: possible DOM text overflow",
+        ]},
+        "layout_defects": {},
+        "media_mismatches": {},
+        "placeholder_flags": {},
+    }), encoding="utf-8")
+    assert _mandatory_fullres_review_pages(
+        SimpleNamespace(ws=str(tmp_path))
+    ) == set()
+
+
+def test_layout_and_placeholder_findings_remain_mandatory(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "plan").mkdir()
+    (tmp_path / "renders").mkdir()
+    (tmp_path / "renders/render.json").write_text(json.dumps({
+        "pages": [],
+        "special_page_geometry": {"warnings": []},
+        "layout_defects": {"03": [{"type": "block_collision"}]},
+        "media_mismatches": {},
+        "placeholder_flags": {"06": ["TODO"]},
+    }), encoding="utf-8")
+    assert _mandatory_fullres_review_pages(
+        SimpleNamespace(ws=str(tmp_path))
+    ) == {3, 6}
 
 
 def test_review_cannot_override_current_vision_critic_repair_required(
@@ -5018,6 +5424,91 @@ def test_group_contact_sheet_view_is_not_shadowed_by_page_same_pixel_guard(
     assert _slide_pending_group_view(agent) == ""
 
 
+def test_group_contact_ready_cannot_override_open_fullres_page_issue(
+    tmp_path: Path,
+) -> None:
+    """Regression for deck #154: page-local pixels outrank the montage."""
+    (tmp_path / "slides").mkdir()
+    (tmp_path / "renders").mkdir()
+    (tmp_path / "_trace/slide-render-states").mkdir(parents=True)
+    for page in (1, 3):
+        (tmp_path / f"slides/slide_{page:02d}.html").write_text(
+            f"<section>P{page}</section>", encoding="utf-8"
+        )
+    p1_html = hashlib.sha256(
+        (tmp_path / "slides/slide_01.html").read_bytes()
+    ).hexdigest()
+    p1_png = tmp_path / "renders/slide_01.png"
+    p1_png.write_bytes(b"p1-overlap-pixels")
+    p1_png_hash = hashlib.sha256(p1_png.read_bytes()).hexdigest()
+    (tmp_path / "_trace/slide-render-states/page_01.json").write_text(
+        json.dumps({
+            "authoring_attempt_limit": 3,
+            "authoring_hashes": [p1_html],
+            "quality_action_count": 0,
+        }),
+        encoding="utf-8",
+    )
+    group_source = "renders/contact-sheet-group-bookends.png"
+    sheet = tmp_path / group_source
+    sheet.write_bytes(b"small-clean-looking-montage")
+    sheet_hash = hashlib.sha256(sheet.read_bytes()).hexdigest()
+    agent = SimpleNamespace(
+        role="slide",
+        skill_name="mural-presenter-v0-4",
+        ws=str(tmp_path),
+        trace_label="slide_group_bookends",
+        assigned_slide_pages=(1, 3),
+        slide_group_id="bookends",
+        bash_timeout=30,
+        expected_output_paths={
+            1: str(tmp_path / "slides/slide_01.html"),
+            3: str(tmp_path / "slides/slide_03.html"),
+        },
+        rendered_output_hashes={1: p1_html},
+        viewed_output_hashes={1: p1_html},
+        group_rendered_contact_hash=sheet_hash,
+        group_rendered_page_hashes={1: p1_html, 3: ""},
+        group_viewed_contact_hash=sheet_hash,
+        group_viewed_page_hashes={1: p1_html, 3: ""},
+        vision_critic_results={
+            "renders/slide_01.png": {
+                "source_sha256": p1_png_hash,
+                "verdict": "repair_required",
+                "summary": "标题与代码块重叠",
+                "issues": [{"type": "text_overlap", "severity": "major"}],
+            },
+            group_source: {
+                "source_sha256": sheet_hash,
+                "verdict": "ready",
+                "summary": "组级节奏整齐，缩略图未见异常",
+                "issues": [],
+            },
+        },
+        repair_required_reason="Vision Critic unresolved: 标题与代码块重叠",
+        active_slide_page=1,
+        role_script="skills/mural-presenter-v0-4/scripts/slide.py",
+        bash_relaxed=False,
+        safe=lambda path: str(tmp_path / path),
+    )
+
+    assert _slide_group_active_page(agent) == 1
+    assert _slide_pending_group_view(agent) == ""
+    assert _unresolved_vision_critic_issues(agent)[0][0] == "renders/slide_01.png"
+    # After #154: no hard group_page_order rejection — write and render
+    # succeed; Skill guides sequencing, Harness only provides soft feedback.
+    result = tools.write_file(
+        agent, "slides/slide_03.html", "<section>premature P3</section>"
+    )
+    assert "group_page_order" not in result
+    render_result = tools.terminal(
+        agent,
+        "python skills/mural-presenter-v0-4/scripts/slide.py render-group . "
+        "--group bookends --pages 01,03",
+    )
+    assert "group_page_order" not in render_result
+
+
 def test_group_contact_sheet_view_is_not_blocked_by_authoring_stop_line(
     tmp_path: Path,
 ) -> None:
@@ -5102,6 +5593,59 @@ def test_group_contact_sheet_view_is_not_blocked_by_authoring_stop_line(
     assert agent.group_viewed_contact_hash == sheet_hash
     assert agent.group_viewed_page_hashes == rendered
     assert _slide_pending_group_view(agent) == ""
+
+
+def test_missing_group_sheet_requires_render_group_before_global_stop_line(
+    tmp_path: Path,
+) -> None:
+    """All terminal members still retain the final group consistency pass."""
+    slides = tmp_path / "slides"
+    renders = tmp_path / "renders"
+    states = tmp_path / "_trace" / "slide-render-states"
+    slides.mkdir()
+    renders.mkdir()
+    states.mkdir(parents=True)
+    rendered: dict[int, str] = {}
+    viewed: dict[int, str] = {}
+    critic: dict[str, dict] = {}
+    for page in (1, 10):
+        html = slides / f"slide_{page:02d}.html"
+        html.write_text(f"<section>finished P{page}</section>", encoding="utf-8")
+        digest = hashlib.sha256(html.read_bytes()).hexdigest()
+        rendered[page] = digest
+        viewed[page] = digest
+        png = renders / f"slide_{page:02d}.png"
+        png.write_bytes(f"pixels-{page}".encode())
+        critic[f"renders/slide_{page:02d}.png"] = {
+            "source_sha256": hashlib.sha256(png.read_bytes()).hexdigest(),
+            "verdict": "repair_required",
+            "issues": [{"type": "bounded_issue", "severity": "major"}],
+        }
+        (states / f"page_{page:02d}.json").write_text(
+            json.dumps({
+                "authoring_attempt_limit": 3,
+                "authoring_hashes": ["a", "b", "c"],
+            }),
+            encoding="utf-8",
+        )
+    agent = SimpleNamespace(
+        role="slide",
+        ws=str(tmp_path),
+        trace_label="slide_group_bookends",
+        assigned_slide_pages=(1, 10),
+        slide_group_id="bookends",
+        expected_output_paths={
+            1: str(slides / "slide_01.html"),
+            10: str(slides / "slide_10.html"),
+        },
+        rendered_output_hashes=rendered,
+        viewed_output_hashes=viewed,
+        vision_critic_results=critic,
+    )
+
+    assert _slide_group_active_page(agent) == 0
+    assert _slide_authoring_stop_line(agent) is True
+    assert _slide_pending_group_view(agent) == "__render_group_required__"
 
 
 def test_group_sheet_provenance_blocks_old_cache_after_member_changes(
@@ -5703,10 +6247,12 @@ def test_research_brief_is_bounded_before_orchestrator_handoff(
         def safe(self, path):
             return str(tmp_path / path)
 
+    agent = ResearchAgent()
+    ceiling = tools.research_brief_hard_ceiling(agent)
     result = tools.write_file(
-        ResearchAgent(),
+        agent,
         "research/knowledge-brief.md",
-        "x" * 12001,
+        "x" * (ceiling + 1),
     )
     assert "knowledge_brief_too_long" in result
     assert not (tmp_path / "research/knowledge-brief.md").exists()
@@ -5762,7 +6308,7 @@ def test_research_brief_range_does_not_parse_date_suffix(tmp_path: Path) -> None
 def test_research_patch_cannot_bypass_brief_ceiling(tmp_path: Path) -> None:
     path = tmp_path / "research/knowledge-brief.md"
     path.parent.mkdir()
-    original = "x" * 11999 + "Z"
+    original = "x" * 19199 + "Z"
     path.write_text(original, encoding="utf-8")
 
     class ResearchAgent:
@@ -5834,7 +6380,9 @@ def test_research_handoff_receipt_recovers_only_exact_accepted_brief(
     assert tools.research_handoff_is_valid(agent) is False
 
 
-def test_research_patch_refreshes_handoff_receipt(tmp_path: Path) -> None:
+def test_research_receipt_locks_brief_against_patch(tmp_path: Path) -> None:
+    """After write_file creates a receipt, subsequent patch is rejected."""
+
     class ResearchAgent:
         role = "research"
         label = "research"
@@ -5852,13 +6400,15 @@ def test_research_patch_refreshes_handoff_receipt(tmp_path: Path) -> None:
     assert "已写入" in tools.write_file(
         agent, "research/knowledge-brief.md", content
     )
-    assert "已编辑" in tools.patch(
+    assert tools.research_handoff_is_valid(agent) is True
+    result = tools.patch(
         agent,
         path="research/knowledge-brief.md",
         old_string="old fact",
         new_string="new fact",
     )
-    assert tools.research_handoff_is_valid(agent) is True
+    assert "knowledge_brief_locked" in result
+    assert (tmp_path / "research/knowledge-brief.md").read_text("utf-8") == content
 
 
 def test_research_blocked_parent_rejects_new_delegation(tmp_path: Path) -> None:
@@ -6576,6 +7126,34 @@ def test_requested_page_count_blocks_added_closing_page(tmp_path: Path) -> None:
 
     correct_deck = "# Deck\n## Resolved deck brief\n- page_count: 8\n"
     assert "已写入" in tools.write_file(agent, "plan/deck.md", correct_deck)
+
+
+def test_structured_slide_count_contract_rejects_wrong_page_count(tmp_path: Path) -> None:
+    (tmp_path / "plan").mkdir()
+
+    class Orchestrator:
+        role = "orchestrator"
+        skill_name = "mural-presenter-v0-4"
+        revision_mode = False
+        requested_slide_count = 1
+        delegated_roles = set()
+        ws = str(tmp_path)
+
+        def safe(self, path):
+            return str(tmp_path / path)
+
+    agent = Orchestrator()
+    three_pages = "# Deck\n## Resolved deck brief\n- page_count: 3\n"
+    assert "page_count_contract" in tools.write_file(
+        agent, "plan/deck.md", three_pages
+    )
+    wrong_validate = (
+        "python skills/mural-presenter-v0-4/scripts/orchestrator.py "
+        "validate-plans . --expected 3"
+    )
+    assert "page_count_contract" in tools.terminal(agent, wrong_validate)
+    one_page = "# Deck\n## Resolved deck brief\n- page_count: 1\n"
+    assert "已写入" in tools.write_file(agent, "plan/deck.md", one_page)
 
 
 def test_explicit_color_exclusion_rejects_renamed_large_surface_only(
@@ -7669,6 +8247,56 @@ def test_image_terminal_exposes_material_figure(tmp_path: Path) -> None:
         "--output assets/figure.png --box 0.1,0.1,0.9,0.35",
     )
     assert '"status": "PASS"' in result
+
+
+def test_image_material_crop_failure_budget_routes_to_code_redraw(tmp_path: Path) -> None:
+    from PIL import Image
+
+    script = (
+        REPO
+        / "skills/mural-presenter-v0.4/mural-presenter-v0-4/scripts/image.py"
+    )
+    page_dir = tmp_path / "inputs/paper.pdf.pages"
+    page_dir.mkdir(parents=True)
+    source = page_dir / "page_005.png"
+    Image.new("RGB", (1600, 2000), "white").save(source)
+    source.with_suffix(".json").write_text(json.dumps({
+        "page_points": [800, 1000],
+        "text_blocks": [{
+            "bbox_pdf": [80, 100, 720, 700],
+            "chars": 1800,
+        }],
+    }))
+
+    class ImageAgent:
+        role = "image"
+        skill_name = "mural-presenter-v0-4"
+        ws = str(tmp_path)
+        render_script = str(script)
+        bash_relaxed = False
+        bash_timeout = 30
+
+    agent = ImageAgent()
+    command = (
+        f"python {script} crop-material . "
+        "--source inputs/paper.pdf.pages/page_005.png "
+        "--output assets/figure2.png --box 0.1,0.1,0.9,0.7"
+    )
+    first = tools.terminal(agent, command)
+    second = tools.terminal(agent, command)
+    third = tools.terminal(agent, command)
+    assert "crop is text-heavy" in first
+    assert "material_crop_route_required" in second
+    assert "material_crop_budget" in third
+    assert "HTML/CSS/SVG/ECharts" in third
+
+    assert "crop_escalation_required" in second
+
+    # Renaming the output must not reset the bounded attachment-page failure pass.
+    renamed = command.replace("assets/figure2.png", "assets/figure2-b.png")
+    assert "crop is text-heavy" in tools.terminal(agent, renamed)
+    renamed_again = command.replace("assets/figure2.png", "assets/figure2-c.png")
+    assert "material_source_crop_budget" in tools.terminal(agent, renamed_again)
 
 
 def test_image_terminal_registers_user_image_and_catalog_accepts_it(tmp_path: Path) -> None:
@@ -8975,3 +9603,1627 @@ def test_deck151_partial_image_handoff_releases_reclassified_failed_page(
     assert second["failed"] == 0
     assert second["succeeded_labels"] == ["slide_02"]
     assert parent.child_outcomes["slide_02"]["ok"] is True
+
+
+def test_review_typography_evidence_blocks_generic_dismissal(tmp_path: Path) -> None:
+    """Typography quality findings prevent Review from returning plain ready."""
+    (tmp_path / "plan").mkdir()
+    (tmp_path / "plan/deck.md").write_text("# deck\n", encoding="utf-8")
+    (tmp_path / "plan/slide_05.md").write_text(
+        "- page_type: content\n- needs_bitmap: false\n", encoding="utf-8"
+    )
+    (tmp_path / "renders").mkdir()
+    manifest = {
+        "pages": [],
+        "typography_flags": {
+            "5": ["ECharts axis labels 12px, minimum 16px required"],
+            "7": ["Legend text 14px on dense chart"],
+        },
+        "media_mismatches": {},
+        "placeholder_flags": {},
+        "layout_defects": {},
+        "special_page_geometry": {},
+    }
+    (tmp_path / "renders/render.json").write_text(
+        json.dumps(manifest), encoding="utf-8"
+    )
+
+    parent = SimpleNamespace(ws=str(tmp_path))
+    findings = _review_manifest_quality_findings(parent)
+    assert any("typography_flags" in f for f in findings), (
+        "typography_flags must appear in quality findings that prevent plain ready"
+    )
+
+
+def test_review_typography_evidence_zh_content(tmp_path: Path) -> None:
+    """_review_typography_evidence produces zh tag with page numbers and items."""
+    (tmp_path / "renders").mkdir()
+    manifest = {
+        "pages": [],
+        "typography_flags": {
+            "3": ["Axis labels 12px", "Legend 14px", "Footnote 11px"],
+            "7": ["Canvas text 13px"],
+        },
+        "media_mismatches": {},
+        "placeholder_flags": {},
+        "layout_defects": {},
+    }
+    (tmp_path / "renders/render.json").write_text(
+        json.dumps(manifest), encoding="utf-8"
+    )
+    result = _review_typography_evidence(str(tmp_path), "zh")
+    assert "<harness_typography_evidence>" in result
+    assert "</harness_typography_evidence>" in result
+    assert "P3:" in result
+    assert "P7:" in result
+    assert "投影字号" in result
+    assert "有意为之" in result
+
+
+def test_review_typography_evidence_en_content(tmp_path: Path) -> None:
+    """_review_typography_evidence produces en tag with page numbers."""
+    (tmp_path / "renders").mkdir()
+    manifest = {
+        "pages": [],
+        "typography_flags": {
+            "2": ["Body text 14px below 20px minimum"],
+        },
+        "media_mismatches": {},
+        "placeholder_flags": {},
+        "layout_defects": {},
+    }
+    (tmp_path / "renders/render.json").write_text(
+        json.dumps(manifest), encoding="utf-8"
+    )
+    result = _review_typography_evidence(str(tmp_path), "en")
+    assert "<harness_typography_evidence>" in result
+    assert "P2:" in result
+    assert "Generic dismissal" in result
+    assert "pixel reason or repair" in result
+
+
+def test_review_typography_evidence_caps_8_pages_3_items(tmp_path: Path) -> None:
+    """At most 8 pages and 3 items per page in the evidence."""
+    (tmp_path / "renders").mkdir()
+    flags = {
+        str(i): [f"item_{j}" for j in range(5)]
+        for i in range(1, 12)
+    }
+    manifest = {"pages": [], "typography_flags": flags}
+    (tmp_path / "renders/render.json").write_text(
+        json.dumps(manifest), encoding="utf-8"
+    )
+    result = _review_typography_evidence(str(tmp_path), "zh")
+    assert result.count("P") <= 8 + 1  # 8 page entries + possible partial
+    for page_key in list(flags.keys())[:8]:
+        entry_start = f"P{page_key}:"
+        if entry_start in result:
+            section = result.split(entry_start)[1].split(";")[0]
+            assert section.count(",") <= 2  # at most 3 items (2 commas)
+
+
+def test_review_typography_evidence_empty_manifest(tmp_path: Path) -> None:
+    """Empty typography_flags returns empty string."""
+    (tmp_path / "renders").mkdir()
+    manifest = {"pages": [], "typography_flags": {}}
+    (tmp_path / "renders/render.json").write_text(
+        json.dumps(manifest), encoding="utf-8"
+    )
+    assert _review_typography_evidence(str(tmp_path), "zh") == ""
+
+
+def test_review_typography_evidence_missing_render_json(tmp_path: Path) -> None:
+    """Missing render.json returns empty string."""
+    (tmp_path / "renders").mkdir()
+    assert _review_typography_evidence(str(tmp_path), "en") == ""
+
+
+def test_preflight_repair_allows_changed_scaffold_owned(tmp_path: Path) -> None:
+    """Deck 153: finalize failure with 'changed scaffold-owned' triggers preflight repair."""
+    for d in ("plan", "slides", "renders", "assets"):
+        (tmp_path / d).mkdir()
+    (tmp_path / "plan/deck.md").write_text("# Deck\n", encoding="utf-8")
+    (tmp_path / "speech.md").write_text("# Speech\n", encoding="utf-8")
+    for page in (1, 5):
+        (tmp_path / f"plan/slide_{page:02d}.md").write_text(
+            f"# slide_{page:02d}\n- needs_bitmap: false\n", encoding="utf-8"
+        )
+        (tmp_path / f"slides/slide_{page:02d}.html").write_text(
+            f"<section data-slide='{page:02d}'>content</section>\n", encoding="utf-8"
+        )
+        (tmp_path / f"renders/slide_{page:02d}.png").write_bytes(b"pixels")
+
+    parent = Agent(
+        "preflight-scaffold",
+        str(tmp_path),
+        "build",
+        {"skill_name": "mural-presenter-v0-4", "skill_language": "zh"},
+    )
+    parent.research_required = False
+    parent.finalize_attempted = True
+    parent.finalize_succeeded = False
+    parent.finalize_failure = (
+        "ValueError: slide_05.html changed scaffold-owned data-page-type "
+        "from 'content' to 'special'"
+    )
+    assert _review_preflight_repair_pages(parent) == (5,)
+
+
+def test_preflight_repair_allows_root_classes_violation(tmp_path: Path) -> None:
+    """Deck 153 variant: 'root classes' marker also triggers preflight repair."""
+    for d in ("plan", "slides", "renders", "assets"):
+        (tmp_path / d).mkdir()
+    (tmp_path / "plan/deck.md").write_text("# Deck\n", encoding="utf-8")
+    (tmp_path / "speech.md").write_text("# Speech\n", encoding="utf-8")
+    for page in (1, 3):
+        (tmp_path / f"plan/slide_{page:02d}.md").write_text(
+            f"# slide_{page:02d}\n- needs_bitmap: false\n", encoding="utf-8"
+        )
+        (tmp_path / f"slides/slide_{page:02d}.html").write_text(
+            f"<section data-slide='{page:02d}'>content</section>\n", encoding="utf-8"
+        )
+        (tmp_path / f"renders/slide_{page:02d}.png").write_bytes(b"pixels")
+
+    parent = Agent(
+        "preflight-root",
+        str(tmp_path),
+        "build",
+        {"skill_name": "mural-presenter-v0-4", "skill_language": "zh"},
+    )
+    parent.research_required = False
+    parent.finalize_attempted = True
+    parent.finalize_succeeded = False
+    parent.finalize_failure = (
+        "ValueError: slide_03.html: root classes must not include "
+        "'slide-special'; reserved for scaffold"
+    )
+    assert _review_preflight_repair_pages(parent) == (3,)
+
+
+def test_is_durable_review_exit_known_reasons(tmp_path: Path) -> None:
+    """All known bounded Review exit reasons qualify for durable handoff."""
+    assert _is_durable_review_exit("incomplete_closure")
+    assert _is_durable_review_exit("stalled_repetition")
+    assert _is_durable_review_exit("max_turns")
+    assert _is_durable_review_exit("required_review_page_not_inspected")
+
+
+def test_is_durable_review_exit_rejects_unknown() -> None:
+    """Unknown/infrastructure exit reasons do not qualify."""
+    assert not _is_durable_review_exit("api_failed")
+    assert not _is_durable_review_exit("runtime_timeout")
+    assert not _is_durable_review_exit("text_response")
+    assert not _is_durable_review_exit("")
+    assert not _is_durable_review_exit(None)
+
+
+def test_durable_review_exit_reasons_constant() -> None:
+    """DURABLE_REVIEW_EXIT_REASONS is a frozenset with exactly 4 entries."""
+    assert isinstance(DURABLE_REVIEW_EXIT_REASONS, frozenset)
+    assert len(DURABLE_REVIEW_EXIT_REASONS) == 4
+    assert "required_review_page_not_inspected" in DURABLE_REVIEW_EXIT_REASONS
+
+
+def test_durable_review_handoff_required_page_not_inspected(tmp_path: Path) -> None:
+    """Deck 154: required_review_page_not_inspected produces durable handoff via _run_child."""
+    for d in ("plan", "slides", "renders", "assets", "_trace"):
+        (tmp_path / d).mkdir()
+    (tmp_path / "plan/deck.md").write_text("# Deck\n", encoding="utf-8")
+    (tmp_path / "speech.md").write_text("# Speech\n", encoding="utf-8")
+    for page in (1, 2, 3):
+        (tmp_path / f"plan/slide_{page:02d}.md").write_text(
+            f"# slide_{page:02d}\n- needs_bitmap: false\n", encoding="utf-8"
+        )
+        (tmp_path / f"slides/slide_{page:02d}.html").write_text(
+            f"<section data-slide='{page:02d}'>content</section>\n", encoding="utf-8"
+        )
+        (tmp_path / f"renders/slide_{page:02d}.png").write_bytes(
+            f"pixels-page{page}".encode()
+        )
+    manifest = {
+        "pages": [{"page": i, "status": "ok"} for i in range(1, 4)],
+        "typography_flags": {},
+        "media_mismatches": {},
+        "placeholder_flags": {},
+        "layout_defects": {},
+        "special_page_geometry": {},
+    }
+    (tmp_path / "renders/render.json").write_text(
+        json.dumps(manifest), encoding="utf-8"
+    )
+    (tmp_path / "renders/contact-sheet.png").write_bytes(b"sheet")
+
+    child = Agent(
+        "review-bounded",
+        str(tmp_path),
+        "build",
+        {"skill_name": "mural-presenter-v0-4", "skill_language": "zh"},
+    )
+    child.role = "review"
+    child.exit_reason = "required_review_page_not_inspected"
+    child.finalize_succeeded = True
+    child.final_view_after_review = True
+    child.review_contact_sheet_inspected = True
+    child.required_review_pages = (2,)
+    child.review_viewed_page_hashes = {
+        2: hashlib.sha256(b"pixels-page2").hexdigest()
+    }
+
+    assert _review_has_current_inspected_delivery(child)
+    assert _is_durable_review_exit(child.exit_reason)
+
+
+def test_durable_review_missing_fullres_is_honest_needs_improvement_floor(
+    tmp_path: Path,
+) -> None:
+    """Deck 176: current contact pixels survive bounded incomplete page review."""
+    for d in ("plan", "slides", "renders", "assets", "_trace"):
+        (tmp_path / d).mkdir()
+    (tmp_path / "plan/deck.md").write_text("# Deck\n", encoding="utf-8")
+    (tmp_path / "speech.md").write_text("# Speech\n", encoding="utf-8")
+    (tmp_path / "renders/contact-sheet.png").write_bytes(b"current-sheet")
+    (tmp_path / "renders/slide_01.png").write_bytes(b"current-page")
+
+    child = Agent(
+        "review-partial-current",
+        str(tmp_path),
+        "build",
+        {"skill_name": "mural-presenter-v0-4", "skill_language": "zh"},
+    )
+    child.role = "review"
+    child.finalize_succeeded = True
+    child.final_render_after_review = True
+    child.final_view_after_review = True
+    child.review_contact_sheet_inspected = True
+    child.required_review_pages = (1,)
+    child.review_viewed_page_hashes = {}
+
+    assert _review_has_current_contact_delivery(child)
+    child.finalize_succeeded = False
+    assert not _review_has_current_contact_delivery(child)
+    child.finalize_succeeded = True
+    child.review_contact_sheet_inspected = False
+    assert not _review_has_current_contact_delivery(child)
+    child.review_contact_sheet_inspected = True
+    assert not _review_has_current_inspected_delivery(child)
+    assert "P01" in _review_required_view_gap(child)
+
+    result = {
+        "ok": False,
+        "status": "needs_orchestrator",
+        "blocking": "no",
+        "exit_reason": "needs_orchestrator",
+        "final_pixels_inspected": True,
+        "finalize_succeeded": True,
+        "final_view_after_review": True,
+        "review_changed": True,
+    }
+    assert _review_can_complete_needs_improvement(child, result)
+
+
+def test_durable_review_handoff_no_review_r2_label(tmp_path: Path) -> None:
+    """Durable handoff produces needs_orchestrator, not a review_r2 delegation."""
+    for d in ("plan", "slides", "renders", "assets", "_trace"):
+        (tmp_path / d).mkdir()
+    (tmp_path / "plan/deck.md").write_text("# Deck\n", encoding="utf-8")
+    (tmp_path / "speech.md").write_text("# Speech\n", encoding="utf-8")
+    for page in (1, 2):
+        (tmp_path / f"plan/slide_{page:02d}.md").write_text(
+            f"# slide_{page:02d}\n- needs_bitmap: false\n", encoding="utf-8"
+        )
+        (tmp_path / f"slides/slide_{page:02d}.html").write_text(
+            f"<section data-slide='{page:02d}'>content</section>\n", encoding="utf-8"
+        )
+        (tmp_path / f"renders/slide_{page:02d}.png").write_bytes(
+            f"pixels-{page}".encode()
+        )
+    (tmp_path / "renders/contact-sheet.png").write_bytes(b"sheet")
+    manifest = {
+        "pages": [{"page": i, "status": "ok"} for i in range(1, 3)],
+        "typography_flags": {"1": ["axis 14px"]},
+        "media_mismatches": {},
+        "placeholder_flags": {},
+        "layout_defects": {},
+        "special_page_geometry": {},
+    }
+    (tmp_path / "renders/render.json").write_text(
+        json.dumps(manifest), encoding="utf-8"
+    )
+
+    parent = Agent(
+        "orch-bounded",
+        str(tmp_path),
+        "build",
+        {"skill_name": "mural-presenter-v0-4", "skill_language": "zh"},
+    )
+    parent.research_required = False
+    parent.finalize_attempted = True
+    parent.finalize_succeeded = True
+
+    def fake_child(_parent, _index, spec):
+        return {
+            "label": "review",
+            "trace_label": "review",
+            "role": "review",
+            "ok": False,
+            "exit_reason": "needs_orchestrator",
+            "status": "needs_orchestrator",
+            "renders": 2,
+            "views": 2,
+            "completed_pages": [],
+            "incomplete_pages": [],
+            "final_render_after_review": True,
+            "final_view_after_review": True,
+            "finalize_attempted": True,
+            "finalize_succeeded": True,
+            "finalize_failure": "",
+            "review_changed": False,
+            "blocking": "no",
+            "issue_type": "bounded_review_incomplete",
+            "pages": "inspected delivery surface",
+            "evidence": "bounded Review ended with max_turns",
+            "final_pixels_inspected": True,
+            "input_fingerprint": "",
+            "required_review_pages": [1],
+            "repair_issue": None,
+            "attempt": 1,
+            "trace_mode": {},
+            "summary": (
+                "status: needs_orchestrator\n"
+                "pages: inspected delivery surface\n"
+                "issue_type: bounded_review_incomplete\n"
+                "evidence: bounded Review ended with max_turns\n"
+                "blocking: no\n"
+                "final_pixels_inspected: yes"
+            ),
+        }
+
+    with mock.patch("core.agent_loop._run_child", side_effect=fake_child):
+        result = json.loads(_delegate(parent, {"tasks": [{"role": "review"}]}))
+
+    assert result["status"] == "completed"
+    child_outcome = parent.child_outcomes.get("review", {})
+    assert child_outcome.get("status") == "needs_improvement"
+    assert "review_r2" not in json.dumps(result)
+
+
+# ─── Review closure-only mode (Deck 157 fix) ───────────────────────────
+
+
+def test_review_closure_only_triggers_on_high_turn_fraction() -> None:
+    """Review enters closure-only when >70% turns used with unfinalized patches."""
+    agent = SimpleNamespace(
+        role="review",
+        max_turns=100,
+        review_patches_since_finalize=2,
+        review_closure_only=False,
+    )
+    assert not _review_should_enter_closure_only(agent, 69)
+    assert _review_should_enter_closure_only(agent, 70)
+    assert _review_should_enter_closure_only(agent, 95)
+
+
+def test_review_batch_may_use_many_patch_calls_before_first_finalize() -> None:
+    """Patch calls in one coordinated batch are not pixel revision rounds."""
+    agent = SimpleNamespace(
+        role="review",
+        max_turns=100,
+        review_patches_since_finalize=8,
+        review_closure_only=False,
+    )
+    assert not _review_should_enter_closure_only(agent, 10)
+
+
+def test_review_closure_only_does_not_trigger_without_patches() -> None:
+    """No unfinalized patches means no closure-only, even at high turns."""
+    agent = SimpleNamespace(
+        role="review",
+        max_turns=100,
+        review_patches_since_finalize=0,
+        review_closure_only=False,
+    )
+    assert not _review_should_enter_closure_only(agent, 95)
+
+
+def test_review_closure_only_not_for_non_review() -> None:
+    """Closure-only check returns False for non-Review roles."""
+    agent = SimpleNamespace(
+        role="slide",
+        max_turns=100,
+        review_patches_since_finalize=10,
+        review_closure_only=False,
+    )
+    assert not _review_should_enter_closure_only(agent, 95)
+
+
+def test_review_closure_only_sticky() -> None:
+    """Once review_closure_only is True, it stays True regardless of counters."""
+    agent = SimpleNamespace(
+        role="review",
+        max_turns=100,
+        review_patches_since_finalize=0,
+        review_closure_only=True,
+    )
+    assert _review_should_enter_closure_only(agent, 5)
+
+
+def test_review_closure_only_tool_restriction(tmp_path: Path) -> None:
+    """In closure-only mode, _call restricts tools to terminal and vision_analyze."""
+    for d in ("plan", "slides", "renders", "assets", "_trace"):
+        (tmp_path / d).mkdir()
+    (tmp_path / "plan/deck.md").write_text("# Deck\n", encoding="utf-8")
+    (tmp_path / "speech.md").write_text("# Speech\n", encoding="utf-8")
+    cfg = {
+        "model": "test-model",
+        "api_base": "http://test",
+        "response_language": "en",
+        "deck_timeout_s": 300,
+        "_trace_label": "review",
+    }
+    agent = Agent("test-sid", str(tmp_path), "test task", cfg, role="review")
+    agent.review_patches_since_finalize = 10
+    agent.review_closure_only = False
+    agent.turn = 80
+    agent.max_turns = 100
+    agent.tool_schemas = [
+        {"name": "terminal"},
+        {"name": "vision_analyze"},
+        {"name": "patch"},
+        {"name": "read_file"},
+    ]
+    fake_response = SimpleNamespace(
+        content=[SimpleNamespace(type="text", text="done")],
+        stop_reason="end_turn",
+        usage=SimpleNamespace(input_tokens=10, output_tokens=10),
+    )
+    with mock.patch("core.model_call.call_with_tools", return_value=fake_response):
+        _call(agent, [{"role": "user", "content": "test"}], with_tools=True)
+    assert agent.review_closure_only is True
+
+
+def test_three_completed_rounds_hide_mutation_tools(tmp_path: Path) -> None:
+    for d in ("plan", "slides", "renders", "assets", "_trace"):
+        (tmp_path / d).mkdir()
+    (tmp_path / "plan/deck.md").write_text("# Deck\n", encoding="utf-8")
+    (tmp_path / "speech.md").write_text("# Speech\n", encoding="utf-8")
+    agent = Agent(
+        "three-round-stop", str(tmp_path), "review",
+        {"_raw_user_query": "test"}, role="review",
+    )
+    agent.review_revision_rounds = config.REVIEW_MAX_ATTEMPTS
+    agent.required_review_pages = ()
+    agent.review_contact_sheet_inspected = True
+    agent.tool_schemas = [
+        {"name": "terminal"}, {"name": "vision_analyze"},
+        {"name": "patch"}, {"name": "read_file"},
+    ]
+    fake_response = SimpleNamespace(
+        content=[SimpleNamespace(type="text", text="done")],
+        stop_reason="end_turn",
+        usage=SimpleNamespace(input_tokens=10, output_tokens=10),
+    )
+    with mock.patch(
+        "core.model_call.call_with_tools", return_value=fake_response
+    ) as model_call:
+        _call(agent, [{"role": "user", "content": "test"}], with_tools=True)
+    assert model_call.call_args.kwargs["tools"] == []
+
+
+def test_open_vision_issue_is_mandatory_without_plan_flag(tmp_path: Path) -> None:
+    for relative in ("plan", "slides", "renders", "assets", "_trace"):
+        (tmp_path / relative).mkdir()
+    (tmp_path / "plan/deck.md").write_text("# Deck\n", encoding="utf-8")
+    (tmp_path / "plan/slide_07.md").write_text(
+        "# slide_07\n- needs_bitmap: false\n- composition: editorial\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "slides/slide_07.html").write_text(
+        "<section data-slide='07'>page</section>\n", encoding="utf-8",
+    )
+    (tmp_path / "speech.md").write_text("# Speech\n", encoding="utf-8")
+    (tmp_path / "renders/slide_07.png").write_bytes(b"pixels")
+    (tmp_path / "renders/contact-sheet.png").write_bytes(b"sheet")
+    (tmp_path / "renders/render.json").write_text(
+        json.dumps({"pages": [{"page": 7}]}), encoding="utf-8",
+    )
+    (tmp_path / "_trace/vision-issues.json").write_text(json.dumps({
+        "schema": "mural.vision-issues.v1",
+        "issues": [{
+            "id": "VIS-P07", "status": "open", "page": 7,
+            "type": "text_overlap", "severity": "major",
+            "summary": "labels overlap",
+        }],
+    }), encoding="utf-8")
+    parent = Agent(
+        "vision-required", str(tmp_path), "build",
+        {"skill_name": "mural-presenter-v0-4", "skill_language": "zh"},
+    )
+    parent.research_required = False
+    parent.finalize_attempted = True
+    parent.finalize_succeeded = True
+    captured = []
+
+    def fake_child(_parent, _index, spec):
+        captured.append(dict(spec))
+        return {
+            "label": "review", "role": "review", "ok": True,
+            "status": "ready", "exit_reason": "text_response",
+            "completed_pages": [], "incomplete_pages": [],
+            "renders": 0, "views": 2,
+            "final_render_after_review": True,
+            "final_view_after_review": True,
+            "finalize_attempted": True, "finalize_succeeded": True,
+            "summary": "verified",
+        }
+
+    with mock.patch("core.agent_loop._run_child", side_effect=fake_child):
+        result = json.loads(_delegate(parent, {"tasks": [{"role": "review"}]}))
+    assert result["status"] == "completed"
+    assert captured[0]["required_review_pages"] == [7]
+
+
+def test_stale_review_not_promoted_to_ok(tmp_path: Path) -> None:
+    """review_incomplete_current_pixels stays ok=False — stale pixels never deliverable."""
+    for d in ("plan", "slides", "renders", "assets", "_trace"):
+        (tmp_path / d).mkdir()
+    (tmp_path / "plan/deck.md").write_text("slide_count: 2\n", encoding="utf-8")
+    for p in (1, 2):
+        (tmp_path / f"plan/slide_{p:02d}.md").write_text(f"# Slide {p}\n", encoding="utf-8")
+        (tmp_path / f"slides/slide_{p:02d}.html").write_text(f"<div>S{p}</div>", encoding="utf-8")
+        (tmp_path / f"renders/slide_{p:02d}.png").write_bytes(b"PNG" + bytes([p]) * 100)
+    (tmp_path / "speech.md").write_text("# Speech\n", encoding="utf-8")
+    (tmp_path / "renders/render.json").write_text(
+        json.dumps({"pages": [{"page": 1}, {"page": 2}]}), encoding="utf-8"
+    )
+    (tmp_path / "renders/contact-sheet.png").write_bytes(b"PNGCS" + b"\x00" * 100)
+    parent_cfg = {
+        "model": "test-model",
+        "api_base": "http://test",
+        "response_language": "en",
+        "deck_timeout_s": 300,
+        "child_wall_timeout_s": 120,
+        "_trace_label": "orchestrator",
+    }
+    parent = Agent("sid", str(tmp_path), "orchestrate", parent_cfg, role="orchestrator")
+    parent.finalize_attempted = True
+    parent.finalize_succeeded = True
+
+    def fake_child(p, idx, spec):
+        return {
+            "label": "review",
+            "role": "review",
+            "ok": False,
+            "status": "needs_orchestrator",
+            "blocking": "no",
+            "exit_reason": "review_incomplete_current_pixels",
+            "final_pixels_inspected": False,
+            "finalize_succeeded": False,
+            "finalize_attempted": True,
+            "finalize_failure": "",
+            "final_render_after_review": False,
+            "final_view_after_review": False,
+            "review_changed": True,
+            "review_patches_since_finalize": 5,
+            "input_fingerprint": "fp1",
+            "attempt": 1,
+            "trace_mode": {},
+            "summary": "stale",
+        }
+
+    with mock.patch("core.agent_loop._run_child", side_effect=fake_child):
+        _delegate(parent, {"tasks": [{"role": "review"}]})
+
+    child_outcome = parent.child_outcomes.get("review", {})
+    assert child_outcome.get("ok") is False
+    assert child_outcome.get("exit_reason") == "review_incomplete_current_pixels"
+    assert parent.review_completed is False
+
+
+def test_delivery_close_status_not_for_stale_pixels(tmp_path: Path) -> None:
+    """_orchestrator_delivery_close_status returns '' when pixels are stale."""
+    for d in ("plan", "slides", "renders", "assets", "_trace"):
+        (tmp_path / d).mkdir()
+    cfg = {
+        "model": "test-model",
+        "api_base": "http://test",
+        "response_language": "en",
+        "deck_timeout_s": 300,
+        "_trace_label": "orchestrator",
+    }
+    agent = Agent("sid", str(tmp_path), "orchestrate", cfg, role="orchestrator")
+    agent.review_completed = False
+    agent.finalize_succeeded = False
+    agent.final_view_after_review = False
+    agent.child_outcomes = {
+        "review": {
+            "role": "review",
+            "ok": False,
+            "exit_reason": "review_incomplete_current_pixels",
+            "status": "needs_orchestrator",
+        }
+    }
+    status = _orchestrator_delivery_close_status(agent)
+    assert status == ""
+
+
+def test_closure_tail_same_identity_bounded() -> None:
+    """Closure tail uses same Agent identity and is bounded to REVIEW_CLOSURE_TAIL_BUDGET."""
+    assert isinstance(REVIEW_CLOSURE_TAIL_BUDGET, int)
+    assert 4 <= REVIEW_CLOSURE_TAIL_BUDGET <= 10
+
+
+def test_closure_tail_success_enables_needs_improvement(tmp_path: Path) -> None:
+    """After closure tail finalizes + inspects, _review_can_complete_needs_improvement works."""
+    for d in ("plan", "slides", "renders", "assets", "_trace"):
+        (tmp_path / d).mkdir()
+    (tmp_path / "plan/deck.md").write_text("slide_count: 1\n", encoding="utf-8")
+    cfg = {
+        "model": "test-model",
+        "api_base": "http://test",
+        "response_language": "en",
+        "deck_timeout_s": 300,
+        "_trace_label": "orchestrator",
+    }
+    parent = Agent("sid", str(tmp_path), "orchestrate", cfg, role="orchestrator")
+    result = {
+        "ok": False,
+        "status": "needs_orchestrator",
+        "blocking": "no",
+        "exit_reason": "text_response",
+        "final_pixels_inspected": True,
+        "finalize_succeeded": True,
+        "final_view_after_review": True,
+        "review_changed": True,
+    }
+    assert _review_can_complete_needs_improvement(parent, result) is True
+
+
+def test_closure_tail_still_stale_not_deliverable(tmp_path: Path) -> None:
+    """If closure tail exhausts without finalize, result stays ok=False."""
+    for d in ("plan", "slides", "renders", "assets", "_trace"):
+        (tmp_path / d).mkdir()
+    cfg = {
+        "model": "test-model",
+        "api_base": "http://test",
+        "response_language": "en",
+        "deck_timeout_s": 300,
+        "_trace_label": "orchestrator",
+    }
+    parent = Agent("sid", str(tmp_path), "orchestrate", cfg, role="orchestrator")
+    result = {
+        "ok": False,
+        "status": "needs_orchestrator",
+        "blocking": "no",
+        "exit_reason": "review_incomplete_current_pixels",
+        "final_pixels_inspected": False,
+        "finalize_succeeded": False,
+        "final_view_after_review": False,
+        "review_changed": True,
+    }
+    assert _review_can_complete_needs_improvement(parent, result) is False
+
+
+def test_orchestrator_blocks_second_review_after_stale_exit(tmp_path: Path) -> None:
+    """After review_incomplete_current_pixels, Orchestrator gets terminal failure instruction."""
+    for d in ("plan", "slides", "renders", "assets", "_trace"):
+        (tmp_path / d).mkdir()
+    (tmp_path / "plan/deck.md").write_text("slide_count: 2\n", encoding="utf-8")
+    for p in (1, 2):
+        (tmp_path / f"plan/slide_{p:02d}.md").write_text(f"# S{p}\n", encoding="utf-8")
+        (tmp_path / f"slides/slide_{p:02d}.html").write_text(f"<div>{p}</div>", encoding="utf-8")
+        (tmp_path / f"renders/slide_{p:02d}.png").write_bytes(b"PNG" + bytes([p]) * 50)
+    (tmp_path / "speech.md").write_text("# S\n", encoding="utf-8")
+    (tmp_path / "renders/render.json").write_text(
+        json.dumps({"pages": [{"page": 1}, {"page": 2}]}), encoding="utf-8"
+    )
+    (tmp_path / "renders/contact-sheet.png").write_bytes(b"PNGCS" + b"\x00" * 50)
+    cfg = {
+        "model": "test-model",
+        "api_base": "http://test",
+        "response_language": "en",
+        "deck_timeout_s": 300,
+        "child_wall_timeout_s": 120,
+        "_trace_label": "orchestrator",
+    }
+    agent = Agent("sid", str(tmp_path), "orchestrate", cfg, role="orchestrator")
+    agent.finalize_attempted = True
+    agent.finalize_succeeded = True
+    agent.review_completed = False
+    agent.child_outcomes = {
+        "review": {
+            "role": "review",
+            "ok": False,
+            "exit_reason": "review_incomplete_current_pixels",
+            "status": "needs_orchestrator",
+            "input_fingerprint": "fp1",
+            "attempt": 1,
+        }
+    }
+    agent.delegated_roles = ["review"]
+    with mock.patch(
+        "core.agent_loop._review_delivery_fingerprint", return_value="fp1"
+    ):
+        result = _delegate(agent, {"tasks": [{"role": "review", "label": "review"}]})
+    assert "重复委派" in result or "均未发生变化" in result or "禁止" in result
+    assert "review_r2" not in result
+
+
+def test_review_terminal_failure_deterministic_stop(tmp_path: Path) -> None:
+    """review_incomplete_current_pixels triggers deterministic terminal stop.
+
+    Requirements:
+    - spec has no explicit label (uses {"role": "review"})
+    - _run_child is mocked to return review_incomplete_current_pixels
+    - Only one child runs
+    - parent.review_terminal_failure is set
+    - Second _delegate_task call is blocked without spawning a child
+    - No review_r2
+    """
+    for d in ("plan", "slides", "renders", "assets", "_trace"):
+        (tmp_path / d).mkdir()
+    (tmp_path / "plan/deck.md").write_text("slide_count: 2\n", encoding="utf-8")
+    for p in (1, 2):
+        (tmp_path / f"plan/slide_{p:02d}.md").write_text(f"# S{p}\n", encoding="utf-8")
+        (tmp_path / f"slides/slide_{p:02d}.html").write_text(f"<div>{p}</div>", encoding="utf-8")
+        (tmp_path / f"renders/slide_{p:02d}.png").write_bytes(b"PNG" + bytes([p]) * 50)
+    (tmp_path / "speech.md").write_text("# S\n", encoding="utf-8")
+    (tmp_path / "renders/render.json").write_text(
+        json.dumps({"pages": [{"page": 1}, {"page": 2}]}), encoding="utf-8"
+    )
+    (tmp_path / "renders/contact-sheet.png").write_bytes(b"PNGCS" + b"\x00" * 50)
+    cfg = {
+        "model": "test-model",
+        "api_base": "http://test",
+        "response_language": "en",
+        "deck_timeout_s": 300,
+        "child_wall_timeout_s": 120,
+        "_trace_label": "orchestrator",
+    }
+    agent = Agent("sid", str(tmp_path), "orchestrate", cfg, role="orchestrator")
+    agent.finalize_attempted = True
+    agent.finalize_succeeded = True
+    agent.review_completed = False
+    agent.child_outcomes = {}
+    agent.delegated_roles = []
+
+    run_child_calls = []
+
+    def mock_run_child(parent, index, spec):
+        run_child_calls.append(spec)
+        return {
+            "label": "review",
+            "trace_label": "review_t1",
+            "role": "review",
+            "ok": False,
+            "exit_reason": "review_incomplete_current_pixels",
+            "renders": 0,
+            "views": 0,
+            "completed_pages": [],
+            "incomplete_pages": [],
+            "final_render_after_review": False,
+            "final_view_after_review": False,
+            "finalize_attempted": True,
+            "finalize_succeeded": False,
+            "finalize_failure": "",
+            "trace_mode": {},
+            "status": "needs_orchestrator",
+            "repair_issue": None,
+            "image_ready_pages": [],
+            "image_failed_pages": [],
+            "image_handoff_summary": "",
+            "required_review_pages": [],
+            "attempt": 1,
+            "blocking": "no",
+            "issue_type": "review_incomplete_current_pixels",
+            "pages": "stale",
+            "evidence": "closure tail exhausted",
+            "input_fingerprint": "fp_stale",
+            "final_pixels_inspected": False,
+            "review_changed": False,
+            "summary": "status: needs_orchestrator\nissue_type: review_incomplete_current_pixels",
+        }
+
+    with mock.patch("core.agent_loop._run_child", side_effect=mock_run_child):
+        result1 = _delegate(agent, {"tasks": [{"role": "review"}]})
+
+    # Only one child was spawned
+    assert len(run_child_calls) == 1
+    assert run_child_calls[0].get("role") == "review"
+
+    # Terminal failure flag is set
+    assert bool(getattr(agent, "review_terminal_failure", False))
+
+    # Outcome is stored as ok=False
+    review_outcome = agent.child_outcomes.get("review")
+    assert review_outcome is not None
+    assert review_outcome["ok"] is False
+    assert review_outcome["exit_reason"] == "review_incomplete_current_pixels"
+
+    # review_completed is NOT set (stale pixels are not deliverable)
+    assert not bool(getattr(agent, "review_completed", False))
+
+    # Second delegate_task call is blocked without spawning a child
+    run_child_calls.clear()
+    result2 = _delegate_task(agent, {"tasks": [{"role": "review"}]})
+    assert len(run_child_calls) == 0
+    assert "review_closure_failed" in result2
+    assert "review_r2" not in result2
+
+    # No review_r2 in any result
+    assert "review_r2" not in result1
+    assert "review_r2" not in (json.dumps(agent.child_outcomes, ensure_ascii=False))
+
+
+def test_review_terminal_failure_blocks_all_tools(tmp_path: Path) -> None:
+    """After review_terminal_failure is set, _tool_results blocks all tool calls."""
+    (tmp_path / "plan").mkdir()
+    (tmp_path / "plan/deck.md").write_text("slide_count: 1\n", encoding="utf-8")
+    cfg = {
+        "model": "test-model",
+        "api_base": "http://test",
+        "response_language": "en",
+        "deck_timeout_s": 300,
+        "child_wall_timeout_s": 120,
+        "_trace_label": "orchestrator",
+    }
+    agent = Agent("sid", str(tmp_path), "orchestrate", cfg, role="orchestrator")
+    agent.review_terminal_failure = True
+
+    fake_call = SimpleNamespace(
+        id="call_1", name="read_file", type="tool_use",
+        input={"path": "plan/deck.md"},
+    )
+    tool_log: list = []
+    results = _tool_results(agent, [fake_call], 5, tool_log)
+    assert len(results) == 1
+    result_text = results[0].get("content", "") if isinstance(results[0], dict) else ""
+    if isinstance(results[0], dict) and isinstance(results[0].get("content"), list):
+        result_text = results[0]["content"][0].get("text", "")
+    elif isinstance(results[0], dict) and isinstance(results[0].get("content"), str):
+        result_text = results[0]["content"]
+    assert "review_closure_failed" in result_text
+
+
+def test_wide_table_skill_contract() -> None:
+    """Skill role card forbids shrinking projection text below 20px for wide tables."""
+    role_card = (
+        REPO
+        / "skills/mural-presenter-v0.4/mural-presenter-v0-4/roles/review.md"
+    )
+    text = role_card.read_text(encoding="utf-8")
+    assert "< 20px" in text or "<20px" in text or "< 20 px" in text
+    assert "减维" in text or "fewer columns" in text
+    assert "聚合" in text or "aggregate" in text or "summarize" in text
+    assert "message-led" in text
+    assert "notes" in text
+
+
+# --- #158 knowledge-brief budget fix tests ---
+
+
+def test_brief_hard_ceiling_formula() -> None:
+    """Hard ceiling = min(40000, int(recommended * 1.6))."""
+
+    class Agent10:
+        role = "research"
+        skill_name = "mural-presenter-v0-4"
+        evidence_scope = "verify_external"
+        ws = "/tmp/fakews"
+        cfg = {"_raw_user_query": "请基于附件制作 10 页组会汇报"}
+        requested_slide_count = 0
+
+    agent = Agent10()
+    rec = tools.research_brief_char_limit(agent)
+    assert rec == 20000
+    assert tools.research_brief_hard_ceiling(agent) == 32000
+
+    class Agent18:
+        role = "research"
+        skill_name = "mural-presenter-v0-4"
+        evidence_scope = "verify_external"
+        ws = "/tmp/fakews"
+        cfg = {"_raw_user_query": "请基于附件制作 18 页组会汇报"}
+        requested_slide_count = 0
+
+    agent18 = Agent18()
+    assert tools.research_brief_char_limit(agent18) == 28000
+    assert tools.research_brief_hard_ceiling(agent18) == 40000
+
+    class DefaultAgent:
+        role = "research"
+        skill_name = "mural-presenter-v0-4"
+        evidence_scope = "open_research"
+        ws = "/tmp/fakews"
+        cfg = {"_raw_user_query": "请做 8 页演示"}
+        requested_slide_count = 0
+
+    d = DefaultAgent()
+    rec_d = tools.research_brief_char_limit(d)
+    assert tools.research_brief_hard_ceiling(d) == min(40000, int(rec_d * 1.6))
+
+
+def test_over_budget_brief_accepted_on_first_write(tmp_path: Path) -> None:
+    """Brief at 25927 chars with recommended=20000 is accepted once with warning."""
+
+    class ResearchAgent:
+        role = "research"
+        skill_name = "mural-presenter-v0-4"
+        evidence_scope = "verify_external"
+        ws = str(tmp_path)
+        cfg = {"_raw_user_query": "请基于附件制作 10 页组会汇报"}
+        requested_slide_count = 0
+
+        def safe(self, path):
+            return str(tmp_path / path)
+
+    agent = ResearchAgent()
+    assert tools.research_brief_char_limit(agent) == 20000
+    content = "x" * 25927
+    result = tools.write_file(agent, "research/knowledge-brief.md", content)
+    assert "已写入" in result
+    assert "超出推荐预算" in result or "超推荐" in result or "over" in result.lower()
+    assert "锁定" in result
+    assert (tmp_path / "research/knowledge-brief.md").read_text("utf-8") == content
+    assert tools.research_handoff_is_valid(agent) is True
+
+
+def test_over_budget_receipt_is_v2_with_correct_fields(tmp_path: Path) -> None:
+    """Receipt for over-budget brief is version 2 with over_budget=True."""
+
+    class ResearchAgent:
+        role = "research"
+        skill_name = "mural-presenter-v0-4"
+        evidence_scope = "verify_external"
+        ws = str(tmp_path)
+        cfg = {"_raw_user_query": "请基于附件制作 10 页组会汇报"}
+        requested_slide_count = 0
+
+        def safe(self, path):
+            return str(tmp_path / path)
+
+    agent = ResearchAgent()
+    content = "x" * 25927
+    tools.write_file(agent, "research/knowledge-brief.md", content)
+    import json as _json
+    receipt = _json.loads(
+        (tmp_path / "_trace/research-handoff.json").read_text("utf-8")
+    )
+    assert receipt["version"] == 2
+    assert receipt["over_budget"] is True
+    assert receipt["characters"] == 25927
+    assert receipt["recommended_characters"] == 20000
+    assert receipt["hard_ceiling_characters"] == 32000
+
+
+def test_above_ceiling_brief_rejected(tmp_path: Path) -> None:
+    """Brief above hard ceiling (>32000) is hard-rejected."""
+
+    class ResearchAgent:
+        role = "research"
+        skill_name = "mural-presenter-v0-4"
+        evidence_scope = "verify_external"
+        ws = str(tmp_path)
+        cfg = {"_raw_user_query": "请基于附件制作 10 页组会汇报"}
+        requested_slide_count = 0
+
+        def safe(self, path):
+            return str(tmp_path / path)
+
+    result = tools.write_file(
+        ResearchAgent(),
+        "research/knowledge-brief.md",
+        "x" * 32001,
+    )
+    assert "knowledge_brief_too_long" in result
+    assert not (tmp_path / "research/knowledge-brief.md").exists()
+
+
+def test_normal_brief_under_recommended_accepted(tmp_path: Path) -> None:
+    """Brief under recommended budget is accepted normally without warning."""
+
+    class ResearchAgent:
+        role = "research"
+        skill_name = "mural-presenter-v0-4"
+        evidence_scope = "verify_external"
+        ws = str(tmp_path)
+        cfg = {"_raw_user_query": "请基于附件制作 10 页组会汇报"}
+        requested_slide_count = 0
+
+        def safe(self, path):
+            return str(tmp_path / path)
+
+    agent = ResearchAgent()
+    content = "x" * 15000
+    result = tools.write_file(agent, "research/knowledge-brief.md", content)
+    assert "已写入" in result
+    assert "超出推荐预算" not in result
+    assert "锁定" not in result
+    assert tools.research_handoff_is_valid(agent) is True
+
+
+def test_second_write_after_receipt_locked(tmp_path: Path) -> None:
+    """Second write_file to knowledge-brief is blocked after receipt exists."""
+
+    class ResearchAgent:
+        role = "research"
+        skill_name = "mural-presenter-v0-4"
+        evidence_scope = "verify_external"
+        ws = str(tmp_path)
+        cfg = {"_raw_user_query": "请基于附件制作 10 页组会汇报"}
+        requested_slide_count = 0
+
+        def safe(self, path):
+            return str(tmp_path / path)
+
+    agent = ResearchAgent()
+    first_content = "x" * 25927
+    result1 = tools.write_file(agent, "research/knowledge-brief.md", first_content)
+    assert "已写入" in result1
+    import hashlib as _hl
+    first_hash = _hl.sha256(first_content.encode()).hexdigest()
+    result2 = tools.write_file(agent, "research/knowledge-brief.md", "y" * 10000)
+    assert "knowledge_brief_locked" in result2
+    on_disk = (tmp_path / "research/knowledge-brief.md").read_text("utf-8")
+    assert _hl.sha256(on_disk.encode()).hexdigest() == first_hash
+
+
+def test_patch_after_receipt_locked(tmp_path: Path) -> None:
+    """Patch to knowledge-brief is blocked after receipt exists."""
+
+    class ResearchAgent:
+        role = "research"
+        label = "research"
+        skill_name = "mural-presenter-v0-4"
+        evidence_scope = "verify_external"
+        ws = str(tmp_path)
+        cfg = {"_raw_user_query": "请基于附件制作 10 页组会汇报"}
+        requested_slide_count = 0
+
+        def safe(self, path):
+            return str(tmp_path / path)
+
+    agent = ResearchAgent()
+    content = "A" * 100 + "B" + "C" * 100
+    tools.write_file(agent, "research/knowledge-brief.md", content)
+    result = tools.patch(
+        agent,
+        path="research/knowledge-brief.md",
+        old_string="B",
+        new_string="DDDD",
+    )
+    assert "knowledge_brief_locked" in result
+    assert (tmp_path / "research/knowledge-brief.md").read_text("utf-8") == content
+
+
+def test_normal_brief_also_locked_after_receipt(tmp_path: Path) -> None:
+    """Even a normal (under-recommended) brief is locked after receipt."""
+
+    class ResearchAgent:
+        role = "research"
+        skill_name = "mural-presenter-v0-4"
+        evidence_scope = "verify_external"
+        ws = str(tmp_path)
+        cfg = {"_raw_user_query": "请基于附件制作 10 页组会汇报"}
+        requested_slide_count = 0
+
+        def safe(self, path):
+            return str(tmp_path / path)
+
+    agent = ResearchAgent()
+    content = "x" * 15000
+    tools.write_file(agent, "research/knowledge-brief.md", content)
+    result2 = tools.write_file(agent, "research/knowledge-brief.md", "y" * 8000)
+    assert "knowledge_brief_locked" in result2
+
+
+def test_v1_receipt_still_valid(tmp_path: Path) -> None:
+    """V1 receipt from legacy code is accepted by research_handoff_is_valid."""
+    import json as _json
+    import hashlib as _hl
+    content = "x" * 10000
+
+    class ResearchAgent:
+        role = "research"
+        skill_name = "mural-presenter-v0-4"
+        evidence_scope = "open_research"
+        ws = str(tmp_path)
+        cfg = {"_raw_user_query": "请做 8 页演示"}
+        requested_slide_count = 0
+
+    (tmp_path / "research").mkdir(parents=True)
+    (tmp_path / "research/knowledge-brief.md").write_text(content, encoding="utf-8")
+    encoded = content.encode("utf-8")
+    receipt = {
+        "version": 1,
+        "path": "research/knowledge-brief.md",
+        "sha256": _hl.sha256(encoded).hexdigest(),
+        "bytes": len(encoded),
+        "characters": len(content),
+    }
+    (tmp_path / "_trace").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "_trace/research-handoff.json").write_text(
+        _json.dumps(receipt) + "\n", encoding="utf-8"
+    )
+    assert tools.research_handoff_is_valid(ResearchAgent()) is True
+
+
+def test_v1_receipt_rejects_over_recommended(tmp_path: Path) -> None:
+    """V1 receipt with content exceeding recommended limit is invalid."""
+    import json as _json
+    import hashlib as _hl
+    content = "x" * 13000
+
+    class ResearchAgent:
+        role = "research"
+        skill_name = "mural-presenter-v0-4"
+        evidence_scope = "open_research"
+        ws = str(tmp_path)
+        cfg = {"_raw_user_query": "请做 8 页演示"}
+        requested_slide_count = 0
+
+    (tmp_path / "research").mkdir(parents=True)
+    (tmp_path / "research/knowledge-brief.md").write_text(content, encoding="utf-8")
+    encoded = content.encode("utf-8")
+    receipt = {
+        "version": 1,
+        "path": "research/knowledge-brief.md",
+        "sha256": _hl.sha256(encoded).hexdigest(),
+        "bytes": len(encoded),
+        "characters": len(content),
+    }
+    (tmp_path / "_trace").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "_trace/research-handoff.json").write_text(
+        _json.dumps(receipt) + "\n", encoding="utf-8"
+    )
+    assert tools.research_handoff_is_valid(ResearchAgent()) is False
+
+
+def test_over_budget_warning_triggers_auto_close(tmp_path: Path) -> None:
+    """Over-budget write returns '已写入' without '错误' so _research_handoff_written detects it."""
+
+    class ResearchAgent:
+        role = "research"
+        skill_name = "mural-presenter-v0-4"
+        evidence_scope = "verify_external"
+        ws = str(tmp_path)
+        cfg = {"_raw_user_query": "请基于附件制作 10 页组会汇报"}
+        requested_slide_count = 0
+
+        def safe(self, path):
+            return str(tmp_path / path)
+
+    agent = ResearchAgent()
+    content = "x" * 25927
+    result = tools.write_file(agent, "research/knowledge-brief.md", content)
+    assert "已写入" in result
+    assert "错误" not in result
+
+    fake_call = SimpleNamespace(
+        id="call_1", name="write_file", type="tool_use",
+        input={"path": "research/knowledge-brief.md"},
+    )
+    tool_result = {"content": result}
+    assert _research_handoff_written(agent, [fake_call], [tool_result]) is True
+
+
+def test_research_role_card_distinguishes_recommended_and_ceiling() -> None:
+    """Research role card mentions both recommended and absolute ceiling."""
+    role_card = (
+        REPO
+        / "skills/mural-presenter-v0.4/mural-presenter-v0-4/roles/research.md"
+    )
+    text = role_card.read_text(encoding="utf-8")
+    assert "推荐预算" in text or "recommended" in text.lower()
+    assert "绝对" in text or "hard ceiling" in text.lower()
+
+
+def test_invalid_receipt_does_not_lock_allows_recovery_write(tmp_path: Path) -> None:
+    """Corrupted/tampered receipt does not lock the brief; recovery write succeeds."""
+    import json as _json
+
+    class ResearchAgent:
+        role = "research"
+        skill_name = "mural-presenter-v0-4"
+        evidence_scope = "verify_external"
+        ws = str(tmp_path)
+        cfg = {"_raw_user_query": "请基于附件制作 10 页组会汇报"}
+        requested_slide_count = 0
+
+        def safe(self, path):
+            return str(tmp_path / path)
+
+    agent = ResearchAgent()
+    (tmp_path / "research").mkdir(parents=True)
+    (tmp_path / "_trace").mkdir(parents=True, exist_ok=True)
+    old_content = "old brief content"
+    (tmp_path / "research/knowledge-brief.md").write_text(old_content, encoding="utf-8")
+    bad_receipt = {
+        "version": 2,
+        "path": "research/knowledge-brief.md",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "bytes": 99999,
+        "characters": 99999,
+        "recommended_characters": 20000,
+        "hard_ceiling_characters": 32000,
+        "over_budget": True,
+    }
+    (tmp_path / "_trace/research-handoff.json").write_text(
+        _json.dumps(bad_receipt) + "\n", encoding="utf-8"
+    )
+    assert tools.research_handoff_is_valid(agent) is False
+    new_content = "x" * 15000
+    result = tools.write_file(agent, "research/knowledge-brief.md", new_content)
+    assert "已写入" in result
+    assert "错误" not in result
+    assert tools.research_handoff_is_valid(agent) is True
+
+
+def test_tampered_brief_file_does_not_lock(tmp_path: Path) -> None:
+    """If brief file is tampered (hash mismatch), receipt is invalid and write allowed."""
+    import json as _json, hashlib as _hl
+
+    class ResearchAgent:
+        role = "research"
+        skill_name = "mural-presenter-v0-4"
+        evidence_scope = "verify_external"
+        ws = str(tmp_path)
+        cfg = {"_raw_user_query": "请基于附件制作 10 页组会汇报"}
+        requested_slide_count = 0
+
+        def safe(self, path):
+            return str(tmp_path / path)
+
+    agent = ResearchAgent()
+    original = "x" * 15000
+    result1 = tools.write_file(agent, "research/knowledge-brief.md", original)
+    assert "已写入" in result1
+    assert tools.research_handoff_is_valid(agent) is True
+    (tmp_path / "research/knowledge-brief.md").write_text(
+        "tampered content", encoding="utf-8"
+    )
+    assert tools.research_handoff_is_valid(agent) is False
+    new_content = "y" * 12000
+    result2 = tools.write_file(agent, "research/knowledge-brief.md", new_content)
+    assert "已写入" in result2
+    assert tools.research_handoff_is_valid(agent) is True
+
+
+def test_v2_receipt_invalid_when_over_budget_not_bool(tmp_path: Path) -> None:
+    """V2 receipt with non-bool over_budget is invalid."""
+    import json as _json, hashlib as _hl
+
+    class ResearchAgent:
+        role = "research"
+        skill_name = "mural-presenter-v0-4"
+        evidence_scope = "verify_external"
+        ws = str(tmp_path)
+        cfg = {"_raw_user_query": "请基于附件制作 10 页组会汇报"}
+        requested_slide_count = 0
+
+    content = "x" * 25000
+    encoded = content.encode("utf-8")
+    (tmp_path / "research").mkdir(parents=True)
+    (tmp_path / "research/knowledge-brief.md").write_text(content, encoding="utf-8")
+    receipt = {
+        "version": 2,
+        "path": "research/knowledge-brief.md",
+        "sha256": _hl.sha256(encoded).hexdigest(),
+        "bytes": len(encoded),
+        "characters": len(content),
+        "recommended_characters": 20000,
+        "hard_ceiling_characters": 32000,
+        "over_budget": "true",
+    }
+    (tmp_path / "_trace").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "_trace/research-handoff.json").write_text(
+        _json.dumps(receipt) + "\n", encoding="utf-8"
+    )
+    assert tools.research_handoff_is_valid(ResearchAgent()) is False
+
+
+def test_v2_receipt_invalid_when_recommended_mismatch(tmp_path: Path) -> None:
+    """V2 receipt with wrong recommended_characters is invalid."""
+    import json as _json, hashlib as _hl
+
+    class ResearchAgent:
+        role = "research"
+        skill_name = "mural-presenter-v0-4"
+        evidence_scope = "verify_external"
+        ws = str(tmp_path)
+        cfg = {"_raw_user_query": "请基于附件制作 10 页组会汇报"}
+        requested_slide_count = 0
+
+    content = "x" * 25000
+    encoded = content.encode("utf-8")
+    (tmp_path / "research").mkdir(parents=True)
+    (tmp_path / "research/knowledge-brief.md").write_text(content, encoding="utf-8")
+    receipt = {
+        "version": 2,
+        "path": "research/knowledge-brief.md",
+        "sha256": _hl.sha256(encoded).hexdigest(),
+        "bytes": len(encoded),
+        "characters": len(content),
+        "recommended_characters": 15000,
+        "hard_ceiling_characters": 32000,
+        "over_budget": True,
+    }
+    (tmp_path / "_trace").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "_trace/research-handoff.json").write_text(
+        _json.dumps(receipt) + "\n", encoding="utf-8"
+    )
+    assert tools.research_handoff_is_valid(ResearchAgent()) is False
+
+
+def test_v2_receipt_invalid_when_over_budget_flag_inconsistent(tmp_path: Path) -> None:
+    """V2 receipt where over_budget disagrees with actual len vs recommended is invalid."""
+    import json as _json, hashlib as _hl
+
+    class ResearchAgent:
+        role = "research"
+        skill_name = "mural-presenter-v0-4"
+        evidence_scope = "verify_external"
+        ws = str(tmp_path)
+        cfg = {"_raw_user_query": "请基于附件制作 10 页组会汇报"}
+        requested_slide_count = 0
+
+    content = "x" * 25000
+    encoded = content.encode("utf-8")
+    (tmp_path / "research").mkdir(parents=True)
+    (tmp_path / "research/knowledge-brief.md").write_text(content, encoding="utf-8")
+    receipt = {
+        "version": 2,
+        "path": "research/knowledge-brief.md",
+        "sha256": _hl.sha256(encoded).hexdigest(),
+        "bytes": len(encoded),
+        "characters": len(content),
+        "recommended_characters": 20000,
+        "hard_ceiling_characters": 32000,
+        "over_budget": False,
+    }
+    (tmp_path / "_trace").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "_trace/research-handoff.json").write_text(
+        _json.dumps(receipt) + "\n", encoding="utf-8"
+    )
+    assert tools.research_handoff_is_valid(ResearchAgent()) is False
+
+
+def test_system_prompt_contains_both_recommended_and_ceiling(tmp_path: Path) -> None:
+    """Research agent system prompt contains both recommended and hard ceiling values."""
+    cfg = {"_raw_user_query": "请基于附件制作 10 页组会汇报"}
+    agent = Agent("sid", str(tmp_path), "research_task", cfg, role="research")
+    recommended = agent.research_brief_char_limit
+    assert recommended > 0
+    ceiling = tools.research_brief_hard_ceiling(agent)
+    assert str(recommended) in agent.system
+    assert str(ceiling) in agent.system
+    assert "推荐预算" in agent.system
+    assert "绝对安全上限" in agent.system
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Deck 160 root-cause: agent.turn initialization + closure-only logging
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_agent_turn_initialized_at_zero(tmp_path: Path) -> None:
+    """Agent.turn must be initialized to 0 at construction."""
+    cfg = {"_raw_user_query": "test"}
+    agent = Agent("sid", str(tmp_path), "task", cfg, role="review")
+    assert hasattr(agent, "turn")
+    assert agent.turn == 0
+
+
+def test_review_turn_is_initialized_for_closure_logging(tmp_path: Path) -> None:
+    """Late-turn closure logging can always read the initialized turn counter."""
+    cfg = {"_raw_user_query": "test"}
+    agent = Agent("sid", str(tmp_path), "task", cfg, role="review")
+    agent.review_patches_since_finalize = 8
+    assert not _review_should_enter_closure_only(agent, agent.turn)
+    agent.turn = int(agent.max_turns * REVIEW_CLOSURE_ONLY_TURN_FRACTION)
+    assert _review_should_enter_closure_only(agent, agent.turn)
+    log_msg = (
+        f"turn={agent.turn}/{agent.max_turns}"
+    )
+    assert f"turn={agent.turn}/" in log_msg
+
+
+def test_child_exception_preserves_singleton_identity(tmp_path: Path) -> None:
+    """A child crash must produce a durable failed outcome blocking re-delegation."""
+    from core.agent_loop import _OPERATIONAL_CHILD_RETRY_REASONS, _operational_child_retry_allowed
+
+    outcome = {
+        "label": "review",
+        "role": "review",
+        "ok": False,
+        "status": "child_exception",
+        "exit_reason": "child_exception",
+        "attempt": 1,
+        "summary": "AttributeError: ...",
+    }
+    assert "child_exception" not in _OPERATIONAL_CHILD_RETRY_REASONS
+    assert not _operational_child_retry_allowed(outcome)
+
+
+def test_no_review_retry2_on_child_exception(tmp_path: Path) -> None:
+    """After child_exception outcome, re-delegation of same label must be rejected."""
+    cfg = {"_raw_user_query": "test"}
+    agent = Agent("sid", str(tmp_path), "task", cfg, role="orchestrator")
+    agent.child_outcomes = {
+        "review": {
+            "role": "review",
+            "ok": False,
+            "exit_reason": "child_exception",
+            "attempt": 1,
+            "status": "child_exception",
+        }
+    }
+    from core.agent_loop import _review_verification_allowed
+    allowed, reason = _review_verification_allowed(agent, agent.child_outcomes["review"])
+    assert not allowed
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Review-issues ledger reconciliation after Review completion
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_review_issues_syncs_vision_closure(tmp_path: Path) -> None:
+    """After Review closes all vision issues, review-issues.json reflects 0 open."""
+    trace = tmp_path / "_trace"
+    trace.mkdir()
+    (trace / "vision-issues.json").write_text(json.dumps({
+        "schema": "mural.vision-issues.v1",
+        "issues": [
+            {"id": "VIS-AAA", "status": "closed", "page": 2},
+            {"id": "VIS-BBB", "status": "closed", "page": 3},
+        ],
+    }))
+    (trace / "review-issues.json").write_text(json.dumps({
+        "status": "repair_required",
+        "required_review_pages": [2, 3],
+        "issues": [
+            {"label": "slide_02", "status": "repair_required", "pages": [2],
+             "render_budget_exhausted_pages": [2]},
+        ],
+        "open_vision_issue_ids": ["VIS-AAA", "VIS-BBB"],
+    }))
+    cfg = {"_raw_user_query": "test"}
+    agent = Agent("sid", str(tmp_path), "task", cfg, role="orchestrator")
+    _reconcile_review_issues_ledger(agent)
+    ledger = json.loads((trace / "review-issues.json").read_text())
+    assert ledger["open_vision_issue_ids"] == []
+    assert ledger["status"] == "resolved"
+    assert ledger["issues"][0]["status"] == "closed_by_review"
+
+
+def test_review_issues_preserves_open_ids(tmp_path: Path) -> None:
+    """Partial closure leaves remaining IDs in open_vision_issue_ids."""
+    trace = tmp_path / "_trace"
+    trace.mkdir()
+    (trace / "vision-issues.json").write_text(json.dumps({
+        "schema": "mural.vision-issues.v1",
+        "issues": [
+            {"id": "VIS-AAA", "status": "closed", "page": 2},
+            {"id": "VIS-BBB", "status": "open", "page": 3},
+        ],
+    }))
+    (trace / "review-issues.json").write_text(json.dumps({
+        "status": "repair_required",
+        "required_review_pages": [2, 3],
+        "issues": [{"label": "slide_02", "status": "repair_required", "pages": [2]}],
+        "open_vision_issue_ids": ["VIS-AAA", "VIS-BBB"],
+    }))
+    cfg = {"_raw_user_query": "test"}
+    agent = Agent("sid", str(tmp_path), "task", cfg, role="orchestrator")
+    _reconcile_review_issues_ledger(agent)
+    ledger = json.loads((trace / "review-issues.json").read_text())
+    assert ledger["open_vision_issue_ids"] == ["VIS-BBB"]
+    assert ledger["status"] == "repair_required"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Console errors surfacing in Review handoff
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_console_errors_in_manifest_quality_findings(tmp_path: Path) -> None:
+    """console_errors in render.json must appear in manifest quality findings."""
+    renders = tmp_path / "renders"
+    renders.mkdir()
+    (renders / "render.json").write_text(json.dumps({
+        "n_pages": 2,
+        "console_errors": ["pageerror c.quadTo is not a function"],
+        "pages": [],
+    }))
+    cfg = {"_raw_user_query": "test"}
+    agent = Agent("sid", str(tmp_path), "task", cfg, role="review")
+    findings = _review_manifest_quality_findings(agent)
+    assert any("console_errors" in f for f in findings)
+
+
+def test_render_console_errors_returns_list(tmp_path: Path) -> None:
+    """_render_console_errors extracts errors from render.json."""
+    renders = tmp_path / "renders"
+    renders.mkdir()
+    (renders / "render.json").write_text(json.dumps({
+        "console_errors": ["err1", "err2"],
+        "pages": [],
+    }))
+    result = _render_console_errors(str(tmp_path))
+    assert result == ["err1", "err2"]
+
+
+def test_render_console_errors_empty_when_none(tmp_path: Path) -> None:
+    """_render_console_errors returns [] when no console_errors key."""
+    renders = tmp_path / "renders"
+    renders.mkdir()
+    (renders / "render.json").write_text(json.dumps({"pages": []}))
+    result = _render_console_errors(str(tmp_path))
+    assert result == []
+
+
+def test_pages_with_active_media_finds_canvas(tmp_path: Path) -> None:
+    """_pages_with_active_media returns pages with canvas/echarts/svg media."""
+    renders = tmp_path / "renders"
+    renders.mkdir()
+    (renders / "render.json").write_text(json.dumps({
+        "pages": [
+            {"page": 3, "geometry": {"media_inventory": {"kinds": ["canvas"]}}},
+            {"page": 5, "geometry": {"media_inventory": {"kinds": ["bitmap"]}}},
+            {"page": 7, "geometry": {"media_inventory": {"kinds": ["echarts", "bitmap"]}}},
+        ],
+    }))
+    result = _pages_with_active_media(str(tmp_path))
+    assert result == {3, 7}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# fetch_images replace mode targets only URL-ready entries
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_fetch_images_replace_skips_entries_without_download(tmp_path: Path) -> None:
+    """Replace mode calls _download_image_asset only for URL-ready entries."""
+    assets = tmp_path / "assets"
+    assets.mkdir()
+    catalog_content = """# Image Assets
+
+## real-with-url
+
+- id: real-with-url
+- kind: real
+- source: https://example.com/photo.jpg
+- download: https://example.com/photo.jpg
+- path: assets/photo.jpg
+- slides: [1]
+- status: ready
+
+## real-no-url
+
+- id: real-no-url
+- kind: real
+- source: https://example.com/species.jpg
+- download:
+- path: assets/species.jpg
+- slides: [2]
+- status: ready
+"""
+    (assets / "catalog.md").write_text(catalog_content)
+    (assets / "photo.jpg").write_bytes(b"old photo")
+    (assets / "species.jpg").write_bytes(b"existing species")
+
+    downloaded_ids: list[str] = []
+
+    def fake_download(root, entry, replace):
+        downloaded_ids.append(entry["id"])
+        return entry["id"], "downloaded"
+
+    with mock.patch.object(deck_core, "_download_image_asset", side_effect=fake_download):
+        deck_core.fetch_images(tmp_path, replace=True)
+
+    assert downloaded_ids == ["real-with-url"], (
+        f"only URL-ready entry should be downloaded, got {downloaded_ids}"
+    )
+    assert (assets / "species.jpg").read_bytes() == b"existing species", (
+        "no-url entry's existing file must be left untouched"
+    )

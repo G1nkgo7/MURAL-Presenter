@@ -1,0 +1,7 @@
+Edit this academic workflow figure with exactly two localized corrections.
+
+1. Change only the dashed blue feedback path labeled “revise plan”. It must start at the “Review” node in Stage 3, travel left along the lower part of the stage regions, and terminate with a clear arrowhead at the “Orchestrator” node in Stage 1. It must not connect to “Material”, “Research”, “Image”, “Source files”, or the Harness rail.
+
+2. Inside the “Review” node, replace only the speech-bubble icon with a simple inspection icon: a small magnifying glass over a miniature slide thumbnail. Keep the text “Review” unchanged. Do not add a checkmark, cross, person, robot, or character.
+
+Preserve everything else exactly: the three-stage composition, all node positions and sizes, every other arrow and icon, the 1536×1024 canvas, white background, pale stage washes, line weights, typography, spacing, palette, and all existing text. Keep every existing label spelled exactly as it is. Add no new text and remove no text. Do not redraw or restyle unaffected regions.

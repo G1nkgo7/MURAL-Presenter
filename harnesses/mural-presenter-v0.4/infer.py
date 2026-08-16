@@ -125,6 +125,10 @@ def _stop_render_broker(process: subprocess.Popen, broker: Path) -> None:
 if __name__ == "__main__":
     _load_render_environment()
     _configure_runtime_environment()
+    if len(sys.argv) > 1 and sys.argv[1] == "--doctor":
+        from core.environment_doctor import main as doctor_main
+
+        raise SystemExit(doctor_main(sys.argv[2:]))
     process, broker = _start_render_broker()
     try:
         from core.run_batch import main

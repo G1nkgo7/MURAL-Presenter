@@ -13,7 +13,6 @@ import argparse
 import concurrent.futures as cf
 import hashlib
 import json
-import hashlib
 import mimetypes
 import os
 import re
@@ -31,6 +30,7 @@ ROOT = HERE.parent
 sys.path.insert(0, str(ROOT))
 
 from core import config as acfg  # noqa: E402
+from core import environment_doctor  # noqa: E402
 from core.language import infer_deck_language, normalize_language  # noqa: E402
 from core.run_profiles import resolve_run_profile  # noqa: E402
 
@@ -232,6 +232,67 @@ def build_config(args):
         "nova_run_id": os.environ.get("NOVA_RUN_ID", args.batch).strip() or args.batch,
         "nova_raw_root": str(nova_root),
     }
+
+
+def attachment_suffixes(seeds) -> tuple[str, ...]:
+    """Return attachment formats that the deterministic preflight must support."""
+    suffixes: set[str] = set()
+    for seed in seeds:
+        raw = seed.get("materials") or seed.get("attachments") or []
+        if isinstance(raw, (str, dict)):
+            raw = [raw]
+        for item in raw:
+            value = item.get("path") if isinstance(item, dict) else item
+            if value:
+                suffix = Path(str(value)).suffix.lower()
+                if suffix:
+                    suffixes.add(suffix)
+    return tuple(sorted(suffixes))
+
+
+def _doctor_for_worker(config: dict, seed: dict) -> dict:
+    suffixes = attachment_suffixes([seed])
+    existing = (
+        dict(config.get("_environment_doctor"))
+        if isinstance(config.get("_environment_doctor"), dict)
+        else {}
+    )
+    if (
+        existing.get("checked") is True
+        and existing.get("ready") is True
+        and set(suffixes).issubset(
+            {str(item).lower() for item in existing.get("required_attachment_suffixes", [])}
+        )
+    ):
+        return existing
+    return environment_doctor.run_environment_doctor(
+        config,
+        required_attachment_suffixes=suffixes,
+    )
+
+
+def _doctor_trace_path(run_dir: str) -> Path:
+    return Path(run_dir) / "_trace" / "environment-doctor.json"
+
+
+def _doctor_summary(report: dict) -> dict:
+    return {
+        "checked": report.get("checked") is True,
+        "ready": report.get("ready") is True,
+        "status": report.get("status", "not_run"),
+        "config_fingerprint": report.get("config_fingerprint", ""),
+        "cache_hit": report.get("cache_hit", False),
+    }
+
+
+def _persist_doctor_checking(run_dir: str) -> None:
+    environment_doctor.persist_report({
+        "schema": environment_doctor.SCHEMA,
+        "checked": False,
+        "ready": False,
+        "status": "checking",
+        "started_epoch": time.time(),
+    }, _doctor_trace_path(run_dir))
 
 
 def select_skill(seed: dict) -> tuple[str, str]:
@@ -952,17 +1013,6 @@ def worker(task):
     load_dotenv()
     sid, run_dir = task["sample_id"], task["run_dir"]
     config, seed = task["config"], dict(task["seed"])
-    if (
-        os.environ.get("MODEL_BACKEND", "").strip().lower() != "openai"
-        and "ANTHROPIC_API_KEY" not in os.environ
-    ):
-        return {"sample_id": sid, "status": "error", "run_dir": run_dir,
-                "error": "子进程环境里没有 ANTHROPIC_API_KEY"}
-    try:
-        from core.agent_loop import run_sample
-    except Exception as e:  # noqa: BLE001
-        return {"sample_id": sid, "status": "error", "run_dir": run_dir,
-                "error": f"无法导入 run_sample: {type(e).__name__}: {e}"}
     try:
         os.makedirs(run_dir, exist_ok=False)
     except FileExistsError:
@@ -972,6 +1022,35 @@ def worker(task):
         except FileExistsError:
             return {"sample_id": sid, "status": "error", "run_dir": run_dir,
                     "error": "run_dir 反复无法创建，跳过"}
+    try:
+        _persist_doctor_checking(run_dir)
+        doctor_report = _doctor_for_worker(config, seed)
+        environment_doctor.persist_report(
+            doctor_report,
+            _doctor_trace_path(run_dir),
+        )
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "sample_id": sid,
+            "status": "environment_blocked",
+            "run_dir": run_dir,
+            "error": f"Environment Doctor error: {type(exc).__name__}: {exc}",
+        }
+    config["_environment_doctor"] = doctor_report
+    if doctor_report.get("checked") is not True or doctor_report.get("ready") is not True:
+        return {
+            "sample_id": sid,
+            "status": "environment_blocked",
+            "run_dir": run_dir,
+            "error": "environment doctor blocked execution: "
+            + "; ".join(str(item) for item in doctor_report.get("fatal_errors") or []),
+            "environment_doctor": _doctor_summary(doctor_report),
+        }
+    try:
+        from core.agent_loop import run_sample
+    except Exception as e:  # noqa: BLE001
+        return {"sample_id": sid, "status": "error", "run_dir": run_dir,
+                "error": f"无法导入 run_sample: {type(e).__name__}: {e}"}
     try:
         seed["_staged_materials"] = stage_materials(run_dir, seed)
         ingestion_failures = list(seed.get("_material_ingestion_failures") or [])
@@ -1030,6 +1109,7 @@ def worker(task):
                 out[k] = seed.get(k)
         if isinstance(res, dict):
             out.update({k: v for k, v in res.items() if k not in out})
+        out["environment_doctor"] = _doctor_summary(doctor_report)
         return out
     except Exception as e:  # noqa: BLE001
         return {"sample_id": sid, "run_dir": run_dir, "status": "error",
@@ -1045,15 +1125,33 @@ def revision_worker(task):
     if not isinstance(revision, dict):
         return {"sample_id": sid, "status": "error", "run_dir": run_dir,
                 "error": "revision_worker 缺少 _revision 契约"}
-    if (
-        os.environ.get("MODEL_BACKEND", "").strip().lower() != "openai"
-        and "ANTHROPIC_API_KEY" not in os.environ
-    ):
-        return {"sample_id": sid, "status": "error", "run_dir": run_dir,
-                "error": "子进程环境里没有 ANTHROPIC_API_KEY"}
     if not os.path.isdir(run_dir):
         return {"sample_id": sid, "status": "error", "run_dir": run_dir,
                 "error": "revision workspace 不存在"}
+    try:
+        _persist_doctor_checking(run_dir)
+        doctor_report = _doctor_for_worker(config, seed)
+        config["_environment_doctor"] = doctor_report
+        environment_doctor.persist_report(
+            doctor_report,
+            _doctor_trace_path(run_dir),
+        )
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "sample_id": sid,
+            "status": "environment_blocked",
+            "run_dir": run_dir,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    if doctor_report.get("checked") is not True or doctor_report.get("ready") is not True:
+        return {
+            "sample_id": sid,
+            "status": "environment_blocked",
+            "run_dir": run_dir,
+            "error": "environment doctor blocked execution: "
+            + "; ".join(str(item) for item in doctor_report.get("fatal_errors") or []),
+            "environment_doctor": _doctor_summary(doctor_report),
+        }
     try:
         from core.agent_loop import run_sample
         res = run_sample(sid, seed, run_dir, config)
@@ -1068,6 +1166,7 @@ def revision_worker(task):
         }
         if isinstance(res, dict):
             out.update({key: value for key, value in res.items() if key not in out})
+        out["environment_doctor"] = _doctor_summary(doctor_report)
         return out
     except Exception as exc:  # noqa: BLE001
         return {"sample_id": sid, "run_dir": run_dir, "status": "error",
@@ -1142,11 +1241,37 @@ def main():
         queries = queries[:args.limit]
 
     batch_dir = os.path.join(RUNS, args.batch)
-    os.makedirs(LOGS, exist_ok=True)
     mpath = os.path.join(LOGS, f"{args.batch}.manifest.jsonl")
     has_runs = os.path.isdir(batch_dir) and os.listdir(batch_dir)
     if (os.path.exists(mpath) or has_runs) and not args.resume and not args.overwrite:
         raise SystemExit(f"批次 {args.batch} 已有产物。续跑加 --resume，从头来加 --overwrite，或换 --batch。")
+
+    # Preflight before creating, deleting or resuming any batch workspace. In
+    # particular, ``--overwrite`` must never destroy a recoverable batch only
+    # to discover that the renderer/model/service environment is broken.
+    config = build_config(args)
+    doctor_path = Path(LOGS) / f"{args.batch}.environment-doctor.json"
+    try:
+        doctor_report = environment_doctor.ensure_environment_ready(
+            config,
+            report_path=doctor_path,
+            required_attachment_suffixes=attachment_suffixes(queries),
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise SystemExit(
+            f"Environment Doctor 失败，批次尚未启动：{type(exc).__name__}: {exc}; "
+            f"report={doctor_path}"
+        ) from exc
+    config["_environment_doctor"] = doctor_report
+    print(
+        "✓ Environment Doctor: "
+        f"checked={doctor_report['checked']} ready={doctor_report['ready']} "
+        f"status={doctor_report['status']} cache_hit={doctor_report.get('cache_hit', False)} "
+        f"report={doctor_path}",
+        flush=True,
+    )
+
+    os.makedirs(LOGS, exist_ok=True)
     if args.overwrite:
         shutil.rmtree(batch_dir, ignore_errors=True)
         if os.path.exists(mpath):
@@ -1154,7 +1279,6 @@ def main():
     os.makedirs(batch_dir, exist_ok=True)
 
     done = load_manifest(mpath) if args.resume else {}
-    config = build_config(args)
     if config["nova_raw_v2"]:
         if not os.environ.get("CLEAN_NOVA_RAW_ROOT", "").strip():
             raise SystemExit(

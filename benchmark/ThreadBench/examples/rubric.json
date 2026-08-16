@@ -1,0 +1,544 @@
+{
+  "schema_version": "long_horizon_agentic_case_rubric_v1",
+  "case_id": "jpmorgan_chase_2024_investor_day_long_horizon",
+  "language": "zh-CN",
+  "purpose": "对单次长程 PPT 生成结果及其 agentic 轨迹进行逐条、彼此独立的 0–1 评分。每个 LLM-as-judge 条目必须单独调用一次 judge，不得将其他条目的分数、结论或总分提供给该 judge。",
+  "score_contract": {
+    "range": [0, 1],
+    "round_to": 3,
+    "independence": "每条 rubric 独立计分；本文件故意不规定总分或加权方式，以支持后续按能力维度分别比较模型与 skill 配置。",
+    "common_anchor_interpretation": {
+      "0.0": "缺失、与要求相反、或证据表明严重失实。",
+      "0.25": "仅有零散痕迹，核心要求多数未满足。",
+      "0.5": "基本覆盖，但有明显遗漏、错误、不可核查处或执行质量一般。",
+      "0.75": "覆盖完整且大体可靠，只有少量非关键缺口。",
+      "1.0": "完整、准确、可核查，并以清晰的专业方式超出最低要求。"
+    },
+    "adjustment_rule": "先选最接近的锚点，再按该条 adjustments 微调；最终 score 必须 clamp 到 [0,1]。任何加分不得抵消事实虚构、时间穿越、来源伪造或缺失交付物造成的关键扣分。",
+    "required_judge_output": {
+      "score": "0 到 1 的数值，保留至多三位小数。",
+      "evidence": "至少两条可定位证据；使用 slide_XX、文件相对路径、页码或 trace event/tool call 标识。若材料没有证据，明确写“未发现”。",
+      "reason": "不超过 120 字的中文理由，说明为何落在该档。",
+      "missing_or_unverifiable": "列出影响评分的缺失材料或无法验证的主张；没有则为空数组。"
+    }
+  },
+  "fact_checking_policy": {
+    "authority": "{CASE_DIR}/instruction.md（即用户 query）是唯一事实核查依据。",
+    "rule": "无论评分模式为何，所有事实、期间、数值、指标定义和时间边界只能与 instruction 中明确内容比对。",
+    "non_authoritative_materials": "research、页脚来源、trace、assets、reviews 和任何外部链接仅可用于评估来源标注、研究过程、产物或交付质量，不得用于判定事实真伪、补充事实锚点或推翻 instruction。",
+    "out_of_scope_claims": "对 instruction 未明确给出的事实，不作外部真实性判断；仅按各条要求评价其来源标注、定义、时间标签与审慎表述。"
+  },
+  "path_variables": {
+    "{CASE_DIR}": ".",
+    "{RUN_DIR}": "outputs/{model}/{run_id}"
+  },
+  "evidence_bundles": {
+    "instruction": {
+      "files": ["{CASE_DIR}/instruction.md"],
+      "use": "唯一的任务要求与事实核查基准（即 query 本身）。禁止使用任何 bundle 外资料验证、补充或推翻其中明确的事实锚点。"
+    },
+    "final_deck_visual": {
+      "files": ["{RUN_DIR}/present.html", "{RUN_DIR}/renders/slide_*.png", "{RUN_DIR}/slides/slide_*.html"],
+      "use": "评估成品的内容、版式、图表和图片。优先按页序查看渲染图；HTML 仅用于核查可编辑文本、来源和图表数据。"
+    },
+    "delivery_metadata": {
+      "files": ["{RUN_DIR}/generation_metadata.json", "{RUN_DIR}/generation_seed.jsonl", "{RUN_DIR}/speech.md"],
+      "use": "核验页数、画布、模型输出声明和交付边界。"
+    },
+    "research": {
+      "files": ["{RUN_DIR}/research/**/*.md", "{RUN_DIR}/research/*.md"],
+      "use": "仅核验网页搜索、抽取、来源、冲突处理和研究到内容的转化；其内容不得作为事实核查依据。"
+    },
+    "plan": {
+      "files": ["{RUN_DIR}/plan/deck.md", "{RUN_DIR}/plan/narrative.md", "{RUN_DIR}/plan/design-brief.md", "{RUN_DIR}/plan/art-direction.md", "{RUN_DIR}/plan/assets.json", "{RUN_DIR}/plan/slide_*.md"],
+      "use": "核验叙事、覆盖、数据/图表/资产计划及计划与成品的一致性。"
+    },
+    "trace": {
+      "files": ["{RUN_DIR}/_trace/**/tool_log.json", "{RUN_DIR}/_trace/**/messages.json", "{RUN_DIR}/_trace/**/usage.json", "{RUN_DIR}/_trace/**/config.json"],
+      "use": "核验工具调用、委派、调用参数、产物路径和失败后的恢复。"
+    },
+    "assets": {
+      "files": ["{RUN_DIR}/assets/**/*", "{RUN_DIR}/plan/assets.json"],
+      "use": "核验搜图/生图的实际文件、许可或来源信息、waiver 与最终嵌入关系。"
+    },
+    "reviews": {
+      "files": ["{RUN_DIR}/checks/*.json", "{RUN_DIR}/reviews/*.md", "{RUN_DIR}/memory/*.md"],
+      "use": "核验视觉检查、内容审计、问题修复和最终交付检查。"
+    }
+  },
+  "evaluator_protocols": {
+    "llm_judge": {
+      "procedure": [
+        "仅向本条 judge 提供 input_bundles 中列出的材料和本条 judge_instruction；不要提供其他 rubric 的评分。",
+        "先通读 instruction，再从指定材料中抽取支持与反驳证据；不得把未展示的网页或主观推测当作证据。",
+        "对带数字的投资者日主张，只能依据 instruction（即 query）中明确的事实锚点、时间边界和指标定义核查。页脚来源和研究记录只能用于判断署名与过程是否存在，不得用于验证事实真伪或推翻 query；query 未给出的事实不得凭外部资料推断。",
+        "按 scoring.anchors 选基准分，应用 adjustments，返回 score_contract.required_judge_output。"
+      ]
+    },
+    "deterministic": {
+      "procedure": [
+        "运行本条 calculation 中的只读统计或文件检查。",
+        "将输入文件清单、原始计数/布尔值、计算过程和最终 score 一并保存。",
+        "若需要解析 trace，合并所有 _trace/**/tool_log.json，而不是只看 orchestrator；相同重试调用需保留，但要单列成功/失败状态。"
+      ]
+    },
+    "hybrid": {
+      "procedure": [
+        "先执行 deterministic_observation 并把原始观测值提供给本条单独的 LLM judge。",
+        "judge 只能依据指定文件和观测值判定质量、相关性或可追溯性，不能以调用次数替代质量判断。",
+        "返回 judge 分和原始观测值；最终分数仍在 [0,1]。"
+      ]
+    }
+  },
+  "criteria": [
+    {
+      "id": "F01_delivery_boundary",
+      "group": "final_deck",
+      "title": "交付页数、宽屏画布与可打开的主成品",
+      "objective": "成品为 50–60 页、16:9、可连续查看的中文演示，不以附件或备用页凑数。",
+      "mode": "deterministic",
+      "input_bundles": ["instruction", "final_deck_visual", "delivery_metadata"],
+      "calculation": "从 present.html 或 slide_*.html 的唯一页序号计数 N，并读取页面 viewport/metadata 或渲染图尺寸 W×H。若 N 在[50,60]、W:H 与 16:9 相差不超过1%、所有页可读取且无重复/空白占位页，score=1；若仅页数和画布其中一项满足，score=0.5；若 N 在[45,65]但两项均不完整，score=0.25；否则0。对每张明显空白、重复或“备用页/附录”扣0.05，最低为0。",
+      "scoring": {"anchors": [{"score": 0, "definition": "无法形成规定范围的可用演示。"}, {"score": 0.5, "definition": "页数或宽屏要求只部分满足。"}, {"score": 1, "definition": "页数、画布、连续可读性均满足。"}], "adjustments": ["每个实质性空白/重复/违规附录页 -0.05。"]},
+      "why": "这是所有内容评价的前提，并防止用大量占位页满足长程页数。"
+    },
+    {
+      "id": "F02_chinese_investor_audience",
+      "group": "final_deck",
+      "title": "简体中文与机构投资者受众适配",
+      "objective": "正文、图表标题、图例、页脚主要使用简体中文，并以机构投资者、卖方分析师和大型企业客户的决策问题组织表达。",
+      "mode": "llm_judge",
+      "input_bundles": ["instruction", "final_deck_visual"],
+      "judge_instruction": "检查全套页面，而非只看封面。允许公司、产品、监管和财务术语首次出现保留英文全称/缩写。评估是否是面向专业受众的投资论证（回报、风险、竞争、资本、指标），而非面向消费者的品牌宣传或英文草稿。",
+      "scoring": {"anchors": [{"score": 0, "definition": "主要非中文，或受众/文体明显不符。"}, {"score": 0.25, "definition": "有中文但多处英文残留、术语混乱或偏营销。"}, {"score": 0.5, "definition": "大部分中文且受众基本匹配，但存在显著页面不一致。"}, {"score": 0.75, "definition": "中文专业、受众清晰，仅有少量可接受的术语或格式问题。"}, {"score": 1, "definition": "全程简体中文、专业严谨，并持续回答机构投资者关切。"}], "adjustments": ["超过10%的实质页面以非必要英文为主 -0.15。", "对关键英文缩写首次未释义 -0.03/项，最多-0.1。"]},
+      "why": "语言和受众错位会使即使事实正确的 deck 无法用于题设场景。"
+    },
+    {
+      "id": "F03_investor_day_framing",
+      "group": "final_deck",
+      "title": "投资者日开场、前瞻性声明、议程与收束",
+      "objective": "自然包含封面、前瞻性声明、议程、章节停顿和结语/Q&A，且不增加独立资料/法律附录。",
+      "mode": "llm_judge",
+      "input_bundles": ["instruction", "final_deck_visual"],
+      "judge_instruction": "按页序确认投资者日的必要框架是否存在、是否简洁自然地融入叙事。前瞻性陈述应提示预测的不确定性；结尾应收束投资论点而非突然结束。不要因没有逐字法律文本而苛责。",
+      "scoring": {"anchors": [{"score": 0, "definition": "缺少多数必备框架，像零散材料。"}, {"score": 0.25, "definition": "仅有封面或目录等零散元素。"}, {"score": 0.5, "definition": "基本元素齐全但流程生硬、声明不充分或收束弱。"}, {"score": 0.75, "definition": "流程完整且与叙事相连，少量章节节奏问题。"}, {"score": 1, "definition": "具有成熟投资者日的开场、停顿、风险提示和有力收束。"}], "adjustments": ["出现冗长独立法律/资料附录 -0.1。", "将前瞻性目标写成确定事实 -0.1。"]},
+      "why": "该条检验 56 页是否是可现场使用的完整演示，而非单纯内容堆积。"
+    },
+    {
+      "id": "F04_narrative_spine",
+      "group": "final_deck",
+      "title": "穿越周期的主线与结论型标题",
+      "objective": "贯穿“客户与规模底座→多元增长与韧性→科技/数据/AI 放大→风控和资本纪律→中周期回报”的主线，且页面标题以数据支持的结论句表达。",
+      "mode": "llm_judge",
+      "input_bundles": ["instruction", "final_deck_visual"],
+      "judge_instruction": "追踪每一章节如何推进题设主线，重点抽查标题是否为可证伪的结论而不是“公司介绍”“市场分析”等中性标签。对标题与内容不一致、同一图表机械重复、孤立口号扣分。",
+      "scoring": {"anchors": [{"score": 0, "definition": "没有可识别主线，标题多为中性目录。"}, {"score": 0.25, "definition": "有口号式主题但章节之间断裂。"}, {"score": 0.5, "definition": "主线基本存在，约半数页面仍是描述式标题或论证跳跃。"}, {"score": 0.75, "definition": "主线清晰、标题大多结论化，只有少量重复。"}, {"score": 1, "definition": "每一段均推进因果投资逻辑，结论型标题与证据严密匹配。"}], "adjustments": ["同一数字/图表无新增解释地重复使用 -0.03/次，最多-0.12。"]},
+      "why": "长程演示的核心难点不是罗列信息，而是让 50–60 页仍能维持可检验的投资论证。"
+    },
+    {
+      "id": "F05_complete_global_diversified_scale",
+      "group": "final_deck",
+      "title": "“全面、全球、多元、规模化”四支柱与协同",
+      "objective": "解释四支柱如何共同形成客户关系、收入稳定性和资本效率，并把 CCB、CIB、AWM、Payments、Markets、Securities Services 等呈现为端到端体系。",
+      "mode": "llm_judge",
+      "input_bundles": ["instruction", "final_deck_visual"],
+      "judge_instruction": "评估四个词是否被拆解为可观察能力和业务协同，而非口号。应出现跨业务客户生命周期、Payments/Markets/Securities Services/Lending/IB 等联动的因果解释，且不能把不同口径的市场排名简单拼接。",
+      "scoring": {"anchors": [{"score": 0, "definition": "未覆盖四支柱或仅是宣传标语。"}, {"score": 0.25, "definition": "罗列业务，但没有协同/资本效率逻辑。"}, {"score": 0.5, "definition": "覆盖四支柱和主要业务，协同解释较浅。"}, {"score": 0.75, "definition": "四支柱与客户、收入韧性、资本效率有清晰连接。"}, {"score": 1, "definition": "以数据或结构图严密证明端到端体系及其取舍。"}], "adjustments": ["混淆不同市场、地区或统计口径的领先地位 -0.1/处，最多-0.2。"]},
+      "why": "这是 query 指定的集团级投资主张，不能由三个业务部门的孤立介绍替代。"
+    },
+    {
+      "id": "F06_fy2023_group_performance",
+      "group": "final_deck",
+      "title": "FY2023 集团业绩、规模与经营驱动的事实表达",
+      "objective": "准确且有定义地呈现 2023A 收入、净利润、ROTCE、TBV/股、NII/NIR、费用效率、规模/客户特许经营权及 2023 强劲业绩的驱动。",
+      "mode": "llm_judge",
+      "input_bundles": ["instruction", "final_deck_visual"],
+      "judge_instruction": "仅以 instruction（即 query）中列明的事实锚点核查数字是否标明 2023A、单位和定义，包括收入约1620亿美元、净利润约500亿美元、ROTCE约21%、TBV/股约86美元、总资产约3.9万亿美元。应说明 NII 与 NIR、利率/余额/业务量等驱动，避免只堆数字。对 query 未提供的数字，只评价是否标明来源、定义和不确定性，不验证其真伪。",
+      "scoring": {"anchors": [{"score": 0, "definition": "关键业绩缺失或存在多处重大错误/无期间。"}, {"score": 0.25, "definition": "只有零散数字，缺单位、定义或驱动。"}, {"score": 0.5, "definition": "覆盖主要指标但解释薄弱，或有可疑口径。"}, {"score": 0.75, "definition": "主要指标、期间、驱动和规模均准确清楚。"}, {"score": 1, "definition": "以连贯趋势和桥接解释 2023 业绩，定义和来源可复核。"}], "adjustments": ["每项重大且无解释的事实/单位/期间错误 -0.1，最多-0.4。", "清晰解释 First Republic 或一次性因素等可比性限制 +0.05。"]},
+      "why": "集团 2023 基数是后续展望和中周期回报论证的计算起点。"
+    },
+    {
+      "id": "F07_2024_outlook_and_time_boundary",
+      "group": "final_deck",
+      "title": "2024 展望、中周期目标与时间边界",
+      "objective": "以 2024 年 5 月当时公开信息表达 2024 展望和中周期回报逻辑，并明确区分 2023A、2024E/展望和情景，而非泄漏后续数据。",
+      "mode": "llm_judge",
+      "input_bundles": ["instruction", "final_deck_visual"],
+      "judge_instruction": "仅以 instruction（即 query）核查 NII（不含 Markets）约910亿美元、调整后费用约920亿美元、科技费用约170亿美元、中周期 ROTCE 约17%等是否被正确标为当时展望/目标而非实际。检查是否把2025年以后或当前最新季度伪装为 2024 Investor Day 信息。情景假设可以有，但不能给无根据精确预测。",
+      "scoring": {"anchors": [{"score": 0, "definition": "时间穿越严重，或把目标/情景当作已实现事实。"}, {"score": 0.25, "definition": "提及展望但时间标签和定义多处混乱。"}, {"score": 0.5, "definition": "大体区分实际和展望，但仍有遗漏或未经支撑的预测。"}, {"score": 0.75, "definition": "2023A、2024E/展望和中周期目标清楚区隔。"}, {"score": 1, "definition": "完整呈现当时展望、驱动、敏感性和目标边界，无时间泄漏。"}], "adjustments": ["每个无来源的后验数据或时间穿越主张 -0.15。", "对预测性陈述明确假设和不确定性 +0.05。"]},
+      "why": "该 benchmark 的事实时点被严格锁定在 2024 年 5 月，是最重要的反幻觉约束之一。"
+    },
+    {
+      "id": "F08_sources_definitions_and_footnotes",
+      "group": "final_deck",
+      "title": "逐页来源、指标定义与不可核实信息处理",
+      "objective": "每页有可读页脚；含数字、排名、预测或外部图片的页逐项给出机构/文件、期间或日期，必要时页码，并正确处理非 GAAP 与不可确认数据。",
+      "mode": "llm_judge",
+      "input_bundles": ["instruction", "final_deck_visual"],
+      "judge_instruction": "抽查所有含定量、外部图片、排名和预测的页面。来源应达到“机构/文件名 + 期间/发布日期”最低粒度，不能用“公开资料”“网络”冒充来源。非GAAP（如调整后 ROE）需有定义或明确脚注；无法确认的精确数字应保守表述或标“公开资料未单独披露”。",
+      "scoring": {"anchors": [{"score": 0, "definition": "多数关键页面没有来源，或存在伪造来源。"}, {"score": 0.25, "definition": "有零散页脚但无法定位到机构、期间或图片来源。"}, {"score": 0.5, "definition": "大部分页面有来源，仍漏掉多项数字/排名/定义。"}, {"score": 0.75, "definition": "来源覆盖充分且定义基本清楚，少量轻微遗漏。"}, {"score": 1, "definition": "逐页可复核、口径透明，并谨慎处理未知信息。"}], "adjustments": ["伪造、明显错误或与页面内容不相干的来源 -0.2/处。", "每个无来源的关键数字/排名/预测 -0.04，最多-0.25。"]},
+      "why": "投资者日材料必须允许事实核查；本条也直接抑制模型编造数字和引用。"
+    },
+    {
+      "id": "F09_technology_data_ai_value_chain",
+      "group": "final_deck",
+      "title": "科技、数据与 AI 的价值链及治理",
+      "objective": "把技术投入连接到能力、客户/员工/风险结果和财务结果，并覆盖工程、云、数据、AI/ML、生成式 AI 的已公开用例与治理边界。",
+      "mode": "llm_judge",
+      "input_bundles": ["instruction", "final_deck_visual"],
+      "judge_instruction": "寻找“投入→能力→客户/员工/风险/财务结果”的因果链。用例可包括反欺诈、信用、交易、服务、营销、顾问、工作流等，但要区分试点与规模化，并说明数据治理、隐私、模型风险、人工监督和控制。技术名词堆砌、虚构部署和无控制的 AI 乐观叙事均应扣分。",
+      "scoring": {"anchors": [{"score": 0, "definition": "没有实质科技/AI内容或明显虚构。"}, {"score": 0.25, "definition": "仅罗列云、AI等名词。"}, {"score": 0.5, "definition": "有若干用例和投入，但因果/治理不完整。"}, {"score": 0.75, "definition": "价值链、用例状态和治理约束清楚。"}, {"score": 1, "definition": "以可验证案例严密连接生产率、客户价值、风险控制和回报。"}], "adjustments": ["把试点说成规模化或无证据的财务承诺 -0.1/处。", "明确区分传统ML、生成式AI和人工监督 +0.05。"]},
+      "why": "query 明确要求 AI 不能停留在概念层，而应被视为能力与风险控制的共同变量。"
+    },
+    {
+      "id": "F10_macro_risk_capital_resilience",
+      "group": "final_deck",
+      "title": "宏观情景、风险管理、流动性与资本纪律",
+      "objective": "平衡讨论利率、存款、信用、CRE、通胀、地缘政治、B3E/GSIB/SCB，并以情景连接 NII、信用成本、资本和 ROTCE。",
+      "mode": "llm_judge",
+      "input_bundles": ["instruction", "final_deck_visual"],
+      "judge_instruction": "确认至少有软着陆、衰退或更高利率更久等有条件情景，不要求无依据的精确预测。还应覆盖 HQLA/LCR、TLAC、CET1、杠杆率、压力测试、AML/KYC、网络安全/运营韧性及回购和增长投资的平衡。监管数字若有争议必须标期间/状态，不能把提案写成最终规则。",
+      "scoring": {"anchors": [{"score": 0, "definition": "回避主要风险，或监管/资本表述严重失实。"}, {"score": 0.25, "definition": "罗列风险名词，没有情景或资本传导。"}, {"score": 0.5, "definition": "覆盖宏观和若干资本指标，但联系浅或过度确定。"}, {"score": 0.75, "definition": "情景、风险、流动性、资本与回报权衡清晰。"}, {"score": 1, "definition": "审慎且可复核地解释“堡垒资产负债表”如何支撑周期韧性。"}], "adjustments": ["无依据精确宏观/资本预测 -0.08/处。", "对监管状态、情景假设与局限作清晰披露 +0.05。"]},
+      "why": "题设要求证明“穿越周期”，因此必须同时展示上行增长和下行资本/流动性约束。"
+    },
+    {
+      "id": "F11_awm_strategy",
+      "group": "final_deck",
+      "title": "AWM 的客户覆盖、增长引擎、协同与风险",
+      "objective": "完整说明 Asset Management 与 Global/Private Bank 的客户谱系、规模/财务趋势、产品和渠道增长、跨业务协同，以及市场和监管风险。",
+      "mode": "llm_judge",
+      "input_bundles": ["instruction", "final_deck_visual"],
+      "judge_instruction": "检查是否涵盖从首次投资者至机构/主权客户、传统/另类/流动性/信贷等解决方案，以及主动ETF、固定收益、SMA、另类、Workplace/Global Shares、国际私人银行、顾问和 Client 360 等至少若干关键增长引擎。需要同时表达净流入/业绩/费率/产品复杂度等风险，而非单向宣传。",
+      "scoring": {"anchors": [{"score": 0, "definition": "AWM缺失或严重片面。"}, {"score": 0.25, "definition": "只给规模或产品清单。"}, {"score": 0.5, "definition": "覆盖主要业务和部分数据，但协同/风险不足。"}, {"score": 0.75, "definition": "客户、引擎、财务、协同和风险均有连贯说明。"}, {"score": 1, "definition": "展示可验证的 AWM 投资逻辑及与 CCB/CIB 的双向价值。"}], "adjustments": ["将客户资产、AUM、净流入或业绩口径混为一谈 -0.1/处。"]},
+      "why": "AWM 是 query 指定的三大业务之一，要求的不只是资产规模而是可持续盈利和协同。"
+    },
+    {
+      "id": "F12_ccb_strategy",
+      "group": "final_deck",
+      "title": "CCB 的增长、互动、深化与信用纪律",
+      "objective": "以 Grow–Engage–Deepen 阐释消费者/小企业、全渠道、数据/AI、财富、Connected Commerce、First Republic 与信用风险如何共同作用于财务回报。",
+      "mode": "llm_judge",
+      "input_bundles": ["instruction", "final_deck_visual"],
+      "judge_instruction": "检查客户、数字/网点活跃、主账户、多产品、存款/信用卡、网络扩张、财富、Connected Commerce 与消费/商户双边价值是否有可验证连接。必须区分有/无 First Republic 的可比口径，并讨论净核销、拨备、晚付费规则、客户质量或整合风险等真实约束。",
+      "scoring": {"anchors": [{"score": 0, "definition": "CCB缺失或只有宣传性客户场景。"}, {"score": 0.25, "definition": "只列客户/数字指标，未解释经营机制。"}, {"score": 0.5, "definition": "覆盖多项行动，但财务、信用或FRB可比性不足。"}, {"score": 0.75, "definition": "增长、渠道、数据、财富、生态和信用纪律连接清楚。"}, {"score": 1, "definition": "形成经数据支持且平衡的 CCB 长期回报框架。"}], "adjustments": ["未说明 First Republic 可比性却直接比较同比 -0.15。", "无来源的客户/份额/信用数字 -0.06/项。"]},
+      "why": "CCB 的故事同时涉及规模、体验、信用和并购整合，最容易出现只报正面指标的失衡叙述。"
+    },
+    {
+      "id": "F13_cib_strategy",
+      "group": "final_deck",
+      "title": "CIB 的产品×客户平台、增长机会与资本约束",
+      "objective": "说明 Markets、Securities Services、Payments、Global Banking、Investment Banking 等如何服务客户生命周期，并把收入/回报/资本/科技与竞争和风险约束连起来。",
+      "mode": "llm_judge",
+      "input_bundles": ["instruction", "final_deck_visual"],
+      "judge_instruction": "仅以 instruction（即 query）中列出的 CIB 锚点核查期间、单位和定义：2023收入约644亿美元、调整后ROE约15%、资本约1380亿美元、Payments约183亿美元、Securities Services收入约48亿美元和托管资产约32万亿美元。评估是否覆盖电子化/非银竞争/监管资本、CRE/C&I/非投资级风险，并解释 Client 360、云数据和银行家工具。",
+      "scoring": {"anchors": [{"score": 0, "definition": "CIB缺失、事实严重错误或只罗列产品。"}, {"score": 0.25, "definition": "覆盖少数产品，没有客户生命周期或资本逻辑。"}, {"score": 0.5, "definition": "主要业务均出现，但增长、回报、资本和风险连接不充分。"}, {"score": 0.75, "definition": "形成清晰的产品×客户平台和风险调整回报论证。"}, {"score": 1, "definition": "以可核查数据和取舍说明 CIB 的结构性增长与资本纪律。"}], "adjustments": ["把市场份额或地区排名脱离来源/口径并列 -0.1/处。", "明确说明非GAAP回报定义 +0.05。"]},
+      "why": "CIB 占据大量收入与资本，必须同时展示全生命周期能力和资本密集型约束。"
+    },
+    {
+      "id": "F14_investor_scorecard_and_close",
+      "group": "final_deck",
+      "title": "投资者记分卡、风险与中周期回报收束",
+      "objective": "结尾把集团、三大业务、科技与风控收束成增长来源、关键指标、主要风险、管理动作和中周期回报逻辑，且不引入前文未解释的新数据。",
+      "mode": "llm_judge",
+      "input_bundles": ["instruction", "final_deck_visual"],
+      "judge_instruction": "检查最终数页是否是可用于投资决策的记分卡和结论：既有增长催化剂，也有风险、观察指标和管理动作。若结尾加入前文没有研究/定义的新数字，视为严重缺陷。",
+      "scoring": {"anchors": [{"score": 0, "definition": "没有结论或结论与前文无关。"}, {"score": 0.25, "definition": "仅重复口号或单向正面总结。"}, {"score": 0.5, "definition": "有催化剂和目标，但风险/指标/前文衔接不足。"}, {"score": 0.75, "definition": "形成平衡、清楚的投资者记分卡。"}, {"score": 1, "definition": "以已论证证据收束全部主线，可直接支持投委会讨论。"}], "adjustments": ["结尾引入未经前文解释的新关键数据 -0.12/项。", "明确给出可监测指标和风险触发条件 +0.05。"]},
+      "why": "优秀长程 presentation 应当把信息转化为可跟踪的投资结论，而不只是在最后喊口号。"
+    },
+    {
+      "id": "F15_financial_design_system",
+      "group": "final_deck",
+      "title": "国际银行投资者日的视觉系统与层级",
+      "objective": "采用白底、深海军蓝为主、青绿/浅蓝灰辅助、绿正红负的克制金融视觉，并保持标题、页脚、章节导航、留白和字体层级一致。",
+      "mode": "llm_judge",
+      "input_bundles": ["instruction", "final_deck_visual"],
+      "judge_instruction": "从全套缩略图和若干数据密集页判断视觉系统是否一致而非只评单页。深蓝章节页可满版；禁止把渐变、霓虹、玻璃拟态、卡通图标、3D饼图或默认模板感作为主要风格。检查正文/标题/脚注可读性与信息层级。",
+      "scoring": {"anchors": [{"score": 0, "definition": "视觉混乱、难读或明显违背指定风格。"}, {"score": 0.25, "definition": "有少量配色尝试但模板化/不一致严重。"}, {"score": 0.5, "definition": "基本统一但字体、留白、页脚或层级有明显问题。"}, {"score": 0.75, "definition": "专业一致、可读，少量页面不够成熟。"}, {"score": 1, "definition": "具有高质量国际银行投资者日的克制、清晰、可扩展设计系统。"}], "adjustments": ["每类显著禁用风格作为主视觉 -0.08，最多-0.24。", "小于可读阈值且遮挡主体的页脚/标签 -0.03/页，最多-0.15。"]},
+      "why": "视觉一致性决定 56 页材料是否能被快速扫描和在正式会议中投放。"
+    },
+    {
+      "id": "F16_chart_coverage_and_integrity",
+      "group": "final_deck",
+      "title": "可编辑图表的覆盖、语义匹配与定量完整性",
+      "objective": "包含所要求的长期趋势、桥接、地图、流程、情景和风险热力图，并用正确图形、期间、单位、直接标签和非误导轴推进论证。",
+      "mode": "hybrid",
+      "input_bundles": ["instruction", "final_deck_visual"],
+      "deterministic_observation": "在 slide HTML 和渲染图中统计并人工复核图形：长期趋势≥3、瀑布/桥接≥4、地图≥2、客户/业务流程≥3、情景图≥1、风险热力图≥1；记录每类候选页号。再向 judge 提供候选列表和对应页面。",
+      "judge_instruction": "先核对各类候选图是否真的属于该语义类型，再评估图表是否可读、直接标注关键值/期间/单位/来源、预测期是否区分、柱图是否从零起或有合理解释。不得把装饰线条、文本表格或同一图的重复截图计作不同图表。",
+      "scoring": {"anchors": [{"score": 0, "definition": "大多数必需图形缺失，或图表误导/不可读。"}, {"score": 0.25, "definition": "有少数图形但覆盖和数据标注很差。"}, {"score": 0.5, "definition": "基本有数据图，但缺多类图形、单位/轴/来源或语义不匹配。"}, {"score": 0.75, "definition": "覆盖大部分类型且数据表达可靠，少量缺口。"}, {"score": 1, "definition": "完整满足类型和数量要求，每张图均为论证提供准确、可编辑、非误导证据。"}], "adjustments": ["每个误导性截断轴、无单位或无期间的关键图 -0.06，最多-0.24。", "同一图表无新增比较而重复 -0.03/次。"]},
+      "why": "query 对图形类型和定量诚信提出了明确、可审计的要求，不能只看“看起来有图”。"
+    },
+    {
+      "id": "F17_visual_readability_and_content_density",
+      "group": "final_deck",
+      "title": "长程页面的可读性、信息密度与版式多样性",
+      "objective": "多数页面由数据、图表、结构图和清晰结论主导；正文不小于约14pt、标题约28–34pt、脚注约7–9pt，并避免 56 页同构文字墙。",
+      "mode": "llm_judge",
+      "input_bundles": ["instruction", "final_deck_visual"],
+      "judge_instruction": "检查全套页面的内容密度和版式节奏。重点寻找文本溢出、重叠、极小文字、低对比、过度装饰和连续同模板文字页。不要因适度的章节扉页或结构图而扣分；要判断它们是否服务节奏。",
+      "scoring": {"anchors": [{"score": 0, "definition": "多数页面不可读、重叠/溢出或内容空泛。"}, {"score": 0.25, "definition": "可读性问题频繁，几乎全是同构文字页。"}, {"score": 0.5, "definition": "大部分能读，但多处密度或节奏欠佳。"}, {"score": 0.75, "definition": "页面可读、节奏多样，只有少量密集页。"}, {"score": 1, "definition": "在 56 页内兼具信息深度、留白、层级和高效视觉节奏。"}], "adjustments": ["每个明显溢出/重叠/低对比页面 -0.04，最多-0.2。", "连续5页以上同构文字布局 -0.08/段。"]},
+      "why": "这是成品投屏和机构读者快速阅读的基本质量门槛。"
+    },
+    {
+      "id": "F18_final_image_requirement",
+      "group": "final_deck",
+      "title": "最终 deck 的外部图片与原创 AI 主视觉合规性",
+      "objective": "成品中至少有8张适合商用或清晰署名的高分辨率外部图片，以及至少4张无文字、16:9、无Logo/水印的原创 AI 主视觉；图片不得替代核心数据图表。",
+      "mode": "hybrid",
+      "input_bundles": ["instruction", "final_deck_visual"],
+      "deterministic_observation": "从 HTML 的 img/background URL、页脚图片来源和视觉去重中列出外部图片候选及AI图片候选，按实际不同图像计数；记录其页号、来源文字、宽高比和是否有内嵌文字/水印痕迹。",
+      "judge_instruction": "验证候选是否真是不同、在最终页面可见的图片，而非同图裁切、空路径、占位图或图表。外部图必须有可辨识来源或许可线索；AI主视觉应符合专业、低饱和、留排版空间、无文字/Logo/水印，并用于封面/章节/少量场景而不是取代数据图。",
+      "scoring": {"anchors": [{"score": 0, "definition": "基本没有合规图片或大量占位/水印/虚假来源。"}, {"score": 0.25, "definition": "有少量图片，但远未达到数量或来源/原创要求。"}, {"score": 0.5, "definition": "两类图片之一基本满足，另一类或整合质量明显不足。"}, {"score": 0.75, "definition": "接近或达到数量要求，来源和适配性良好，少量瑕疵。"}, {"score": 1, "definition": "两类图片均完整合规、可追溯且恰当地服务叙事。"}], "adjustments": ["每张不可追溯外部图片 -0.05，最多-0.2。", "AI图替代本应为数据图的核心证据 -0.08/处。"]},
+      "why": "该条直接覆盖 query 中明确要求触发搜图和生图的最终可见结果，而非仅检查工具调用。"
+    },
+    {
+      "id": "W01_research_decomposition",
+      "group": "agentic_web",
+      "title": "Web 研究问题的分解与覆盖分工",
+      "objective": "轨迹把集团、科技、宏观/资本、AWM、CCB、CIB等研究问题合理拆解，并产出可被后续使用的研究文件。",
+      "mode": "hybrid",
+      "input_bundles": ["instruction", "trace", "research", "plan"],
+      "deterministic_observation": "从 trace 的 delegate_task、agent标签和 research/*.md 统计独立研究任务、主题、产物文件；将主题映射到六个要求域：集团、科技、宏观/资本、AWM、CCB、CIB。",
+      "judge_instruction": "依据观测和原始任务/研究内容，判断分工是否由 query 驱动、是否互补且覆盖六域，而非多个代理重复搜索同一泛问题。允许一个研究任务覆盖相邻域，但需能在研究产物中体现。",
+      "scoring": {"anchors": [{"score": 0, "definition": "没有可用研究分解或没有研究产物。"}, {"score": 0.25, "definition": "有任务但主题无关/高度重复，覆盖少于3域。"}, {"score": 0.5, "definition": "覆盖3–4域或分工不清，产物利用有限。"}, {"score": 0.75, "definition": "覆盖5–6域，分工大体互补且有产物。"}, {"score": 1, "definition": "分解完整、边界清楚、研究成果可直接支撑后续叙事和事实核查。"}], "adjustments": ["每个没有产物的研究委派 -0.04，最多-0.12。", "研究任务显式包括来源和时间边界 +0.05。"]},
+      "why": "长程任务需要并行研究，但并行本身不等于有效覆盖；本条测量其任务设计质量。"
+    },
+    {
+      "id": "W02_web_search_coverage",
+      "group": "agentic_web",
+      "title": "网页搜索调用的广度与最低覆盖",
+      "objective": "实际调用 web_search，且查询覆盖指定的一手材料、六个业务主题、宏观/监管和外部市场数据需求。",
+      "mode": "deterministic",
+      "input_bundles": ["instruction", "trace"],
+      "calculation": "解析所有 tool_log.json 中 tool=web_search 的成功调用及 query 参数，按去重语义映射到：Investor Day/IR、2023年报/10-K、Q1 2024、集团/科技、宏观监管、AWM、CCB、CIB、外部排名/市场数据九类。成功搜索总数<10或覆盖<4类得0；10–24且覆盖4–5类得0.25；≥25且覆盖6–7类得0.5；≥40且覆盖8类得0.75；≥50且覆盖全部9类得1。仅同义重复查询不增加覆盖。",
+      "scoring": {"anchors": [{"score": 0, "definition": "未进行有效网页搜索。"}, {"score": 0.5, "definition": "搜索数量和主题覆盖达到基本研究水平。"}, {"score": 1, "definition": "全面覆盖题设来源和九类研究问题。"}], "adjustments": ["任何仅为刷次数的同义重复不计入总数或覆盖。"]},
+      "why": "该条是可复现的调用能力指标，避免 LLM 仅凭研究文档的文风推断是否真正搜索。"
+    },
+    {
+      "id": "W03_primary_source_priority",
+      "group": "agentic_web",
+      "title": "一手和权威来源的优先级",
+      "objective": "搜索/研究优先使用 JPMorgan IR、Investor Day/10-K/Q1材料、SEC及 Fed/FDIC/BIS/IMF 等官方来源；市场份额/排名采用指定原始数据源。",
+      "mode": "llm_judge",
+      "input_bundles": ["instruction", "trace", "research"],
+      "judge_instruction": "从搜索查询、抽取URL和研究引用判断来源层级。允许用搜索引擎发现资料，但不能把搜索摘要、百科、媒体转载或二手聚合页当作唯一证据。对每个关键域判断是否至少有合适的一手/权威来源，以及外部市场数据是否标明机构和统计日期。",
+      "scoring": {"anchors": [{"score": 0, "definition": "主要依赖非权威/二手来源，或没有可识别URL。"}, {"score": 0.25, "definition": "有少量官方链接，但关键主张仍无一手支撑。"}, {"score": 0.5, "definition": "大部分公司事实来自权威来源，宏观/市场来源覆盖不全。"}, {"score": 0.75, "definition": "各关键域均优先采用合适的一手或权威来源。"}, {"score": 1, "definition": "来源层级严谨，二手材料只作线索，统计口径与日期完整。"}], "adjustments": ["把搜索摘要/百科/媒体当作唯一关键事实源 -0.12/项。", "主动交叉引用公司披露与监管原文 +0.05。"]},
+      "why": "题设已指定来源优先级；该条区分“会搜索”与“会做可审计的金融研究”。"
+    },
+    {
+      "id": "W04_web_extraction_quality",
+      "group": "agentic_web",
+      "title": "网页/PDF 抽取后的事实、定义与页码保留",
+      "objective": "通过 web_extract 或等价读取把搜索结果转成带 URL、期间、单位、定义、页码/段落和用途的可用事实，而不是只保存链接或摘要。",
+      "mode": "hybrid",
+      "input_bundles": ["trace", "research"],
+      "deterministic_observation": "统计 web_extract（或等价内容读取）成功调用数、唯一URL数和 research 文件中含URL/期间/页码/单位的事实条目数；提供若干条原始抽取与对应研究条目。",
+      "judge_instruction": "判断抽取结果是否被准确转写为可复核事实包：需保留指标定义、时间、单位、出处位置，并能区分公司披露、监管资料和二手市场数据。大量URL堆砌、未读PDF、无单位数字或误读表格不得高分。",
+      "scoring": {"anchors": [{"score": 0, "definition": "未抽取可用内容，研究只是链接/猜测。"}, {"score": 0.25, "definition": "有少量抽取但缺关键定义、时间或出处。"}, {"score": 0.5, "definition": "多数核心事实可用，但覆盖或可复核性不稳定。"}, {"score": 0.75, "definition": "抽取准确、可定位，足以支撑主要页面。"}, {"score": 1, "definition": "形成高质量事实包，数据、定义、页码和用途均可追溯。"}], "adjustments": ["每个明显误读单位/期间的抽取 -0.1，最多-0.3。", "关键数字附原文件页码/表格位置 +0.05。"]},
+      "why": "搜索之后的抽取质量决定数字能否安全进入最终投资者日材料。"
+    },
+    {
+      "id": "W05_research_provenance_and_traceability",
+      "group": "agentic_web",
+      "title": "研究事实到最终页面的来源可追溯性",
+      "objective": "关键最终主张能从 slide 页脚追至 research 的具体来源，研究中的不确定性不会在成品中被洗掉。",
+      "mode": "llm_judge",
+      "input_bundles": ["final_deck_visual", "research", "plan"],
+      "judge_instruction": "抽取至少12个跨集团、科技、风险、AWM、CCB、CIB的关键数字/排名/展望，沿“最终页→页脚来源→研究条目/URL”追溯。评估追溯闭环的比例与质量。若最终页使用研究中不存在且没有页脚来源的数字，视为未追溯。",
+      "scoring": {"anchors": [{"score": 0, "definition": "几乎无法把最终主张追回研究/来源。"}, {"score": 0.25, "definition": "少数页面有来源闭环，多数数字孤立。"}, {"score": 0.5, "definition": "约半数抽样主张可追溯，仍有关键断链。"}, {"score": 0.75, "definition": "绝大多数抽样主张有明确研究和页脚闭环。"}, {"score": 1, "definition": "追溯链完整，并保留定义、日期和不确定性。"}], "adjustments": ["每个无法追溯且影响投资结论的数字 -0.06，最多-0.24。"]},
+      "why": "这是把 agentic 研究质量与最终 PPT 可信度真正连接起来的链路指标。"
+    },
+    {
+      "id": "W06_temporal_conflict_uncertainty_handling",
+      "group": "agentic_web",
+      "title": "时间边界、来源冲突与不确定性处理",
+      "objective": "研究主动标注 2024年5月时点、2023A/2024展望、待核数字和冲突来源，并将这些限制传递给计划或成品。",
+      "mode": "llm_judge",
+      "input_bundles": ["instruction", "research", "plan", "final_deck_visual"],
+      "judge_instruction": "查找研究中是否标“待核”、口径差异、B3E/GSIB/SCB等监管状态或数值冲突，并检查代理是否选择权威来源、标注不确定性或避免使用。若 research 中已有警告但成品把它变成确定精确数字，应重扣。",
+      "scoring": {"anchors": [{"score": 0, "definition": "无时间控制，冲突和不确定性被忽略或掩盖。"}, {"score": 0.25, "definition": "偶有日期标记，但关键冲突未处理。"}, {"score": 0.5, "definition": "识别部分冲突/待核项，但没有稳定传递到计划和成品。"}, {"score": 0.75, "definition": "时间、口径和不确定性大体受到一致管理。"}, {"score": 1, "definition": "主动识别、解释并安全处理所有关键冲突和时点风险。"}], "adjustments": ["研究标为待核/冲突而成品仍确定性采用 -0.15/项。", "明确放弃不可靠精确数字并改为审慎表述 +0.05。"]},
+      "why": "长程金融研究最常见的高风险失误是把后验信息或冲突监管数字错误地写进历史时点。"
+    },
+    {
+      "id": "W07_research_to_plan_synthesis",
+      "group": "agentic_web",
+      "title": "研究向叙事、数据图表和来源脚注的转化",
+      "objective": "研究成果被综合为面向投资问题的论点、图表选择、数据口径和页脚来源，而不是孤立 Markdown 笔记。",
+      "mode": "llm_judge",
+      "input_bundles": ["research", "plan", "final_deck_visual"],
+      "judge_instruction": "比较研究文件、deck/narrative/slide plan 和最终页。评估是否能看到研究事实被选择、归因、排序并转成图表或结论；也要判断是否避免把不重要的搜索细节原样塞入 deck。",
+      "scoring": {"anchors": [{"score": 0, "definition": "研究与计划/成品脱节。"}, {"score": 0.25, "definition": "少量数字被搬运，缺乏综合。"}, {"score": 0.5, "definition": "有明显转化，但业务/风险/来源之间仍有断裂。"}, {"score": 0.75, "definition": "研究大多转化为有目的的叙事和图表。"}, {"score": 1, "definition": "形成从研究证据到投资结论和可核查页脚的高质量综合链。"}], "adjustments": ["研究中关键警告在计划/成品消失 -0.08/项。", "把多源证据综合为一张有定义的比较/桥接图 +0.05。"]},
+      "why": "search 调用的价值体现在后续决策中，而非调用数量本身。"
+    },
+    {
+      "id": "W08_web_research_efficiency",
+      "group": "agentic_web",
+      "title": "网页研究的调用效率与失败控制",
+      "objective": "在充分覆盖前提下减少重复搜索、无关查询和失败后无策略重试，并让抽取比例与研究产物相匹配。",
+      "mode": "deterministic",
+      "input_bundles": ["trace", "research"],
+      "calculation": "从全部 trace 统计 web_search、web_extract、失败调用、按规范化query的重复调用，以及研究文件数 R。令 S=成功web_search数，E=成功web_extract数，D=重复搜索占比，Fail=失败率。若 S≥25、E≥10、D≤0.35、Fail≤0.2且R≥4，score=1；若满足其中4项，0.75；满足3项，0.5；满足1–2项，0.25；均不满足，0。若 S>200 且研究文件未增加、或 D>0.6，最高封顶0.5。",
+      "scoring": {"anchors": [{"score": 0, "definition": "研究调用既不足又无法形成产物。"}, {"score": 0.5, "definition": "达到最低研究活动，但有明显冗余或失败。"}, {"score": 1, "definition": "覆盖充分、抽取配套、重复和失败受到控制。"}], "adjustments": ["仅以调用次数多不得加分；极端冗余按 calculation 封顶。"]},
+      "why": "该条使不同模型/skill 的轨迹可公平比较，防止用无效搜索堆高“agentic”表面指标。"
+    },
+    {
+      "id": "I01_visual_asset_plan",
+      "group": "agentic_image",
+      "title": "搜图/生图资产的需求拆解与页面映射",
+      "objective": "在实施前把外部图和至少4张AI主视觉拆成有用途、页号/章节、构图、安全区、来源或生成方式的资产计划。",
+      "mode": "llm_judge",
+      "input_bundles": ["instruction", "plan", "trace"],
+      "judge_instruction": "查看 assets.json、design/art-direction 和相关任务。计划应覆盖题设建议的天际线、全球支付、财富顾问、AI金融基础设施等AI场景，以及适当的外部照片场景；应说明图片只用于封面/章节/少量客户场景，数据页仍由图表主导。",
+      "scoring": {"anchors": [{"score": 0, "definition": "无资产计划。"}, {"score": 0.25, "definition": "只有泛泛“找图/生图”指令。"}, {"score": 0.5, "definition": "列出部分资产，但缺用途、页面、构图或来源策略。"}, {"score": 0.75, "definition": "主要外部/AI资产均有清晰映射和设计约束。"}, {"score": 1, "definition": "资产计划完整、节制并与叙事/数据页角色严密匹配。"}], "adjustments": ["计划用图片替代核心数据证据 -0.1。", "每个明确安全区、宽高比、页码和来源/生成策略齐全的关键资产 +0.02，最多+0.08。"]},
+      "why": "该条评估 agent 是否在调用图片工具前理解图片的叙事角色，而不是随机装饰。"
+    },
+    {
+      "id": "I02_web_image_retrieval_and_rights",
+      "group": "agentic_image",
+      "title": "外部图片搜索、获取与署名/许可信息",
+      "objective": "实际利用网页/图片检索或 fetch_image 获取外部图，并保留原始URL、作者/机构、许可或可署名信息和最终页映射。",
+      "mode": "hybrid",
+      "input_bundles": ["trace", "assets", "final_deck_visual"],
+      "deterministic_observation": "统计 fetch_image、图片搜索（若trace中以web_search承载则检索query含image/photo/Unsplash/Wikimedia等）和实际资产文件；列出每个外部资产的本地路径、原始URL/许可字段、使用slide。",
+      "judge_instruction": "判断这些调用是否真的用于获取可在成品中追溯的外部图片。搜索结果、下载失败、waived占位JSON、无URL或只生成未安装文件均不得算作成功获取。若没有独立图片工具但以网页检索/下载保留相同证据，也可计入。",
+      "scoring": {"anchors": [{"score": 0, "definition": "无真实外部图片获取或没有可追溯证据。"}, {"score": 0.25, "definition": "有搜索/下载痕迹但资产、许可或页面映射缺失。"}, {"score": 0.5, "definition": "部分外部图片可追溯，数量或版权信息不足。"}, {"score": 0.75, "definition": "大多数外部资产有获取、署名/许可和页面闭环。"}, {"score": 1, "definition": "外部图片检索、可商用/署名验证和最终使用完全可追溯。"}], "adjustments": ["waived/占位资产被当作已获取图片 -0.15/项。", "每个明确作者/许可/原URL与页脚匹配的资产 +0.02，最多+0.08。"]},
+      "why": "这与最终图片数量分开，专门验证 agent 的搜图、下载和版权归因能力。"
+    },
+    {
+      "id": "I03_image_generation_prompts_and_calls",
+      "group": "agentic_image",
+      "title": "原创主视觉的生图调用与提示词质量",
+      "objective": "实际执行至少4次可成功追踪的 image_generate（或等价）调用，并在提示词中表达16:9、无文字/Logo/水印、低饱和专业金融风格、场景和排版留白。",
+      "mode": "hybrid",
+      "input_bundles": ["instruction", "trace", "assets"],
+      "deterministic_observation": "从全量 trace 列出 image_generate/等价工具调用、状态、prompt、输出路径、宽高比和去重后的成功结果数 G；将每个成功调用与实际图片文件关联。",
+      "judge_instruction": "检查提示词是否有针对性地覆盖至少四种题设AI场景，并包含可用的构图/风格/禁用元素/安全区约束。仅有调用日志、失败调用或同一图的重复生成不构成成功。若环境没有 image_generate 工具，需明确标记为不可适用；本 case 的 Claude trace 有该工具时按实际证据评分。",
+      "scoring": {"anchors": [{"score": 0, "definition": "没有成功可追溯的生图调用或提示词与要求无关。"}, {"score": 0.25, "definition": "有1–2个成功图或泛泛提示词。"}, {"score": 0.5, "definition": "有3–4个图，但场景/构图/无文字约束不完整或输出未保留。"}, {"score": 0.75, "definition": "至少4个不同主视觉，提示词大多满足专业设计约束。"}, {"score": 1, "definition": "调用与提示词完整、可复现，覆盖所有建议场景并有高质量输出证据。"}], "adjustments": ["失败调用不计入成功数。", "提示词未限制文字、Logo或水印 -0.04/个关键资产。", "明确可复用的安全区和负面约束 +0.05。"]},
+      "why": "该条直接测量生图 skill 的调用与指令能力，不会因最终排版质量而混淆评分。"
+    },
+    {
+      "id": "I04_asset_materialization_and_integration",
+      "group": "agentic_image",
+      "title": "图片产物落盘、质量检查与最终嵌入闭环",
+      "objective": "工具输出应落盘为真实图像、通过基本检查，并被插入计划页面；失败资产需被替换或诚实标为未满足，不能以 waiver 冒充完成。",
+      "mode": "hybrid",
+      "input_bundles": ["trace", "assets", "plan", "final_deck_visual", "reviews"],
+      "deterministic_observation": "对计划资产逐一核验：生成/下载调用输出路径是否存在、文件是否为真实非零图像、是否在 HTML/CSS 中被引用、是否可在对应渲染页看见；单列 assets/waived。计算 materialized_and_visible / planned_required。",
+      "judge_instruction": "结合观测判断失败处理是否诚实和有效。waiver可记录环境限制，但不代表资产需求已经满足；只有真实、可见、适配页面且经检查的图片才算完成。对页面映射错误、低分辨率、损坏或未嵌入资产扣分。",
+      "scoring": {"anchors": [{"score": 0, "definition": "计划图片几乎均未落盘或仅有waiver/占位。"}, {"score": 0.25, "definition": "少量文件存在，但大多未嵌入或无法验证。"}, {"score": 0.5, "definition": "约半数计划资产形成可见闭环，失败处理不充分。"}, {"score": 0.75, "definition": "大多数必需资产落盘、检查并正确嵌入。"}, {"score": 1, "definition": "所有关键资产形成从调用到可见页面的完整、可审计闭环。"}], "adjustments": ["每个被标为完成但实际为waiver/空文件/未引用的资产 -0.1。", "发现失败后有可见替代或修复证据 +0.05。"]},
+      "why": "真实生成能力应以可见交付物为准；本条能捕捉“有工具调用但素材最终没进入 PPT”的失败。"
+    },
+    {
+      "id": "I05_image_aesthetic_fit_and_safety",
+      "group": "agentic_image",
+      "title": "图片质量、金融场景适配与安全性审查",
+      "objective": "对已生成/获取图进行可读性、比例、无文字/水印/Logo、无畸形人物和与深蓝金融风格/排版安全区的适配检查。",
+      "mode": "llm_judge",
+      "input_bundles": ["assets", "plan", "reviews", "final_deck_visual"],
+      "judge_instruction": "只评价存在的图片和其最终页面适配。检查是否有错误文本、Logo/水印、畸形人物、过度科幻或与银行情境无关的内容，是否留有标题安全区并保持低饱和、专业感。图片没进入最终 deck 应在证据中指出，且不能因单独好看而获得高分。",
+      "scoring": {"anchors": [{"score": 0, "definition": "图片缺失、损坏、不安全或明显不适配。"}, {"score": 0.25, "definition": "少量可用图，但常见水印、文字、畸形或版式冲突。"}, {"score": 0.5, "definition": "图片基本可用，仍有明显场景/构图/专业性问题。"}, {"score": 0.75, "definition": "大部分图片专业、适配且无显著缺陷。"}, {"score": 1, "definition": "所有图片既美观又可安全使用，并强化页面信息层级。"}], "adjustments": ["每个明显水印/Logo/错误文字/畸形人物 -0.08，最多-0.32。", "每个为标题/数据保留明确安全区的关键图 +0.02，最多+0.06。"]},
+      "why": "生图调用成功不代表视觉可用；这一条检验最终审美和安全把关。"
+    },
+    {
+      "id": "P01_narrative_plan_quality",
+      "group": "planning",
+      "title": "顶层叙事计划与章节节奏",
+      "objective": "在制作前形成可执行的四幕/多章节叙事、章节转场和结论节奏，使 50–60 页不是逐页堆料。",
+      "mode": "llm_judge",
+      "input_bundles": ["instruction", "plan"],
+      "judge_instruction": "查看 deck.md、narrative.md 和章节计划。判断是否先确定投资问题、因果关系和章节节奏，再分配数据页；计划不需要机械规定用户 query 中未规定的每页内容，但必须足够指导执行。",
+      "scoring": {"anchors": [{"score": 0, "definition": "没有顶层叙事计划。"}, {"score": 0.25, "definition": "只有页数清单或通用目录。"}, {"score": 0.5, "definition": "有章节和主题，但主线/节奏/转场不完整。"}, {"score": 0.75, "definition": "叙事、章节、停顿和结论关系清楚。"}, {"score": 1, "definition": "以投资者问题为中心的顶层计划完整且可指导长程执行。"}], "adjustments": ["计划把用户明确禁止的独立附录/冗长法律页作为常规内容 -0.1。"]},
+      "why": "planning 应提高长程连贯性，而不是把后续页面逐张模板化。"
+    },
+    {
+      "id": "P02_requirement_coverage_plan",
+      "group": "planning",
+      "title": "query 要求到内容模块的覆盖映射",
+      "objective": "计划明确覆盖集团、科技、宏观/资本、AWM、CCB、CIB、结论、图表种类、外部图和AI图等要求，并避免重大遗漏。",
+      "mode": "hybrid",
+      "input_bundles": ["instruction", "plan"],
+      "deterministic_observation": "根据 instruction 建立15项检查表：交付框架、集团/四支柱、FY2023/2024、科技AI、宏观资本、AWM、CCB、CIB、投资者结论、逐页来源、趋势图、桥接图、地图/流程/情景/热力图、外部图、AI图。扫描 plan 标明每项对应章节/资产/图表；报告已映射数。",
+      "judge_instruction": "审查映射是否实质而非关键词命中：一个要求应有内容目标、数据/视觉或来源策略。允许一个模块覆盖关联要求，但不能因只提到词语就算覆盖。",
+      "scoring": {"anchors": [{"score": 0, "definition": "计划忽略大多数明确要求。"}, {"score": 0.25, "definition": "仅覆盖少量主要业务，视觉/来源/风险要求遗漏。"}, {"score": 0.5, "definition": "约半数至三分之二要求有实质映射。"}, {"score": 0.75, "definition": "几乎全部要求有明确模块和实施线索。"}, {"score": 1, "definition": "全部关键要求完整映射，并考虑相互依赖和取舍。"}], "adjustments": ["每个缺失的核心业务或风险模块 -0.1。", "为事实时间边界和来源设置专门检查点 +0.05。"]},
+      "why": "该条在生成前发现遗漏，避免最后阶段用补页堆砌内容。"
+    },
+    {
+      "id": "P03_fact_and_metric_plan",
+      "group": "planning",
+      "title": "数据口径、事实锚点与不确定性计划",
+      "objective": "计划将 2023A、2024E/展望、中周期目标、非GAAP定义、单位和待核主张分开管理，并为主要指标指定来源。",
+      "mode": "llm_judge",
+      "input_bundles": ["instruction", "research", "plan"],
+      "judge_instruction": "检查计划是否把关键锚点（集团、AWM、CCB、CIB、资本/监管）转成有期间、单位、来源和定义的使用计划。特别关注 First Republic 可比性、NII不含Markets、调整后ROE、监管提案状态和待核数字。",
+      "scoring": {"anchors": [{"score": 0, "definition": "没有数据口径/来源/时间计划。"}, {"score": 0.25, "definition": "只记录若干数字，没有定义或不确定性管理。"}, {"score": 0.5, "definition": "主要锚点有计划，但多处口径/来源边界不清。"}, {"score": 0.75, "definition": "关键指标和待核项大体被安全管理。"}, {"score": 1, "definition": "形成可核查事实字典，清楚决定何时使用、何时避免精确数字。"}], "adjustments": ["把研究中冲突/待核项规划为确定性主张 -0.15/项。", "每个关键指标同时指定期间、单位、定义和一手来源 +0.02，最多+0.08。"]},
+      "why": "这条测量 planning 是否能约束后续幻觉，而不只是安排话题顺序。"
+    },
+    {
+      "id": "P04_visual_and_chart_plan",
+      "group": "planning",
+      "title": "图表、信息图和设计安全区的事前规划",
+      "objective": "计划为各类要求图表指定业务问题、数据源、图形语义和页面角色，并为图片/章节页设定色彩、构图与安全区。",
+      "mode": "llm_judge",
+      "input_bundles": ["instruction", "plan"],
+      "judge_instruction": "检查 chart plan 和 design/art-direction 是否将长期趋势、桥接、地图、流程、情景、热力图对应到真实问题，而不是只凑数量；并检查深蓝金融风格、预测期标识、直接标签、图片安全区、页脚/导航规则是否可执行。",
+      "scoring": {"anchors": [{"score": 0, "definition": "没有图表/视觉计划。"}, {"score": 0.25, "definition": "只列图表名称或泛泛设计词。"}, {"score": 0.5, "definition": "有部分页面/图形映射，但数据语义和设计规则不完整。"}, {"score": 0.75, "definition": "图表和视觉策略大多可直接实施。"}, {"score": 1, "definition": "每种视觉均有明确论证角色、数据规则与一致设计约束。"}], "adjustments": ["将不恰当图形（如3D饼）规划为主要证据 -0.08。", "明确预测期、坐标轴和正负配色规则 +0.05。"]},
+      "why": "图表质量往往在规划时已经决定；事前语义设计比事后美化更重要。"
+    },
+    {
+      "id": "P05_plan_to_output_consistency",
+      "group": "planning",
+      "title": "计划、素材与最终页面的一致性",
+      "objective": "最终 deck 实际执行叙事、事实、图表和资产计划；关键偏离应有调整或审计记录，而不是静默丢失。",
+      "mode": "llm_judge",
+      "input_bundles": ["plan", "final_deck_visual", "assets", "reviews"],
+      "judge_instruction": "抽查至少10个计划模块（覆盖各业务、风险、科技、图表和图片）。判断最终页是否保留其核心意图、数据和视觉角色；合理压缩/替换可以接受，但必须不造成 query 核心要求丢失。检查审计/修订记录是否解释重大变更。",
+      "scoring": {"anchors": [{"score": 0, "definition": "计划与实际成品大面积脱节。"}, {"score": 0.25, "definition": "只有少量计划模块落地，重大偏离无说明。"}, {"score": 0.5, "definition": "约半数计划执行，图表/素材/来源经常缺失。"}, {"score": 0.75, "definition": "大多数关键计划被忠实执行或有合理替代。"}, {"score": 1, "definition": "计划到成品的链路完整，偏离被主动记录并提升质量。"}], "adjustments": ["每个计划为必需但最终无替代地缺失的模块 -0.08。", "有审计证据说明并修复重大偏离 +0.05。"]},
+      "why": "高质量计划的价值在于实际约束与引导生成，因此需要与输出闭环评估。"
+    },
+    {
+      "id": "Q01_page_level_validation_coverage",
+      "group": "quality_assurance",
+      "title": "逐页渲染/结构检查覆盖率",
+      "objective": "对最终页面进行渲染、HTML/结构或视觉检查，覆盖所有页或明确说明抽样策略，并记录可定位的结果。",
+      "mode": "deterministic",
+      "input_bundles": ["final_deck_visual", "reviews", "trace"],
+      "calculation": "令 N 为最终页数，C 为 checks/*.json 或审计记录中具有唯一slide编号且完成状态的页面数。若 C/N≥0.98且检查至少涵盖结构/溢出/可读性中的两类，score=1；0.80–0.979得0.75；0.50–0.799得0.5；0.01–0.499得0.25；C=0得0。若同一检查文件被重复复制而无页码特定结果，按未覆盖处理。",
+      "scoring": {"anchors": [{"score": 0, "definition": "没有逐页质量检查证据。"}, {"score": 0.5, "definition": "仅覆盖部分页面或检查维度单一。"}, {"score": 1, "definition": "几乎全部页面有多维、可定位的检查记录。"}], "adjustments": ["检查结论缺原始页面/文件关联时不计入 C。"]},
+      "why": "长程 deck 的局部版式错误很容易累积；需要验证质检是否覆盖了整套输出。"
+    },
+    {
+      "id": "Q02_review_quality_and_issue_detection",
+      "group": "quality_assurance",
+      "title": "审计对内容、视觉、来源与风险问题的发现质量",
+      "objective": "review/audit 能发现实际问题，而非仅报告“通过”；应涵盖事实/来源、叙事、图表、图片、可读性和时间边界中的相关风险。",
+      "mode": "llm_judge",
+      "input_bundles": ["reviews", "final_deck_visual", "plan", "research"],
+      "judge_instruction": "评估 reviewer 是否使用具体页号和问题描述，是否发现与成品中真实可见问题相符的缺陷。泛泛“整体良好”、不检查引用/时间边界、或忽略明显溢出/图片失效应低分。不要因为最终成品完美才要求大量问题；重点是审计的针对性和可信度。",
+      "scoring": {"anchors": [{"score": 0, "definition": "没有审计，或审计明显空泛/失真。"}, {"score": 0.25, "definition": "有检查文字但没有页码、证据或关键维度。"}, {"score": 0.5, "definition": "发现部分真实问题，覆盖不完整或建议不可执行。"}, {"score": 0.75, "definition": "审计具体、覆盖主要风险，并提出可执行修复。"}, {"score": 1, "definition": "审计独立、准确、全面，能有效保护事实和视觉交付质量。"}], "adjustments": ["每个被成品直接反驳的“无问题”结论 -0.08。", "页码+问题+修复建议三者齐全的高价值发现 +0.03，最多+0.12。"]},
+      "why": "agentic 质量并非仅有生成，还取决于它能否识别自身最危险的失败模式。"
+    },
+    {
+      "id": "Q03_issue_repair_and_recovery",
+      "group": "quality_assurance",
+      "title": "失败、缺陷与资产问题的修复闭环",
+      "objective": "轨迹在发现渲染、可读性、事实、图片或工具失败后，采取重试、替代、修订或诚实降级，并能看到修复后的证据。",
+      "mode": "llm_judge",
+      "input_bundles": ["trace", "reviews", "assets", "final_deck_visual"],
+      "judge_instruction": "寻找失败/警告→诊断→动作→验证的闭环。有效修复包括重新渲染、改写、替换资产、删除不可核实数字、修正来源等。无界重复重试、只写waiver、或问题仍可在最终页看到均不算恢复。",
+      "scoring": {"anchors": [{"score": 0, "definition": "发现问题后无行动，或最终仍有严重未处理缺陷。"}, {"score": 0.25, "definition": "有零散重试/备注，缺少验证或成效。"}, {"score": 0.5, "definition": "修复了部分问题，但关键失败仍未闭环。"}, {"score": 0.75, "definition": "多数重要问题有诊断、修复和验证证据。"}, {"score": 1, "definition": "恢复策略有效、节制、透明，并显著提升最终交付。"}], "adjustments": ["失败资产仅标waived却在最终要求中按完成宣称 -0.15。", "每个有前后证据的关键修复 +0.03，最多+0.12。"]},
+      "why": "该条把 agent 的自我纠错能力与“掩盖失败”的行为区分开来。"
+    },
+    {
+      "id": "Q04_orchestration_and_artifact_handoff",
+      "group": "quality_assurance",
+      "title": "编排、委派、产物交接与最终交付卫生",
+      "objective": "orchestrator 将研究、规划、资产、页面制作和质检连接成有依赖关系的流程，所有最终引用文件存在且不以调试/中间文件冒充交付。",
+      "mode": "hybrid",
+      "input_bundles": ["trace", "plan", "research", "assets", "reviews", "final_deck_visual", "delivery_metadata"],
+      "deterministic_observation": "从 trace 统计 delegate_task 的任务类型（研究、规划、资产、制作、审计/交付），检查各类型是否至少有一个产物；检查 present.html、全部slide HTML、全部renders、metadata 是否存在；列出最终HTML对不存在本地资源的引用数。",
+      "judge_instruction": "判断任务依赖是否合理（研究/计划先于内容、资产/检查有后续消费者），交接是否通过稳定文件而非口头消息完成，最终目录是否干净可复现。多代理数量本身不加分；孤立委派、无消费者产物或把debug文件当交付应扣分。",
+      "scoring": {"anchors": [{"score": 0, "definition": "流程无可用交接，关键交付文件缺失。"}, {"score": 0.25, "definition": "有委派但多数任务孤立或最终资源损坏。"}, {"score": 0.5, "definition": "主要阶段存在，但依赖/文件完整性有明显断点。"}, {"score": 0.75, "definition": "研究到交付的编排大体完整、文件可用。"}, {"score": 1, "definition": "依赖清晰、交接可审计、交付干净且资源完整。"}], "adjustments": ["每个最终页面引用的不存在关键资源 -0.04，最多-0.2。", "无消费者的重复委派不加分且可酌情-0.03/类。"]},
+      "why": "这条评估长程 agent 的系统性执行能力，避免只因最终某几页好看而忽略流程断裂。"
+    }
+  ]
+}

@@ -48,8 +48,9 @@ Harness 会在每次任务开始前注入运行时能力合同。该合同决定
    `ownership_rationale` 写进 `plan/deck.md`。选择依据是跨页证据、术语、视觉编码和
    叙事闭合，而不是页数或并发：页面可由自包含证据独立完成时选 `single`；相邻 2–4 页
    必须共同维护同一机制、案例、时间线或视觉编码时选 `grouped`。内容页整册不得混用；
-   两种拓扑下封面与结尾都组成 `bookends`、两张以上过渡页都组成 `dividers`；它们只是
-   特殊页视觉记忆组，不改变内容页责任拓扑。
+   两种拓扑下封面与结尾同时存在时都组成 `bookends`，仅有其一时该单页也保留
+   `bookends` 标识但页码表只含一页；两张以上过渡页都组成 `dividers`。它们只是特殊页
+   视觉记忆组，不改变内容页责任拓扑。
    同时写 `bitmap_strategy: active|unavailable|user-forbidden|not-beneficial` 和具体
    `bitmap_rationale`。图片能力可用且用户未禁止时，默认 `active`；全册无位图必须显式
    证明每个视觉峰值都更适合代码视觉或强排印，不能因省时而选 `not-beneficial`。
@@ -61,16 +62,29 @@ Harness 会在每次任务开始前注入运行时能力合同。该合同决定
    不要依赖这一兜底。scaffold 或任何 Slide 委派后禁止使用该恢复模式。每页 metadata
    增加小写 kebab 的 `production_group`：`single` 时普通内容页各自唯一；`grouped` 时
    相邻内容页按叙事依赖划成连续 2–4 页责任组，不能只按页数均分。两种拓扑下封面与
-   结尾都共同写 `bookends`，两张以上过渡页都共同写 `dividers`。
+   结尾同时存在时都写 `bookends`，仅有其一时该单页也写 `bookends`；两张以上过渡页
+   都写 `dividers`。每页内部先完成页面职责、屏显结论与决定性证据、视觉表达，最后才写
+   `## 初版口语讲稿`。初版讲稿用 2–5 句可直接朗读的话补解释、边界和转场；删除它后页面
+   仍必须独立成立。不要把节拍词、屏显复述、论文长段或本应上屏的核心证据塞进讲稿。
 6. 在 `validate-plans` 前回看原始 query 的编号/硬约束一次，确认要求的主题、章节顺序、
    专名、数量和指定页型已进入对应页面的定版屏显文案；不能用“后页提过”替代用户明确
    要求在 introduction/support 等指定章节出现的内容。用户明确给出 Agenda/Outline
    条目名时，在议程页保留这些可识别的条目文本与顺序，不能全部改写成无法直接对应的
    修辞问题。附件任务再紧凑回看一次 canonical brief 中与用户要求相关的核心定义、方法、
-   结果和关键 Figure：每项要么进入某页屏显证据职责，要么确实不属于用户范围；不要新建
+   结果和关键 Figure：每项要么进入某页屏显证据职责，要么确实不属于用户范围。附件为
+   唯一事实源时，屏显主张只能是 brief 中的原文事实或可复算的机械派生；不要把常识、
+   营销修辞或“更顺口”的解释补成新产品能力/版本/因果，例如升级未出现的软件版本、
+   擅自扩写认证含义或给接口补充未提供的功能。允许忠实压缩和重组，不允许语义增量。
+   不要新建
    coverage 表、逐页反证字段或额外文件。课程、报告、产品或项目附件中的 canonical
    名称/版本若构成身份，应在封面或归属信息中保留；任务要求比较或整合多种方法时，屏显
-   不只写各自“做什么”，还要写各自能揭示什么与不能揭示什么。随后运行 `validate-plans`，一次修完
+   不只写各自“做什么”，还要写各自能揭示什么与不能揭示什么。运行前再做一次合同内
+   自洽检查：`Top N`、N 项比较或 N 行名单必须恰好选定 N 项；某页
+   证据若已声明缺少原 Figure 的精确数据点，就不能仍选择经验型 ECharts 重构；用户明确
+   指定的末尾章节名称与顺序优先于默认 closing，不得在指定终章后另加签退页；当用户要求
+   严格 section 顺序时，拆出的子页必须保持在本 section 内连续完成，不能跨 section 交错
+   “预览—详解”。只修现有逐页计划，不新增 coverage 表、检查文件或字段。随后运行
+   `validate-plans`，一次修完
    完整报错集合，再运行 `scaffold`。
    脚本会应用 Theme Tokens、生成轻 HTML 骨架并汇总初版 `speech.md`。
    scaffold 后逐页 `primary_visual_medium` 视为生产合约并冻结；首次生成期间不得为了
@@ -110,15 +124,18 @@ Harness 会在每次任务开始前注入运行时能力合同。该合同决定
    已结束责任单元即使返回 `repair_required` 也不重新委派。把它的页码、像素证据和建议
    修法作为开放 issue 交给唯一 Review；共享结构问题由 Review 一次修共享 token/结构，
    普通页问题由 Review 一次修受影响页。
-9. 运行一次 `sync-speech`，再运行一次 `finalize`。Slide 完成到这一步之间不要另跑 `build`、逐页
+9. 运行一次 `sync-speech`，再运行一次 `finalize`。`speech.md` 只由逐页计划确定性派生，
+    任何 Agent 都不得直接编辑。Slide 完成到这一步之间不要另跑 `build`、逐页
     `render`、打开 PNG 或提前委派 Review；`finalize` 是唯一的整册 build/render
     入口，并会生成 Review 所需的联系表。若它在生成联系表前被指向具体
     `slide_NN.html` 的页面合同/CSS 错误阻断，而全部逐页 HTML/PNG 已存在，直接委派唯一
     Review 进入 `preflight_repair`：先修该页、由 Review 自己 finalize，再完成整册复验。
     缺页、缺依赖或无单页像素仍是硬失败；任何情况都不重开已完成 Slide，也不由
     Orchestrator 改 HTML。
-10. 委派一个 `Review:`。Review 负责最终像素；若有修改，由 Review 自己再次
-    `finalize` 并复看。
+10. 委派一个 `Review:`。Review 负责最终像素，并在像素稳定后执行一次轻量的
+    plan–pixel–speech 联合收口：只修改对应 `plan/slide_NN.md` 的 `## 初版口语讲稿`，
+    再统一 `sync-speech → finalize`；若同时改页面，复看修改页。不要增加第二个讲稿 Agent
+    或单独讲稿轮次。
 11. 读取 Review 的结构化状态：`ready` 直接交付；`page_authoring` 由当前 Review 做一次
     协调页面修复，`shared_system` 由当前 Review 只改一次共享 token/结构；不得重新创建
     Single page 或 Slide Group。`render_capture` 只重跑渲染链或把
@@ -192,6 +209,9 @@ goal 只写本案例目标与路径；方法由各自角色卡提供。
 Single 的唯一例外。SlideGroup goal 只标识 group ID 与完整页码，不重复组件、坐标或版式说明。组内可以读取
 彼此计划与 HTML 以兑现连续性，但不能读取组外页面；跨组连续性仍写进 `deck.md` 或各页
 自包含的 `Render anchors`。
+不得在 SlideGroup goal 中声称某个结构化成员页“已完成”或“无需制作”；完成状态只由
+Harness 根据该页当前 HTML、PNG 与像素检查回执判断。即使只需强调其中一页的特殊要求，
+goal 也必须保持完整成员集合的责任不变。
 Review goal 只要求审查刚完成的整册并返回结构化状态；不要重复检查清单、列出全部
 单页，或要求“逐页检查”。Review 角色卡决定从联系表标记哪些页。
 
@@ -268,7 +288,7 @@ Theme Tokens 只覆盖本册真正改变的角色。不得写 `--font-mono: var(
 ## 逐页计划
 
 Orchestrator 定版页面职责、页型/页族、标题链、核心结论、证据、视觉需求、前后衔接、
-可改写的 `composition` 起点与讲稿节拍；不规定最终正文句子、组件树、卡片数量、精确
+可改写的 `composition` 起点与初版口语讲稿；不规定最终正文句子、组件树、卡片数量、精确
 尺寸或像素坐标，这些由 Slide 决定。
 
 每页必须同时填写 `needs_bitmap` 和 `primary_visual_medium`（见
@@ -278,8 +298,10 @@ HTML 标签），只有节点少、标签短且锐利矢量几何本身有价值
 HTML/CSS 数据表达用 `code-visual`，有意识的纯
 排印节奏用 `editorial-typography`。位图来源由你在此处直接锁定：具名、可识别、需核验
 的真实对象用 `bitmap-real`；概念、情绪、未来愿景、未建成空间或成套艺术主视觉用
-`bitmap-generated`；必须复用附件/用户像素用 `bitmap-material`。同一页位图与代码视觉/
-图表并重时使用对应的 `mixed-real / mixed-generated / mixed-material`（须
+`bitmap-generated`；必须复用附件/用户像素用 `bitmap-material`。只有同一页位图与
+另一种可独立识别的 substantive code visual/图表并重时，才使用对应的
+`mixed-real / mixed-generated / mixed-material`；位图 + 标题/正文/参数列表/文字 callout
+仍属于对应的 `bitmap-*`，不能为了描述 feature split 写成 mixed（须
 `needs_bitmap:true`）。Image 只执行该路线，不能临场改判来源。
 图表/架构/机制不能因为 HTML 卡片更容易就静默退化。
 
@@ -333,7 +355,10 @@ HTML/CSS 数据表达用 `code-visual`，有意识的纯
 之间交替，并明确改变重心、裁切或母题动作。`section_index` 只写数字，完整章节标签只
 出现一次。过渡页只保留章名、一句过渡和一个母题。
 
-除非用户明确不要，否则加入结尾页。结尾只保留一个收束命题与一个视觉锚点，并通过
+显式总页数高于所有默认结构：用户说“一页/一张/1 页/one-slide”时，总页数就是 1，
+不得再补封面或结尾；该页在同一画布内完成标题、核心内容和收束。其他显式页数也已包含
+封面、结尾与 divider，不能为保留特殊页扩页。只有用户没有指定总页数时，才默认加入
+结尾页。结尾只保留一个收束命题与一个视觉锚点，并通过
 封面的构图方向、图像家族、色彩动作或母题完成回扣；不能增加新论点、虚构联系方式、
 突出物理页码，或出现“呼应封面”等生产语言。需要建议、局限或行动矩阵时，在结尾前
 单独安排内容页；结尾不承载多栏总结。
@@ -389,13 +414,31 @@ SVG 或代码视觉；不能因为矢量更快、更稳，就用抽象图标或�
 分布应为 `echarts` 而非 `code-visual`（本地 ECharts 已打包在 assets/vendor/ 中可用）；
 静态机制/架构/关系应为 `svg-diagram` 而非退化成卡片。
 
+`canvas-diagram` 仅在需要 Canvas 2D API 绘制动态路径、复杂箭头或数学曲线时选择。
+如果流程图/架构图可以用 CSS grid + positioned arrows 清晰实现，应选 `code-visual`
+而非 `canvas-diagram`——后者在 Slide 实现层面退化为纯 HTML 时会触发 media_mismatch
+信息标记。
+
 附件来源的定量 Figure 选择 `echarts` 的前提是：Material/Research 能提供全部绘图所需的
 精确数据点或序列值（表格行、坐标对、数值区间）。仅有轴标签、大致趋势描述、caption
 文字或 OCR 不能恢复的采样值时，禁止选 `echarts` 并让 Slide 合成"看似合理"的数据
 曲线。此时应选 `bitmap-material`（让 Image 用 `crop-material` 裁取原 Figure）或使用
 `code-visual` 做清晰标注的定性示意（明确标注"示意，非原始数据"）。
 
+附件论文中的 Table、文字密集矩阵、步骤清单或以标签/数字网格为主体的 Figure，默认由
+Slide 用 `code-visual` 忠实重绘，`needs_bitmap:false`；编号叫 Figure 不等于适合裁成
+位图。只有主体确实是不可替代的照片、插图、截图、绘制图形或无法从证据恢复数据点的
+独立曲线/散点 Figure，才选 `bitmap-material`。这项媒介判断在计划冻结前完成，避免让
+Image 通过反复试裁承担规划职责。
+
 用户明确要求真图时，真实性不能静默降级成仿纪实生成图。
+
+当 brief 提供的表格超过 5 列或 5 行（不含表头），或散点图/条形图标注超过 6 个独立
+数据点时，投影字号会低于 18px 造成远距观看困难。规划时优先：拆分为两页（如按
+domain 分组）、聚合维度（如只展示最强对比行）、或用 highlight + 旁注代替全表
+（保留完整数据在 speech.md 口述）。不要选择缩小字号或省略单位/误差。brief 中的
+must-reproduce 约束优先，但忠实重绘不等于像素级照搬论文排版——投影媒介允许拆页
+和聚合。
 
 逐页证据要足以支持结论，但不要粘贴长篇来源原文，也不要重复全册视觉契约。逐页计划
 只保留本页实际使用的事实、边界与来源标识；完整研究细节只在 Research brief 中保留

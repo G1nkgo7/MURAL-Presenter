@@ -46,9 +46,37 @@ skills/mural-presenter-v0.4/mural-presenter-v0-4
 
 ## Runtime capability contract
 
-Before model work, the Harness checks the renderer, fonts, model endpoint,
-attachment parsers and optional services. It writes
-`_trace/runtime-capabilities.json` and injects a key-free capability contract:
+Before model work, the Harness Environment Doctor checks the paired Skill,
+Chromium launch/render, fonts, the selected model's real multimodal route,
+attachment parsers and configured search/image-generation services. Its report
+starts as `checked=false, ready=false`; only a completed preflight may publish
+`checked=true`. Local batches write `<batch>.environment-doctor.json`, Studio
+copies the report to `_trace/environment-doctor.json`, and CI can invoke the
+same gate directly:
+
+```bash
+# Live deployment check (includes one tiny multimodal request and, when those
+# services are configured, one search and one image-generation request).
+python infer.py --doctor --force
+
+# Configuration/runtime-only CI image check; no network requests.
+python infer.py --doctor --no-live --json /tmp/mural-doctor.json
+```
+
+Successful results are cached by a secret-free configuration fingerprint for
+`CLEAN_DOCTOR_TTL_S` (default 1800 seconds). A model, endpoint, credential,
+browser, font, parser or source change invalidates the cache. Missing optional
+credentials omit their capability; a configured service that fails its live
+probe blocks the batch so an outage cannot silently spoil many decks. The CLI
+cache defaults to `$XDG_CACHE_HOME/mural-presenter-v0.4/environment-doctor`;
+Studio supplies its own writable data directory, so neither path writes into a
+read-only Skill/Harness package. Parser requirements are evaluated against the
+actual input set: a PPTX/DOCX run, for example, requires both its Python parser
+and LibreOffice page-preview support, while an unrelated text-only run may
+continue with those routes disabled.
+
+After the doctor passes, the Harness writes `_trace/runtime-capabilities.json`
+and injects a key-free per-task capability contract:
 
 - no attachments: omit Material;
 - no search key: omit Research and web tools;

@@ -122,6 +122,8 @@ Harness 在启动每个 Role 时完整注入对应 `roles/*.md`，Role Agent 不
 保留 `raw_user_query` 和对话中的后续澄清。用户明确指定语言、页数、受众、年份、图片
 方式或附件范围时严格遵从；缺失项根据主题复杂度和现场用途作合理判断。Research 前
 Orchestrator 只能提出 `orchestrator_hypothesis`，不能把假设写成已解决实体。
+用户指定的总页数已经包含封面、结尾与 divider；“一页/一张/one-slide”就是单页总交付，
+默认特殊页结构必须让位，不能扩成封面、内容、结尾三页。
 
 Harness 先写 `_trace/attachment-manifest.json`，按“是否需要模型提取内容”而不是扩展名粗暴
 决定路线：
@@ -168,12 +170,14 @@ Research 的压缩不能切断附件交付链：用户要求忠实复用/重绘�
 
 - `single`：页面能由各自证据包独立完成；跨页只共享全局 token、标题链与少量语义锚点。
   普通内容页使用唯一 `production_group`；结构化委派写 `role=slide, pages=[NN]`。
-  唯一例外是特殊页视觉记忆：封面与结尾共同使用 `bookends`，两张以上 divider 共同
-  使用 `dividers`，由一个 Slide Group 看见整组像素，避免首尾失忆或机械复制。
+  唯一例外是特殊页视觉记忆：封面与结尾同时存在时共同使用 `bookends`，仅有其中
+  之一时该单页也保留 `bookends` 标识但页码表只含一页；两张以上 divider 共同
+  使用 `dividers`。由一个 Slide Group 看见整组像素，避免首尾失忆或机械复制。
 - `grouped`：相邻 2–4 张**内容页**共享同一机制、案例、时间线、证据对象或视觉编码，必须由一个
   Agent 同时看到并闭合。每个连续依赖组共享 `production_group`；结构化委派写
-  `role=slide, group_id=GROUP, pages=[NN,NN]`。封面与结尾仍共同使用 `bookends`；两张
-  以上 divider 仍共同使用 `dividers`，它们是特殊页视觉记忆组，不要求相邻。
+  `role=slide, group_id=GROUP, pages=[NN,NN]`。封面与结尾同时存在时仍共同使用
+  `bookends`，仅有其一时该单页也保留 `bookends`；两张以上 divider 仍共同使用
+  `dividers`，它们是特殊页视觉记忆组，不要求相邻。
 
 同一 Deck 的**内容页**不得一部分用 Single、一部分用 Grouped；`bookends/dividers`
 在两种拓扑下都只是特殊页视觉记忆组，不改变内容页责任拓扑。若只是颜色、字体和页脚
@@ -186,10 +190,12 @@ Research 的压缩不能切断附件交付链：用户要求忠实复用/重绘�
 先写颜色为什么来自本主题，再写色彩角色、字体角色、网格、媒介、画布、页族和反默认项。
 白/米白配深蓝不是“专业”的默认答案；风格词也不能替代具体视觉行为。
 
-每个 `plan/slide_NN.md` 定版页面职责、标题链、证据、视觉需求、可改写构图起点、渲染
-锚点、`production_group` 与讲稿节拍，但不写组件树、精确坐标或完整最终正文。计划必须
-自包含；不得用“同上一页 HTML”代替共享语义。附件中承担论证的定义、数字和结论必须
-进入屏显证据，讲稿不能替代听众当场要看见的内容。
+每个 `plan/slide_NN.md` 按“页面职责 → 屏显结论与决定性证据 → 视觉表达 →
+`## 初版口语讲稿`”完成，定版标题链、证据、视觉需求、可改写构图起点、渲染锚点与
+`production_group`，但不写组件树或精确坐标。初版讲稿是可直接朗读的 2–5 句话，
+只承担解释、边界与转场，不是节拍关键词、屏幕文字复述或论文式长段。计划必须自包含；
+删除讲稿后，页面仍能独立表达核心结论和决定性证据。附件中承担论证的定义、数字和结论
+必须进入屏显证据，讲稿不能替代听众当场要看见的内容。
 
 保留一页一个 Markdown，但批量落盘：8 页用 1–2 个规划回合，长 Deck 每轮连续 4–6 页。
 调用结构化 `write_plan_batch`，建议直接传 2–6 个 `{path, content}`；Harness 负责序列化与
@@ -204,7 +210,7 @@ Orchestrator 按自身角色卡运行计划校验和骨架生成；顶层流程�
 冲突恢复，避免 `already_exists` 重复空转；不要把批量恢复退化成逐页 `write_file` 或
 十几次 patch。
 
-`validate-plans` 必须验证页数、标题/证据/讲稿字段，以及所选拓扑的一致性；不能边委派
+`validate-plans` 必须验证页数、标题/证据/初版讲稿字段，以及所选拓扑的一致性；不能边委派
 Slide 边改变所有权。
 
 ### 4. 规划自检
@@ -271,9 +277,12 @@ Slide 根据角色卡完成首稿、真实渲染与至多两次集中修复；�
 `vision_analyze(image, query)` 时，Harness 固定先做人物/文字/区域/四边开放扫描，再处理
 query 中的本页职责焦点；Slide 不用诱导式问题缩窄检查范围，只根据独立 Critic 返回的
 可见证据修改。Single 每页最多检查三个不同像素 hash。Grouped 同样按每页最多三个，且
-每一版页面先逐页检查，再检查一次当前组联系表；组联系表也最多检查三个不同像素 hash。
+按页顺序完成 `author → render --page → full-resolution Vision → repair` 后才进入下一页；
+全部页闭合后再检查当前组联系表。组联系表也最多检查三个不同像素 hash，但只负责跨页
+一致性，不能覆盖单页全分辨率的重叠、裁切、字号或边缘安全结论。
 预算按 page/group 生命周期累计；正常生产不会重新委派为 `_r2/_r3`。Grouped 内容组与
-两种拓扑下的 `bookends/dividers` 都使用 `render-group`；Single 普通页只渲染自己的页。
+两种拓扑下的 `bookends/dividers` 在每页闭合后使用 `render-group` 做最终组级检查；所有
+页面自己的制作循环都使用 `render --page`。
 仍有明确硬伤时返回结构化 `repair_required`，不得继续消耗到
 无边界循环。三页 Group 的理论软上限是 `3×3 + 3 = 12` 次有效 Vision 决策；缓存命中、
 未变化 PNG 的重复打开和素材查看不计入。

@@ -1,0 +1,395 @@
+contract_version: long_horizon_agentic_intermediate_rubric_v2
+rubric_id: long_horizon_agentic_intermediate_rubric_v2
+title: Current PPT Pipeline 中间产物 Agentic 通用 Rubric v2
+language: zh-CN
+
+boundary:
+  evaluation_unit: one_generation_attempt
+  evaluates_only:
+    - Plan、Research、Image请求、Speech、Visual System及其跨产物传递质量
+    - 搜图keyword与语义视觉需求的匹配
+    - 生图prompt/caption与语义视觉需求、视觉系统词元的匹配
+    - 中间产物是否具体、可靠、可消费并保持语义一致
+  excludes:
+    - 最终deck的内容、叙事、视觉、美学、可读性和专业完成度
+    - HTML页面实现质量与一般工程代码风格
+    - Agent数量、并发度、token、耗时、成本和Harness架构
+    - case特有主题、事实、对象、章节、品牌或风格要求
+  final_output_contract:
+    rubric: rubric/multi_page_image_rubric_v2.yaml
+    source: rubric/multi_page_image_rubric_v2.xlsx
+    reporting: final_output_score、agentic_intermediate_score和case_specific_score始终独立报告。
+
+attempt_contract:
+  principle: 只按生成attempt启动时冻结的Current Skill合同评分，不在评测时读取后来已经变化的versions/current。
+  required_identity:
+    - skill_version_or_dev_identity
+    - skill_or_system_prompt_hash
+    - generation_attempt_id
+    - artifact_contract_snapshot
+  current_logical_artifacts:
+    deck_plan: [plan/deck.md]
+    page_plans: [plan/slide_NN.md]
+    asset_plan: [plan/assets.json]
+    raw_research: [research/research_NN.md, research/materials_NN.md]
+    knowledge_synthesis: [research/knowledge-brief.md]
+    image_requests: [plan/slide_NN.md, plan/assets.json, assets/catalog_NN.md, _trace/subagents/image_NN/tool_log.json]
+    speaker_notes: [speech.md]
+    visual_system_spec: [plan/visual-system.json]
+    visual_system_projection: [base.css]
+  missing_rule:
+    - attempt合同要求但模型未生成的逻辑产物记能力失败。
+    - attempt合同未要求的逻辑产物或评分点记not_applicable，不得因缺文件扣分。
+    - evaluator无法解析已有产物属于collector_error，不得当作模型失败。
+    - 同一逻辑产物未来换路径或合并时只更新adapter映射，不改能力定义。
+
+reference_context_contract:
+  note: 以下均为评分所需的外部参照，不是run中间产物，也不得替代required_intermediate_artifacts中的真实文件。
+  exact_query: 本次生成收到的原始用户query。
+  original_attachments: 用户提供的原始附件及其清单；无附件时为空。
+  case_specific_requirements: case-specific rubric或manifest声明的必需内容、禁用项和语义约束；未声明时为空。
+  source_or_material_originals: Research引用的网页、论文或原始材料，仅在核验事实与引用时提供。
+  artifact_contract_snapshot: 本次attempt启动时冻结的产物合同和可解析格式。
+  tool_capability_snapshot: 本次attempt可用的搜图、生图、字体及相关工具能力与限制。
+
+design_principles:
+  - 通用层固定6个产物能力维度、12个评分点，给case-specific rubric保留区分空间。
+  - 每个维度单独Judge；长文件按research文件、page plan、image request或speech page section分片。
+  - 每个评分点显式声明run相对真实产物路径；不得把评测侧生成索引当作被评中间产物。
+  - evaluator与score scale相互独立：代码只判无歧义结构事实；LLM Judge既可使用0/1绝对判定，也可使用质量分档。
+  - 只对speech.md与canonical page的一一对应使用代码0/1；query硬约束、Research可信底线和Image工具决策使用Judge 0/1。
+  - 文件存在只证明执行过；语义Judge评价其准确性、具体性、可执行性和下游消费。
+  - 工具调用次数、文件数量和Agent数量本身不加分。
+
+score_scale:
+  profiles:
+    binary:
+      allowed_scores: [0.0, 1.0]
+      use_for: 程序可无歧义判断的结构事实，或必须完整满足、不可用中间档掩盖的语义硬条件；可由deterministic evaluator或LLM Judge使用。
+      semantics:
+        0.0: 任一声明的必要条件不满足。
+        1.0: 所有声明的必要条件均满足。
+    coarse_4:
+      allowed_scores: [0.0, 0.5, 0.8, 1.0]
+      use_for: 状态较少、无需细分高分差异的语义点。
+      semantics:
+        0.0: 根本失效或方向相反。
+        0.5: 严重不足，需要显著人工补救。
+        0.8: 核心成立，仅有局部实质问题。
+        1.0: 完整满足且无可观察缺陷。
+    standard_5:
+      allowed_scores: [0.0, 0.5, 0.7, 0.85, 1.0]
+      use_for: 需要区分合格、良好和标杆的语义点。
+      semantics:
+        0.0: 根本失效。
+        0.5: 严重不足。
+        0.7: 主体成立但有主要缺口。
+        0.85: 稳定良好，仅有局部问题。
+        1.0: 标杆且无可观察缺陷。
+    fine_7:
+      allowed_scores: [0.0, 0.5, 0.7, 0.8, 0.9, 0.95, 1.0]
+      use_for: 主要能力质量，需要在高分区细分模型差异。
+      semantics:
+        0.0: 根本失效。
+        0.5: 严重不足。
+        0.7: 主体成立但有主要缺口。
+        0.8: 稳定良好。
+        0.9: 很强，仅有轻微问题。
+        0.95: 接近标杆。
+        1.0: 反查后无可观察缺陷。
+  selection_rule: 每个评分点只能从自身scale profile中选值；Judge选择所有对应条件均满足的最高档，禁止跨档插值。
+
+dimension_scoring:
+  formula: dimension_score = sum(point_score * point_weight for applicable points) / sum(applicable point_weights)
+  point_weight_sum_per_dimension: 100
+  deterministic_share_when_all_points_applicable: 0.0225
+  note: 所有点均适用时仅2.25%总权重来自speech逐页section覆盖的代码0/1点；3个语义硬条件由Judge按0/1判定。其余均为Judge质量分档；不评价CSS骨架、文件所有权、Harness状态或一般工程质量。
+  binary_status:
+    pass: score=1
+    fail: score=0
+    not_applicable: score=null，剔除该点分母
+    not_evaluable: score=null，进入evidence sufficiency判断
+
+applicability:
+  freeze_before_trace_review: true
+  conditional_dimensions: [P2, P3, P4]
+  dimensions:
+    P1: attempt合同要求独立deck/page planning时适用；Current默认适用。
+    P2: attempt合同要求Research、材料处理或knowledge synthesis时适用。
+    P3: 存在required image asset slot时适用；search与generation评分点分别按slot mode适用。
+    P4: attempt合同要求独立speaker_notes逻辑产物时适用；Current的speech.md默认适用。
+    P5: attempt合同要求Visual System中间产物时适用；Current默认适用。
+    P6: 至少两个逻辑产物族存在上下游消费关系时适用；Current默认适用。
+  authority_order: [case_specific_capability_manifest, query_and_attachment_manifest, artifact_contract_snapshot, evaluator_pre_annotation]
+
+weights:
+  dimensions:
+    P1: 22
+    P2: 18
+    P3: 20
+    P4: 15
+    P5: 15
+    P6: 10
+  total: 100
+  aggregation: 100 * sum(dimension_score * weight for applicable dimensions) / sum(applicable weights)
+  rounding: one_decimal
+  suite_rule: 先报告每维度宏平均、样本数和N/A率，再聚合；不得用不需要Research或Image的case掩盖对应能力。
+
+dimensions:
+  - id: P1
+    name: Plan任务建模、叙事与逐页规格
+    weight: 22
+    logical_artifact: planning_bundle
+    judge_task: plan_quality
+    definition: Plan是否准确转化query与约束，形成清楚的deck主线、页面职责、逐页内容规格和asset意图，使下游无需猜测核心内容即可执行。
+    scoring_points:
+      - id: P1_1_QUERY_AND_HARD_CONSTRAINT_FIDELITY
+        evaluator: judge
+        point_weight: 15
+        scale: binary
+        evaluate: Plan是否忠实保持query的核心任务，并满足所有显式硬约束，包括主题、语言、受众/场合、页数或范围、必须包含内容、禁止内容和附件使用要求。仅当所有适用硬条件均满足时记1；任一核心任务误读或显式硬约束遗漏/违反即记0，不设部分分。
+        judge_subcriteria: [核心任务与输出目的, 语言/受众/场合, 页数或范围, 必须包含与禁止内容, 必需附件使用]
+        required_intermediate_artifacts: [plan/deck.md, plan/slide_*.md, plan/assets.json]
+        required_reference_context: [exact_query, original_attachments, case_specific_requirements, artifact_contract_snapshot]
+      - id: P1_2_PLAN_QUALITY_AND_ACTIONABILITY
+        evaluator: judge
+        point_weight: 85
+        scale: fine_7
+        evaluate: Plan是否准确理解任务并形成完整、有推进的deck结构；每页角色、逐字内容、speech beat、语义视觉需求、asset和结构约束是否具体、一致、可执行且无明显重复。
+        judge_subcriteria: [任务目标与硬约束转化, deck主线与页面推进, 逐页内容规格和取舍, semantic visual need与asset意图, 下游可执行性和跨页非冗余]
+        required_intermediate_artifacts: [plan/deck.md, plan/slide_*.md, plan/assets.json, research/knowledge-brief.md]
+        required_reference_context: [exact_query, original_attachments, case_specific_requirements]
+    judge_evidence: [plan/deck.md, plan/slide_*.md, plan/assets.json, research/knowledge-brief.md]
+    judge_focus: [是否把query转成可执行计划而非复述, deck与逐页计划是否形成真实推进, 下游是否仍需猜测核心内容或视觉用途]
+    anchors:
+      0.0: 核心任务误读，或没有可用的deck/page plan。
+      0.5: 只有标题清单或空泛规格，多数核心决定留给下游猜测。
+      0.7: 主体计划成立，但有一个重要约束、章节、页面职责或asset意图缺口。
+      0.8: 计划完整可执行，仅有局部重复、转场或规格不足。
+      0.9: 任务、主线、页面职责和下游接口成熟，仅有轻微问题。
+      0.95: 形成高度经济、清楚、可并行消费的规划合同。
+      1.0: 逐要求、逐页与逐asset反查无可观察缺陷。
+    hard_boundaries: [核心任务或页数硬约束误读时Judge=0, 多个页面无明确职责或需要下游决定核心内容时最高0.5]
+
+  - id: P2
+    name: Research、材料处理与知识综合
+    weight: 18
+    applicability: conditional
+    logical_artifact: research_bundle
+    judge_task: research_quality
+    definition: Research是否围绕真实信息缺口选择可靠来源、准确抽取并保留定位，诚实处理冲突和未知，再综合成可被Plan正确消费的知识依据。
+    scoring_points:
+      - id: P2_1_RESEARCH_GROUNDING_INTEGRITY
+        evaluator: judge
+        point_weight: 15
+        scale: binary
+        evaluate: Research是否守住可信底线：关键事实有可追溯依据或被明确标为未知/争议，来源没有伪造，日期/单位/定义没有造成结论反转，且query明确要求使用的附件没有被忽略或曲解。所有适用底线均满足记1；任一关键伪造、无依据强断言、关键口径反转或必需附件失察即记0。
+        judge_subcriteria: [关键claim可追溯或明确未知, 无伪造来源, 关键日期/单位/定义不反转结论, 必需附件得到正确处理]
+        required_intermediate_artifacts: [research/research_*.md, research/knowledge-brief.md]
+        conditional_intermediate_artifacts: [research/materials_*.md]
+        required_reference_context: [exact_query, original_attachments, case_specific_requirements, source_or_material_originals, artifact_contract_snapshot]
+      - id: P2_2_RESEARCH_QUALITY_AND_PLAN_USE
+        evaluator: judge
+        point_weight: 85
+        scale: fine_7
+        evaluate: 问题拆分、来源层级、摘录与口径是否可靠；冲突和未知是否诚实；知识综合是否正确、紧凑，并被Plan用于正确的claim、页面和边界。
+        judge_subcriteria: [问题拆分与范围克制, 来源层级和定位, 摘录/日期/单位/定义准确性, 冲突与不确定性处理, 综合去重与Plan消费]
+        required_intermediate_artifacts: [research/research_*.md, research/knowledge-brief.md, plan/deck.md, plan/slide_*.md]
+        conditional_intermediate_artifacts: [research/materials_*.md]
+        required_reference_context: [exact_query, original_attachments, case_specific_requirements, source_or_material_originals]
+    judge_evidence: [research/research_*.md, research/materials_*.md, research/knowledge-brief.md, plan/deck.md, plan/slide_*.md]
+    judge_focus: [是否围绕真实缺口Research而非随机搜索, 来源和抽取是否可靠, 综合是否进入Plan且无语义漂移]
+    anchors:
+      0.0: 需要证据却无有效Research，或存在伪造来源/关键事实。
+      0.5: 只有零散链接或浅层摘要，多数事实不可安全使用或未进入Plan。
+      0.7: 核心问题有基本依据，但有一个重要覆盖、来源、口径或消费缺口。
+      0.8: 主要信息可靠可定位并被正确消费，仅有局部问题。
+      0.9: Research、综合和Plan传递成熟，仅有轻微缺口。
+      0.95: 形成经济、完整、可审计且主动处理反证的知识依据。
+      1.0: 逐关键事实、来源与消费者反查无缺陷。
+    hard_boundaries: [伪造来源或关键事实时Judge=0, 多个核心claim无来源或无Plan消费者时最高0.5]
+
+  - id: P3
+    name: Image语义需求、搜图keyword与生图prompt
+    weight: 20
+    applicability: conditional
+    logical_artifact: image_request_bundle
+    judge_task: image_request_quality
+    definition: Image链路是否从页面语义视觉需求出发，为真实对象形成准确搜图keyword、为定制视觉形成可执行生图prompt/caption，并与asset slot、视觉系统及消费页稳定绑定。
+    scoring_points:
+      - id: P3_1_IMAGE_TOOL_DECISION_VALIDITY
+        evaluator: judge
+        point_weight: 20
+        scale: binary
+        evaluate: 对每个适用的required image需求，Agent是否选择了语义上正确的search/generate模式，并发出了服务正确页面、主体和用途的实际request；身份敏感的真实人物、地点、事件或产品不得用生图伪造。所有核心request决策均成立记1；任一核心slot漏请求、服务错误页面/主体、模式根本错误或真实身份被伪造即记0。
+        judge_subcriteria: [required slot得到实际request, search/generate模式适合对象性质, request绑定正确页面/主体/用途, 身份敏感真实对象不被生成伪造]
+        required_intermediate_artifacts: [plan/slide_*.md, plan/assets.json, assets/catalog_*.md, _trace/subagents/image_*/tool_log.json]
+        required_reference_context: [exact_query, case_specific_requirements, tool_capability_snapshot, artifact_contract_snapshot]
+      - id: P3_2_IMAGE_SEARCH_KEYWORD_QUALITY
+        evaluator: judge
+        point_weight: 40
+        scale: fine_7
+        applicability: 仅对mode=search的required image requests适用；无此类request时point=N/A。
+        evaluate: 搜图keyword是否准确表达主体、身份、地点/事件/场景和必要限定，与页面用途及所需真实可信度一致，同时避免过宽、错实体或无效风格词堆砌。
+        judge_subcriteria: [主体与身份准确性, 必要场景和限定词, 与页面用途和真实性要求匹配, 查询范围克制且可检索]
+        required_intermediate_artifacts: [plan/slide_*.md, plan/assets.json, assets/catalog_*.md, _trace/subagents/image_*/tool_log.json]
+        required_reference_context: [exact_query, case_specific_requirements, tool_capability_snapshot]
+      - id: P3_3_IMAGE_GENERATION_PROMPT_QUALITY
+        evaluator: judge
+        point_weight: 40
+        scale: fine_7
+        applicability: 仅对mode=generate的required image requests适用；无此类request时point=N/A。
+        evaluate: 生图prompt/caption是否准确表达主体、用途、构图、视角、安全区和比例，使用少量关键视觉基因并服从Visual System，同时避免分析噪声、错误媒介以及让图片承担精确文字/数字/图表。
+        judge_subcriteria: [主体与用途准确性, 构图/安全区/比例可执行性, 视觉基因与Visual System一致性, 禁止项和信息承载边界]
+        required_intermediate_artifacts: [plan/slide_*.md, plan/assets.json, plan/visual-system.json, base.css, assets/catalog_*.md, _trace/subagents/image_*/tool_log.json]
+        required_reference_context: [exact_query, case_specific_requirements, tool_capability_snapshot]
+    judge_evidence: [plan/slide_*.md, plan/assets.json, plan/visual-system.json, base.css, assets/catalog_*.md, _trace/subagents/image_*/tool_log.json]
+    judge_focus: [search与generate是否按主体性质正确分流, keyword/prompt是否服务具体页面而非泛化描述, prompt与视觉系统是否一致]
+    anchors:
+      0.0: 多数request主体或媒介根本错误，或关键真实对象被不当伪造。
+      0.5: keyword/prompt泛化、错实体或不可执行，与页面用途明显脱节。
+      0.7: 主要request方向正确，但有一个重要主体、限定、构图或视觉系统缺口。
+      0.8: request具体可用，仅有局部冗余或边界不足。
+      0.9: search/generate分流、语义和风格传递成熟，仅有轻微问题。
+      0.95: 形成高度精准、克制、可追溯的Image请求接口。
+      1.0: 逐required request反查无缺陷。
+    hard_boundaries: [身份要紧的真实主体被错误生图或搜错实体时对应Judge点最高0.5, prompt要求生成精确文字或数据图表时对应Judge点最高0.7]
+
+  - id: P4
+    name: Speech讲稿与页面叙事对齐
+    weight: 15
+    applicability: conditional
+    logical_artifact: speaker_notes
+    judge_task: speech_quality
+    definition: Speech是否逐页覆盖、围绕对应页面核心beat形成适合口头表达的讲述，保持事实边界、时间节奏和自然转场，而不是照读屏幕或引入计划外知识。
+    scoring_points:
+      - id: P4_1_SPEECH_PAGE_COVERAGE
+        evaluator: deterministic
+        point_weight: 15
+        scale: binary
+        pass_if: 依据attempt合同声明的speech section格式解析speech.md；每个canonical plan/slide_NN.md恰有一个对应的非空speech section，且无重复页号或指向不存在页面的额外section时记1，否则记0。转场、用时、主题和事实是否正确不由代码判断，统一进入P4_2。
+        required_intermediate_artifacts: [speech.md, plan/deck.md, plan/slide_*.md]
+        required_reference_context: [artifact_contract_snapshot]
+      - id: P4_2_SPEECH_QUALITY_AND_PLAN_ALIGNMENT
+        evaluator: judge
+        point_weight: 85
+        scale: fine_7
+        evaluate: Speech是否围绕对应页面的论点和speech beat，适合口头表达且不只是复述屏幕；事实与Research一致；转场、用时、受众语气和整套节奏是否自然；是否避免新增知识包外的重要事实。
+        judge_subcriteria: [页面论点与speech beat对齐, 口头表达增量而非照读, 事实和边界一致性, 转场/用时/受众语气]
+        required_intermediate_artifacts: [speech.md, plan/deck.md, plan/slide_*.md, research/knowledge-brief.md]
+        required_reference_context: [exact_query, case_specific_requirements]
+    judge_evidence: [speech.md, plan/deck.md, plan/slide_*.md, research/knowledge-brief.md]
+    judge_focus: [讲稿是否真的解释页面而非重复页面, 是否新增无依据事实, 页间转场与总时长是否成立]
+    anchors:
+      0.0: 多数页面无可用讲稿，或讲稿与页面/事实根本冲突。
+      0.5: 主要是照读屏幕、缺转场或大量新增无依据内容。
+      0.7: 主体可讲，但有一个重要页面、事实、节奏或转场缺口。
+      0.8: 讲稿与页面稳定对齐、可正常演讲，仅有局部问题。
+      0.9: 口头增量、节奏、转场和受众适配成熟，仅有轻微缺陷。
+      0.95: 形成高度自然、紧凑、事实严谨的完整讲述轨道。
+      1.0: 逐页与逐转场反查无缺陷。
+    hard_boundaries: [讲稿新增关键伪造事实时Judge=0, 多个核心页讲稿缺失或与页面结论相反时最高0.5]
+
+  - id: P5
+    name: base.css设计词元内容与Image一致性
+    weight: 15
+    logical_artifact: visual_system_bundle
+    judge_task: visual_system_quality
+    definition: base.css中的实际设计词元内容是否与plan/visual-system.json共同形成适合query的统一视觉合同，包括配色、字体角色、字号层级、间距节奏、形状语言和image treatment；Image请求是否服从同一视觉语言。
+    scoring_points:
+      - id: P5_1_BASE_CSS_DESIGN_TOKEN_QUALITY
+        evaluator: judge
+        point_weight: 50
+        scale: fine_7
+        evaluate: base.css中实际使用的配色、字体角色、字号层级、间距/圆角/线条/面板等设计词元，以及image treatment和art direction，是否适合主题、受众和场合，内部协调且足以指导PPT页面执行，而非随机色值、无层级默认值或泛化风格词。
+        judge_subcriteria: [配色色义与封闭性, 字体角色及中文/目标语言适配, 字号层级与间距节奏, 圆角/线条/面板等形状语言, image treatment与art direction]
+        required_intermediate_artifacts: [base.css, plan/visual-system.json, plan/deck.md, plan/slide_*.md]
+        required_reference_context: [exact_query, case_specific_requirements, tool_capability_snapshot]
+      - id: P5_2_BASE_CSS_IMAGE_REQUEST_COHERENCE
+        evaluator: judge
+        point_weight: 50
+        scale: fine_7
+        evaluate: 搜图/生图请求中的色调、媒介、情绪、构图和后处理是否与base.css实际词元及art direction一致；跨request是否共享同一视觉配方，同时允许页面用途所需的合理变化。
+        judge_subcriteria: [token与prompt视觉基因一致, 媒介/色调/情绪一致, image treatment可落地, 跨request一致性与合理变化]
+        required_intermediate_artifacts: [plan/visual-system.json, base.css, plan/slide_*.md, plan/assets.json, assets/catalog_*.md, _trace/subagents/image_*/tool_log.json]
+        required_reference_context: [exact_query, case_specific_requirements, tool_capability_snapshot]
+    judge_evidence: [plan/visual-system.json, base.css, plan/deck.md, plan/slide_*.md, plan/assets.json, assets/catalog_*.md, _trace/subagents/image_*/tool_log.json]
+    judge_focus: [评价base.css实际设计内容对PPT的价值而非CSS工程质量, 配色/字体/字号/间距/形状词元是否语义化且自洽, image requests是否真正服从同一视觉语言]
+    anchors:
+      0.0: 视觉系统根本不适配任务、内部冲突，或与Image请求方向相反。
+      0.5: 主要是随机token和泛化风格词，无法稳定指导下游。
+      0.7: 主要方向成立，但有一个重要token、art direction或Image一致性缺口。
+      0.8: 视觉系统具体可执行，Image请求大体一致，仅有局部问题。
+      0.9: tokens、art direction、处理方式和Image请求协调成熟，仅有轻微缺陷。
+      0.95: 形成高度清楚、统一且允许合理变化的视觉合同。
+      1.0: 逐token与逐request反查无缺陷。
+    hard_boundaries: [base.css设计词元与query指定品牌/风格根本相反时P5_1=0, 多数Image请求不服从base.css视觉系统时P5_2最高0.5]
+
+  - id: P6
+    name: 跨中间产物语义一致性与消费闭环
+    weight: 10
+    logical_artifact: cross_artifact_relations
+    judge_task: cross_artifact_consistency
+    definition: Research、Plan、Image、Speech和Visual System之间是否通过稳定ID和消费者关系形成一致数据流，关键事实、页面目的、asset用途和视觉语言在传递中不发生漂移。
+    scoring_points:
+      - id: P6_1_CROSS_ARTIFACT_SEMANTIC_CONSISTENCY
+        evaluator: judge
+        point_weight: 100
+        scale: fine_7
+        evaluate: Research结论进入Plan后是否变义；Plan中的页面目的进入Image和Speech后是否保持；Visual System进入keyword/prompt后是否一致；是否存在有结构链接但语义服务了错误消费者的情况。
+        judge_subcriteria: [Research→Plan事实与边界, Plan→Speech论点和讲述, Plan→Image主体与用途, Visual System→Image视觉语言, 变更后的全链同步]
+        required_intermediate_artifacts: [research/knowledge-brief.md, plan/deck.md, plan/slide_*.md, plan/assets.json, speech.md, plan/visual-system.json, base.css, assets/catalog_*.md, _trace/subagents/image_*/tool_log.json]
+        required_reference_context: [exact_query, case_specific_requirements, artifact_contract_snapshot]
+    judge_evidence: [research/knowledge-brief.md, plan/deck.md, plan/slide_*.md, plan/assets.json, speech.md, plan/visual-system.json, base.css, assets/catalog_*.md, _trace/subagents/image_*/tool_log.json]
+    judge_focus: [结构绑定存在但语义是否仍正确, 同一事实/页面目的/asset用途是否跨阶段漂移, 是否有无消费者产物]
+    anchors:
+      0.0: 核心事实、页面目的或视觉方向在跨产物传递中根本冲突。
+      0.5: 多条主链断裂或下游需要重新猜测上游意图。
+      0.7: 主链可追踪，但有一个重要漂移或多个局部交接缺口。
+      0.8: 核心数据流一致可靠，仅有局部孤立或说明不足。
+      0.9: 稳定ID、消费者和语义形成成熟闭环，仅有轻微问题。
+      0.95: 形成经济、清楚、可反向追溯的中间产物数据流。
+      1.0: 逐关键关系反查无缺陷。
+    hard_boundaries: [关键Research事实进入Plan后被反转或伪造时Judge=0, 多个核心下游对象服务错误消费者时最高0.5]
+
+evidence_sufficiency:
+  valid_when: 至少85%适用权重有可评分的模型产物或可绑定trace。
+  insufficient_evidence_when:
+    - collector/adapter/logger故障导致超过15%适用权重无法区分未执行与未记录。
+    - run与query/model/attempt/skill hash无法可靠绑定。
+  model_failure_rule: attempt合同要求但模型未创建的逻辑产物属于能力失败，不是证据不足。
+
+judge_routing:
+  packet_spec: rubric/long_horizon_agentic_intermediate_judge_packets_v2.yaml
+  one_artifact_family_per_primary_judge: true
+  raw_messages_in_prompt: forbidden
+  raw_full_tool_logs_in_prompt: forbidden
+  full_workspace_in_prompt: forbidden
+  final_render_usage: forbidden；本rubric只评价中间产物与请求质量，图片/页面最终效果由final-output rubric评价。
+  runner_computes_scores: true
+
+reporting:
+  primary_score_name: agentic_intermediate_score
+  required:
+    - evaluation_status
+    - artifact_contract_snapshot
+    - agentic_intermediate_score_0_100
+    - six_dimension_scores_0_1
+    - deterministic_rule_results
+    - judge_findings_and_evidence
+    - applicability_profile
+    - packet_and_shard_metadata
+  separate_from: [multi_page_final_output_score, page_level_final_output_scores, case_specific_score]
+
+case_specific_extension:
+  allowed_fields:
+    - requirement_ids
+    - required_research_questions
+    - required_claims
+    - required_attachments
+    - required_image_search_semantics
+    - required_image_generation_semantics
+    - required_speech_messages
+    - required_style_constraints
+    - expected_sections_or_pages
+    - forbidden_or_safety_constraints

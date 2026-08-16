@@ -1,0 +1,6 @@
+case_id: llm
+instruction: instruction.md
+active_rubric_revision: v001
+canvas:
+  width: 1600
+  height: 900

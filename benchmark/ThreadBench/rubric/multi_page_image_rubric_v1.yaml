@@ -1,0 +1,326 @@
+contract_version: multi_page_image_rubric_v1
+rubric_id: multi_page_image_rubric_v1
+title: 多页演示文稿 Deck-Level 通用评测 Rubric v1
+source: multi_page_image_rubric_v1.xlsx
+source_sheets:
+  - 多页评分细则
+  - 多页评分模版
+revision_summary:
+  - 将工作簿中的 Deck-level C1–C5、A1–A2、H1–H3 转换为可执行的 0–100 分 YAML Rubric。
+  - 保留每个维度的主要证据视图、五档锚点和边界说明。
+  - 记录多页模板中的 Deck-level 权重、页级输入接口和最终聚合公式，但不重复定义页级 Rubric。
+
+scope:
+  evaluation_unit: deck
+  total_dimensions: 10
+  modules:
+    content: 5
+    aesthetic: 2
+    html: 3
+
+llm_judge_input_contract:
+  outputs_directory_pattern: <case_dir>/outputs/<generation_model>/<run_id>/
+  outputs_relative_path_base: <case_dir>/outputs/<generation_model>/<run_id>/
+  case_input: {artifact_name: 原始任务指令, case_relative_path: instruction.md}
+  routes:
+    content_aesthetic:
+      evaluation_modes: [visual]
+      raw_input_artifacts:
+        - {artifact_name: 全 Deck 连续页面渲染图, outputs_relative_path: renders/slide_NN.png}
+    html_dom:
+      evaluation_modes: [html]
+      raw_input_artifacts:
+        - {artifact_name: 全 Deck 连续页面 HTML, outputs_relative_path: slides/slide_NN.html}
+  evaluator_derived_inputs:
+    - artifact_name: Deck 渲染 PDF
+      evaluation_relative_path: inputs/rendered_deck.pdf
+      derived_from_outputs_relative_paths: [renders/slide_NN.png]
+    - artifact_name: 合并 HTML 文本
+      evaluation_relative_path: inputs/combined_slides.html.txt
+      derived_from_outputs_relative_paths: [slides/slide_NN.html]
+    - artifact_name: Deck 与逐页 DOM 审计
+      evaluation_relative_paths: [dom_audit.json, dom_audits/slide_NN.json]
+      derived_from_outputs_relative_paths: [slides/slide_NN.html]
+  rules:
+    - NN 必须由 runner 按连续 canonical 页号完整展开，视觉与 HTML Judge 不得自行抽样或扫描其他 run。
+    - 每个 LLM Judge 只读取其 route 列出的原始产物和由该产物只读派生的评测输入。
+    - Judge evidence locator 必须使用实际 outputs 相对路径和页码；不得只写 rendered_deck、html 等抽象标签或绝对路径。
+    - 评测侧 PDF、合并 HTML 和 DOM audit 不属于模型产物，不得回写 outputs。
+
+dimension_scale:
+  min: 0
+  max: 100
+  bands:
+    - level: not_met
+      min: 0
+      max: 19
+      description: 几乎没有满足该维度；Deck 的核心结构、可用性或跨页关系根本失效。
+    - level: weak
+      min: 20
+      max: 39
+      description: 只满足少量表层要求；多个主要章节、跨页关系或工程能力存在严重问题。
+    - level: partial
+      min: 40
+      max: 59
+      description: 基本方向成立，但仍有影响整套理解、使用或专业性的实质缺漏。
+    - level: mostly
+      min: 60
+      max: 79
+      description: 大部分 Deck-level 要求得到满足；剩余问题清楚可见但未破坏主体质量。
+    - level: fully
+      min: 80
+      max: 100
+      description: 真正优秀地满足该维度，而非仅有多张可读页面；80–94 表示优秀但仍可能有小问题，95–99 仅用于接近标杆且只剩可忽略改进，100 仅用于有充分证据证明无任何可观察缺陷或改进空间的极少数结果。
+
+judge_instructions:
+  - 对每个 Deck-level 维度分别给出 0–100 分；不要将它们合并为一个整体印象分。
+  - 先按 anchors 选择分数档，再根据全 Deck 证据和剩余缺陷确定档内具体分数。
+  - 每个维度都必须给出可定位的证据，例如页码、相邻页对、故事板位置、DOM 节点、运行日志或合法状态路径。
+  - 分数低于 100 时必须指出至少一个该维度内的具体不足；只有无可观察缺陷时才可给 100。
+  - 不以单次 holistic 观看替代证据核对：叙事与顺序至少结合故事板、提纲和相邻页对；HTML 维度至少结合源码、运行日志和合法状态图。
+  - 显式任务约束、源材料覆盖和事实来源应记录在场景化 checklist 中；C1 评价的是整套任务规划与结构覆盖，不逐条替代 checklist。
+  - 不要由 Judge 计算模块分、Deck Score、页级分或最终总分；外部聚合器应用确定性权重、页级输入和全局限分。
+  - 不得因为无页码而自动降低 A2；不得强制所有 Deck 使用戏剧化故事弧；应按目标场景判断合适的结构和导航方式。
+  - 正常的非当前 slide 隐藏、正常 reveal 和有意的章节差异可以成立；只有不可达、延迟注入或用于规避评测的内容才属于 H3 问题。
+
+boundary_notes:
+  - C1 评价整套任务规划和结构覆盖，不逐条复核 prompt；显式约束和源材料覆盖由场景化 checklist 记录。
+  - A2 只评价跨页视觉节奏与章节定位线索；功能性导航归入 H1。
+  - H2 以共享架构与可编辑性为主；无障碍相关问题应以可测试子探针检查。
+  - H3 必须基于合法状态图判断，允许非当前 slide 的正常隐藏。
+
+dimensions:
+  - id: C1_deck_task_planning_and_structure_coverage
+    module: content_narrative
+    name: 整套任务规划与结构覆盖
+    evaluation_mode: visual
+    criticality: critical
+    allow_na: false
+    evidence_sources:
+      - instruction
+      - outline
+      - rendered_deck
+      - checklist_summary
+    definition: 整套是否围绕目标、受众和场景形成合理章节、优先级和篇幅分配；不逐条替代显式 checklist。
+    evaluation: >-
+      结合 Prompt/Brief、提纲、全 Deck 和 checklist 摘要，判断目标用途、受众、核心章节、优先级和页面篇幅是否互相一致，且没有为了增加页数而设置的凑页。
+    anchors:
+      not_met: 用途或主题根本错误；多数核心结构缺失。
+      weak: 只表层相关；关键章节或用途路径缺失。
+      partial: 范围基本覆盖，但结构比例和优先级明显失衡。
+      mostly: 大部分任务目标完成，结构适合用途，只有次要缺口。
+      fully: 目标、受众、章节比例和取舍高度一致；无凑页。80–94 要求结构明显优于“基本覆盖”，95–99 仅允许可忽略的取舍优化，100 仅用于没有可观察缺口。
+  - id: C2_global_storyline_and_argument_architecture
+    module: content_narrative
+    name: 全局主线与论证架构
+    evaluation_mode: visual
+    criticality: critical
+    allow_na: false
+    evidence_sources:
+      - storyboard
+      - outline
+      - slide_roles
+      - claim_manifest
+    definition: 页面是否形成适合场景的组织模式；每页是否都对主线有作用。
+    evaluation: >-
+      检查故事板、提纲、页面角色和关键 claims，判断章节组织是否适合该 Deck 的沟通场景，关键结论是否有必要铺垫和支撑，以及每页是否承担清楚作用。
+    anchors:
+      not_met: 页面近似随机集合；结论与证据脱节。
+      weak: 主线反复跳跃，章节职责混乱。
+      partial: 基本提纲存在，但局部断层或结论铺垫不足。
+      mostly: 主线清楚，章节职责明确，结论大体被支持。
+      fully: 结构经济有力；关键结论被充分铺垫和回收。80–94 要求叙事组织真正优秀，95–99 只允许可忽略的论证优化，100 仅用于无可观察断层。
+  - id: C3_cross_slide_transition_and_sequence
+    module: content_narrative
+    name: 跨页衔接与顺序合理性
+    evaluation_mode: visual
+    criticality: critical
+    allow_na: false
+    evidence_sources:
+      - adjacent_slide_pairs
+      - storyboard
+      - order_perturbation_test
+    definition: 相邻页和章节之间是否存在可解释关系，顺序是否降低回跳和认知切换。
+    evaluation: >-
+      检查相邻页对、故事板和顺序扰动测试，判断每一次转场是否有明确理由，章节切换是否清晰，以及并列或重复结构是否有意并帮助理解和记忆。
+    anchors:
+      not_met: 顺序近似打乱，因果或前后关系严重倒置。
+      weak: 频繁突跳、回退、章节切换无提示。
+      partial: 整体可跟随，但有弱衔接、重复回顾或局部顺序不佳。
+      mostly: 局部和全局顺序自然，章节过渡清楚。
+      fully: 每次转场理由明确，并列或重复结构有意且帮助记忆。80–94 要求转场与顺序高度成熟，95–99 仅允许可忽略的衔接优化，100 仅用于无可观察的顺序问题。
+  - id: C4_information_allocation_pacing_and_redundancy
+    module: content_narrative
+    name: 信息分配、节奏与冗余控制
+    evaluation_mode: visual
+    criticality: standard
+    allow_na: false
+    evidence_sources:
+      - storyboard
+      - density_statistics
+      - duplicate_detection
+    definition: 信息是否按复杂度合理分段；不同章节页数与重要性是否匹配；是否避免连续过密、连续空泛、重复页和占位页。
+    evaluation: >-
+      结合故事板、文本/空间密度统计和重复页检测，判断信息切分、留白、章节页数与视觉变化是否围绕内容重要性有意安排，而非出现凑页或失衡堆叠。
+    anchors:
+      not_met: 多数页面过载或空洞，重复与占位严重。
+      weak: 节奏明显失衡，多页重复或凑页。
+      partial: 总体可用，但章节比例和密度波动明显。
+      mostly: 内容切分与节奏合理，少量页可合并或拆分。
+      fully: 密度、留白和视觉变化围绕重要性有意组织。80–94 要求整套节奏优秀，95–99 仅允许可忽略的拆分或合并优化，100 仅用于无可观察的冗余或节奏问题。
+  - id: C5_cross_slide_fact_term_and_data_consistency
+    module: content_narrative
+    name: 跨页事实、术语与数据一致性
+    evaluation_mode: visual
+    criticality: critical
+    allow_na: false
+    evidence_sources:
+      - claim_manifest
+      - extracted_numbers_and_units
+      - chart_labels
+      - citations
+    definition: 同一实体、指标、日期、单位、术语定义在不同页面是否稳定；摘要、正文、图表和附录是否互相吻合。
+    evaluation: >-
+      对照 claim manifest、数字/单位抽取、图表标签和引用，检查关键事实、术语和数据谱系是否在摘要、正文、图表与附录中保持一致；任何差异是否被明确解释。
+    anchors:
+      not_met: 关键 KPI、日期或结论互相矛盾，或存在伪造来源。
+      weak: 多处数字、单位或术语冲突，影响可信度。
+      partial: 大体一致，但局部舍入、口径或引用格式问题明显。
+      mostly: 关键事实和术语稳定，轻微差异不影响理解。
+      fully: 术语体系和数据谱系清楚；冲突被显式解释。80–94 要求跨页信息治理优秀，95–99 仅允许可忽略的格式优化，100 仅用于无事实、术语、数据或引用缺陷。
+  - id: A1_global_visual_system_and_intentional_variation
+    module: global_aesthetic
+    name: 全局视觉系统一致性与有意变化
+    evaluation_mode: visual
+    criticality: standard
+    allow_na: false
+    evidence_sources:
+      - storyboard
+      - css_tokens
+      - component_inventory
+      - typography_and_color_statistics
+    definition: 字体层级、色板、网格、边距、组件、图表、图标和图片语言是否形成统一系统；章节差异是否有意。
+    evaluation: >-
+      从故事板、CSS tokens、组件清单以及字体、色彩和间距分布判断 Deck 是否具有统一的视觉系统，并区分有意的章节变化与无意的模板碰撞或风格漂移。
+    anchors:
+      not_met: 页面像来自多个无关模板。
+      weak: 风格漂移、模板碰撞或图表/图标语言不统一。
+      partial: 主题大体一致，但字号、边距、颜色或组件反复漂移。
+      mostly: 视觉系统稳定，少量细节不一致；章节变化大多可解释。
+      fully: 统一与变化都服务于结构；缩略图层面也能看出同一套 Deck。80–94 要求系统成熟，95–99 仅允许可忽略的 token 或组件微调，100 仅用于无可观察的不一致。
+  - id: A2_cross_slide_visual_rhythm_and_orientation_cues
+    module: global_aesthetic
+    name: 跨页视觉节奏与章节定位线索
+    evaluation_mode: visual
+    criticality: standard
+    allow_na: false
+    evidence_sources:
+      - storyboard
+      - chapter_markers
+      - page_numbers_or_progress_cues
+      - visual_type_sequence
+    definition: 页面序列是否有连续性与适度变化；章节页、页码、进度或重复视觉锚点是否帮助定位。
+    evaluation: >-
+      检查故事板、章节标记、页码/进度线索和视觉类型序列，判断页面变化与重复是否平衡，读者是否能在 Deck 中理解章节位置与进度。无页码本身不构成扣分。
+    anchors:
+      not_met: 视觉序列混乱，章节与进度不可识别。
+      weak: 导航线索缺失且视觉节奏极端单调或突兀。
+      partial: 基本连贯，但章节边界不清或变化缺乏规律。
+      mostly: 进度和章节容易理解，页面变化与重复较平衡。
+      fully: 视觉节奏与叙事节奏协同，变化用于强调关键节点。80–94 要求节奏和定位线索明显优秀，95–99 仅允许可忽略的导航或变化优化，100 仅用于无可观察的定位问题。
+  - id: H1_multi_page_rendering_enumeration_and_navigation
+    module: multi_page_html
+    name: 多页渲染、枚举与导航完整性
+    evaluation_mode: html
+    criticality: critical
+    allow_na: false
+    evidence_sources:
+      - offline_chromium
+      - dom_enumeration
+      - network_and_console_logs
+      - keyboard_navigation
+      - routing_or_direct_url
+    definition: 所有 slide 是否可发现、稳定渲染、可直接定位并按预期前后导航；离线资源是否完整、初始状态是否确定。
+    evaluation: >-
+      在离线 Chromium 中全量枚举页面，检查每页是否可访问、是否稳定渲染，键盘/直接跳转/路由是否可靠，以及初始状态、网络依赖和控制台日志是否支持可复现的浏览。
+    anchors:
+      not_met: Deck 无法使用，页数无法枚举，或大量页面缺失、空白或不可达。
+      weak: 多页损坏、导航失效、状态依赖或核心章节不可达。
+      partial: 主流程可用，但少数坏页、直接定位失败或控制台错误。
+      mostly: 全部页面稳定可访问，导航和离线加载可靠，只有轻微工程问题。
+      fully: 渲染确定、页数稳定、每页可寻址；键盘、直接跳转和离线运行可靠。80–94 要求全量流程优秀，95–99 仅允许可忽略的工程微调，100 仅用于无可观察的运行、枚举或导航缺陷。
+  - id: H2_cross_slide_dom_css_architecture_and_editability
+    module: multi_page_html
+    name: 跨页 DOM/CSS 架构与可编辑性
+    evaluation_mode: html
+    criticality: standard
+    allow_na: false
+    evidence_sources:
+      - source_code
+      - shared_styles
+      - edit_probe
+      - semantic_focus_and_contrast_checks
+    definition: 是否有可复用主题 token、共享 CSS/组件和清楚 slide/section 结构；文本是否可选中、DOM 顺序是否合理，常见修改是否不破坏多页。
+    evaluation: >-
+      检查源码、共享样式、编辑探针和语义/焦点/对比检查，判断主题、组件、页面容器与章节边界是否清楚，文本和图形是否可编辑，以及全局改色、改字体、扩标题、增删页是否稳定。
+    anchors:
+      not_met: 整套主要是大图/canvas，或代码纠缠到无法识别页面与编辑内容。
+      weak: 大量逐页硬编码和重复 CSS；改公共元素会破坏多页。
+      partial: 能识别 slide 容器和部分共享样式，但重复、耦合或编辑稳定性问题明显。
+      mostly: 共享架构清楚，文本和图形大多可编辑；少量语义、焦点或对比问题。
+      fully: 主题、组件、语义结构和编辑边界成熟；全局改色、改字体、扩标题、增删页稳定。80–94 要求可维护架构优秀，95–99 仅允许可忽略的复用或无障碍优化，100 仅用于无可观察的架构或编辑缺陷。
+  - id: H3_cross_slide_evaluation_integrity_and_state_determinism
+    module: multi_page_html
+    name: 跨页评测诚信与状态确定性
+    evaluation_mode: html
+    criticality: critical
+    allow_na: false
+    evidence_sources:
+      - legal_state_graph
+      - dom_visibility_audit
+      - lazy_loading_and_timing_audit
+      - hidden_node_audit
+      - screenshot_comparison
+    definition: 评测内容应等同于正常用户通过合法路径可见内容；区分正常多页隐藏/reveal 与不可达隐藏关键词、延迟注入和评测投机。
+    evaluation: >-
+      基于合法状态图、DOM 可见性、延迟加载、隐藏节点和截图比对，验证所有页面与 reveal 是否可审计，评测截图是否与真实浏览一致，以及可见性、资源和交互状态是否确定。
+    anchors:
+      not_met: 系统性隐藏关键词或页面、延迟替换或评测规避。
+      weak: 多处不可达隐藏内容、状态依赖或评测截图与真实浏览不一致。
+      partial: 少量陈旧隐藏节点或非关键状态差异，未实质改变结果。
+      mostly: 内容在合法状态中完整可见，未发现投机，只有轻微实现瑕疵。
+      fully: 状态完全确定，所有页面和 reveal 均可审计；可见性、资源和交互状态一致。80–94 要求实现高度可信，95–99 仅允许可忽略的状态清理，100 仅用于无任何诚信风险或状态差异。
+# scoring:
+#   deck_level_aggregation: weighted_arithmetic_mean
+#   dimension_weights:
+#     C1_deck_task_planning_and_structure_coverage: 0.12
+#     C2_global_storyline_and_argument_architecture: 0.13
+#     C3_cross_slide_transition_and_sequence: 0.12
+#     C4_information_allocation_pacing_and_redundancy: 0.10
+#     C5_cross_slide_fact_term_and_data_consistency: 0.08
+#     A1_global_visual_system_and_intentional_variation: 0.10
+#     A2_cross_slide_visual_rhythm_and_orientation_cues: 0.10
+#     H1_multi_page_rendering_enumeration_and_navigation: 0.10
+#     H2_cross_slide_dom_css_architecture_and_editability: 0.10
+#     H3_cross_slide_evaluation_integrity_and_state_determinism: 0.05
+#   page_level_input:
+#     required: true
+#     description: 外部页级 Rubric 生成每页 Content、Aesthetic、HTML 模块分；本文件不重复定义页级维度。
+#     slide_score_aggregation: 70% 全页均值 + 30% 最差 max(1, ceil(20% × N)) 页均值
+#     allow_na: 封面、章节页等确实不适用的页级维度可由页级 Rubric 填 N/A，并在模块内动态处理分母。
+#   final_score_aggregation:
+#     slide_level_weight: 0.55
+#     deck_level_weight: 0.45
+#     formula: Base Score = 55% Slide-level Aggregate + 45% Deck Score；Valid 时 Final Score = min(Base Score, Rule Cap)。
+
+global_caps:
+  - id: missing_core_structure
+    max_final_score: 59
+    condition: 核心章节缺失或实现目标用途所必需的路径缺失，导致 Deck 只能表层对应任务。
+  - id: widespread_deck_unavailability
+    max_final_score: 39
+    condition: 坏页数量达到 max(2, ceil(0.1 × N))，或任一核心章节不可达。
+  - id: deliberate_deck_level_evaluation_gaming
+    max_final_score: 39
+    max_html_module_score: 19
+    condition: 存在不可达隐藏内容、延迟注入或其他明确投机实现，以规避 Deck-level 评测。

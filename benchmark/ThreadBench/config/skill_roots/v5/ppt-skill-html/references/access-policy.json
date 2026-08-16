@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "roles": ["Material", "Research", "Designer", "Presenter", "Image", "Slide", "Audience"],
+  "references": {
+    "references/shared/provenance-and-constraints.md": {
+      "owner": "Shared",
+      "consumers": ["Research", "Presenter"]
+    },
+    "references/research/evidence-policy.md": {
+      "owner": "Research",
+      "consumers": ["Research"]
+    },
+    "references/designer/design-rules.md": {
+      "owner": "Designer",
+      "consumers": ["Designer"]
+    },
+    "references/designer/design-styles.md": {
+      "owner": "Designer",
+      "consumers": ["Designer"]
+    },
+    "references/designer/layout-patterns.md": {
+      "owner": "Designer",
+      "consumers": ["Designer"]
+    },
+    "references/designer/fonts.md": {
+      "owner": "Designer",
+      "consumers": ["Designer"]
+    },
+    "references/designer/fancy-effects.md": {
+      "owner": "Designer",
+      "consumers": ["Designer"]
+    },
+    "references/designer/base-template.css": {
+      "owner": "Designer",
+      "consumers": ["Designer"]
+    },
+    "references/designer/visual-audit.md": {
+      "owner": "Designer",
+      "consumers": ["Designer"]
+    },
+    "references/presenter/content-planning.md": {
+      "owner": "Presenter",
+      "consumers": ["Presenter"]
+    },
+    "references/presenter/narrative-and-speech.md": {
+      "owner": "Presenter",
+      "consumers": ["Presenter"]
+    },
+    "references/presenter/content-audit.md": {
+      "owner": "Presenter",
+      "consumers": ["Presenter"]
+    },
+    "references/slide/implementation-rules.md": {
+      "owner": "Slide",
+      "consumers": ["Slide"]
+    },
+    "references/slide/single-slide-checklist.md": {
+      "owner": "Slide",
+      "consumers": ["Slide"]
+    },
+    "references/audience/reception-checklist.md": {
+      "owner": "Audience",
+      "consumers": ["Audience"]
+    }
+  }
+}

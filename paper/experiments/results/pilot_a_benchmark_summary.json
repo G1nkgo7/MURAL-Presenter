@@ -1,0 +1,127 @@
+{
+  "benchmark_name": "THREAD-Bench",
+  "benchmark_id": "LongHorizon-PresentBench",
+  "benchmark_version": "v0.2.0",
+  "case_count": 50,
+  "expert_constructed": true,
+  "total_target_slides": 867,
+  "requirements": {
+    "total": 382,
+    "must": 376,
+    "should": 6
+  },
+  "dependency_groups": 274,
+  "source_target_checks": 707,
+  "targets_distance_15_plus": 97,
+  "dependency_distance": {
+    "minimum": 1,
+    "median": 6,
+    "mean": 7.857,
+    "maximum": 28
+  },
+  "case_max_dependency_span": {
+    "median": 14.0,
+    "maximum": 28
+  },
+  "grounded_cases": 10,
+  "grounded_source_files": 11,
+  "distributions": {
+    "primary_capability": {
+      "constraint_coordination": 10,
+      "cross_slide_state": 10,
+      "grounded_synthesis": 10,
+      "narrative_logic": 10,
+      "visual_system": 10
+    },
+    "language": {
+      "en": 10,
+      "mixed": 5,
+      "zh": 35
+    },
+    "material_mode": {
+      "free": 40,
+      "grounded": 10
+    },
+    "split": {
+      "challenge": 10,
+      "core": 40
+    },
+    "horizon_bucket": {
+      "long": 25,
+      "medium": 10,
+      "ultra": 15
+    },
+    "target_slides": {
+      "10": 4,
+      "12": 6,
+      "14": 5,
+      "15": 9,
+      "16": 6,
+      "18": 5,
+      "20": 2,
+      "22": 4,
+      "24": 5,
+      "28": 2,
+      "30": 2
+    },
+    "dependency_distance": {
+      "1-4": 257,
+      "5-9": 220,
+      "10-14": 133,
+      "15+": 97
+    }
+  },
+  "suite_rows": [
+    {
+      "suite": "constraint_coordination",
+      "cases": 10,
+      "medium": 2,
+      "long": 5,
+      "ultra": 3,
+      "avg_slides": 17.6,
+      "avg_dependency_groups": 5.5,
+      "avg_source_target_checks": 14.7
+    },
+    {
+      "suite": "cross_slide_state",
+      "cases": 10,
+      "medium": 2,
+      "long": 5,
+      "ultra": 3,
+      "avg_slides": 17.4,
+      "avg_dependency_groups": 5.5,
+      "avg_source_target_checks": 14.9
+    },
+    {
+      "suite": "grounded_synthesis",
+      "cases": 10,
+      "medium": 2,
+      "long": 5,
+      "ultra": 3,
+      "avg_slides": 16.7,
+      "avg_dependency_groups": 5.4,
+      "avg_source_target_checks": 12.6
+    },
+    {
+      "suite": "narrative_logic",
+      "cases": 10,
+      "medium": 2,
+      "long": 5,
+      "ultra": 3,
+      "avg_slides": 17.6,
+      "avg_dependency_groups": 5.5,
+      "avg_source_target_checks": 13.6
+    },
+    {
+      "suite": "visual_system",
+      "cases": 10,
+      "medium": 2,
+      "long": 5,
+      "ultra": 3,
+      "avg_slides": 17.4,
+      "avg_dependency_groups": 5.5,
+      "avg_source_target_checks": 14.9
+    }
+  ],
+  "official_scalar_quality_score": false
+}

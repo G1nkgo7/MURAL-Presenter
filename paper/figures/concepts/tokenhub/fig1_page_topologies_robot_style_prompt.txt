@@ -1,0 +1,47 @@
+Use case: infographic-diagram
+Asset type: academic paper conceptual figure
+
+Input images:
+- Image 1 is the semantic and layout reference. Preserve its three-panel comparison, topology, arrows, artifacts, ordering, and exact labels.
+- Image 2 is a style reference only. Transfer its bold editorial ink outlines, softly tinted rounded regions, friendly concrete artifacts, compact agent scenes, sparse green/teal/blue/amber accents, and clean illustrated-paper finish. Do not copy any title, wording, topology, training strip, legend, or method content from Image 2.
+
+Primary request:
+Redraw Image 1 in the illustrated academic-infographic language of Image 2. Replace every abstract agent glyph with a consistent original generic Agent robot. The robot has a white rounded shell, a simple black rounded screen face with two small cyan eyes, and restrained teal joints. It is professional and friendly but not toy-like. It has no hat, uniform, clothes, badge, logo, antenna silhouette associated with a product, or brand mark. Use the same robot design at every scale.
+
+Composition:
+- Wide landscape academic figure with three equal vertical panels and no overall title.
+- Panel A shows one robot following a serial page path.
+- Panel B shows three identical small robots working in parallel from replicated deck context.
+- Panel C shows deck planning and shared deck state above three page briefs, then three identical small robots producing pages in parallel and fanning in to assembly and inspection.
+- Keep input and slide-output artifacts visually identical across all three panels.
+- Robots clarify who acts, but documents, arrows, shared state, page briefs, and slide outputs remain the dominant information structure.
+
+Style and palette:
+- Warm white paper background.
+- Slightly hand-inked but precise black/navy contours, rounded corners, tiny restrained shadows, flat pastel fills, generous whitespace.
+- Panel accents: muted coral for Sequential, muted amber for Full-context parallel, teal for SensePresenter.
+- Concrete illustrated document stacks and slide thumbnails.
+- Bold readable academic headings and compact sans-serif labels.
+- No gradients, glossy 3D rendering, photorealism, or poster-like decoration.
+
+Render only these strings, verbatim, with no extra words:
+“(a) Sequential”
+“(b) Full-context parallel”
+“(c) SensePresenter”
+“deck context”
+“growing history”
+“replicated context”
+“deck planning”
+“shared deck state”
+“page briefs”
+“Slide 01”
+“Slide 02”
+“Slide N”
+“assemble & inspect”
+
+Constraints:
+- No raccoon or any animal features: no ears, fur, tail, paws, muzzle, mask markings, or animal silhouette.
+- No mascot IP, human character, brand logo, watermark, speech bubble, slogan, green check, red cross, ranking, or claim that one topology wins.
+- Do not import Image 2's four-stage workflow, role-wise SFT strip, training labels, or old method terminology.
+- Preserve Image 1's information architecture and arrow destinations exactly.
+- All text must remain legible when the image is reduced to 960 px width.

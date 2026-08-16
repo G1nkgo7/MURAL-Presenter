@@ -1,0 +1,201 @@
+{
+  "pilot": "Pilot B — existing production-trace audit",
+  "new_model_calls": 0,
+  "method": "Intervals use each slide_NN label's first event through its trace-completion event. Tool-boundary findings are conservative string-based audits of persisted tool logs and do not inspect hidden provider-side context.",
+  "runs": [
+    {
+      "run_id": "skill_enum3_exclusion_0727_0330_adhoc",
+      "batch": "skill_enum3_exclusion_0727_0330",
+      "status": "completed",
+      "n_pages": 3,
+      "worker_count": 3,
+      "worker_completion_events": 3,
+      "slide_stage_wall_seconds": 407.272,
+      "slide_worker_sum_seconds": 759.235,
+      "parallel_compression": 1.864,
+      "peak_concurrent_workers": 3,
+      "worker_duration_min_seconds": 102.389,
+      "worker_duration_median_seconds": 249.574,
+      "worker_duration_max_seconds": 407.272,
+      "peer_read_violations": 0,
+      "whole_deck_read_violations": 0,
+      "shared_write_violations": 0,
+      "peer_enumeration_warnings": 0,
+      "strictly_conforming_workers": 3,
+      "review_completed": true,
+      "model_calls": 73,
+      "input_tokens": 1928210,
+      "output_tokens": 76303,
+      "n_renders": 5,
+      "n_views": 10,
+      "workers": [
+        {
+          "worker": "slide_01",
+          "page": 1,
+          "start_epoch": 1785123560.390331,
+          "end_epoch": 1785123967.6623335,
+          "duration_seconds": 407.272,
+          "completion_event_found": true,
+          "tool_calls": 23,
+          "peer_read_violations": [],
+          "whole_deck_read_violations": [],
+          "shared_write_violations": [],
+          "peer_enumeration_warnings": [],
+          "strict_conformance": true
+        },
+        {
+          "worker": "slide_02",
+          "page": 2,
+          "start_epoch": 1785123560.396158,
+          "end_epoch": 1785123809.9697149,
+          "duration_seconds": 249.574,
+          "completion_event_found": true,
+          "tool_calls": 11,
+          "peer_read_violations": [],
+          "whole_deck_read_violations": [],
+          "shared_write_violations": [],
+          "peer_enumeration_warnings": [],
+          "strict_conformance": true
+        },
+        {
+          "worker": "slide_03",
+          "page": 3,
+          "start_epoch": 1785123560.3974662,
+          "end_epoch": 1785123662.7860985,
+          "duration_seconds": 102.389,
+          "completion_event_found": true,
+          "tool_calls": 10,
+          "peer_read_violations": [],
+          "whole_deck_read_violations": [],
+          "shared_write_violations": [],
+          "peer_enumeration_warnings": [],
+          "strict_conformance": true
+        }
+      ]
+    },
+    {
+      "run_id": "skill_enum6_0727_0305_adhoc",
+      "batch": "skill_enum6_0727_0305",
+      "status": "completed",
+      "n_pages": 6,
+      "worker_count": 6,
+      "worker_completion_events": 6,
+      "slide_stage_wall_seconds": 369.03,
+      "slide_worker_sum_seconds": 1049.931,
+      "parallel_compression": 2.845,
+      "peak_concurrent_workers": 6,
+      "worker_duration_min_seconds": 114.212,
+      "worker_duration_median_seconds": 137.913,
+      "worker_duration_max_seconds": 369.025,
+      "peer_read_violations": 1,
+      "whole_deck_read_violations": 0,
+      "shared_write_violations": 0,
+      "peer_enumeration_warnings": 1,
+      "strictly_conforming_workers": 5,
+      "review_completed": true,
+      "model_calls": 151,
+      "input_tokens": 6443802,
+      "output_tokens": 116720,
+      "n_renders": 9,
+      "n_views": 17,
+      "workers": [
+        {
+          "worker": "slide_01",
+          "page": 1,
+          "start_epoch": 1785122238.616454,
+          "end_epoch": 1785122372.72938,
+          "duration_seconds": 134.113,
+          "completion_event_found": true,
+          "tool_calls": 10,
+          "peer_read_violations": [],
+          "whole_deck_read_violations": [],
+          "shared_write_violations": [],
+          "peer_enumeration_warnings": [],
+          "strict_conformance": true
+        },
+        {
+          "worker": "slide_02",
+          "page": 2,
+          "start_epoch": 1785122238.616883,
+          "end_epoch": 1785122352.8288832,
+          "duration_seconds": 114.212,
+          "completion_event_found": true,
+          "tool_calls": 11,
+          "peer_read_violations": [],
+          "whole_deck_read_violations": [],
+          "shared_write_violations": [],
+          "peer_enumeration_warnings": [],
+          "strict_conformance": true
+        },
+        {
+          "worker": "slide_03",
+          "page": 3,
+          "start_epoch": 1785122238.619352,
+          "end_epoch": 1785122377.29479,
+          "duration_seconds": 138.675,
+          "completion_event_found": true,
+          "tool_calls": 10,
+          "peer_read_violations": [],
+          "whole_deck_read_violations": [],
+          "shared_write_violations": [],
+          "peer_enumeration_warnings": [],
+          "strict_conformance": true
+        },
+        {
+          "worker": "slide_04",
+          "page": 4,
+          "start_epoch": 1785122238.6216757,
+          "end_epoch": 1785122607.646415,
+          "duration_seconds": 369.025,
+          "completion_event_found": true,
+          "tool_calls": 17,
+          "peer_read_violations": [],
+          "whole_deck_read_violations": [],
+          "shared_write_violations": [],
+          "peer_enumeration_warnings": [],
+          "strict_conformance": true
+        },
+        {
+          "worker": "slide_05",
+          "page": 5,
+          "start_epoch": 1785122238.617453,
+          "end_epoch": 1785122395.3719122,
+          "duration_seconds": 156.754,
+          "completion_event_found": true,
+          "tool_calls": 14,
+          "peer_read_violations": [
+            {
+              "tool": "read_file",
+              "path": "slides/slide_03",
+              "turn": 4
+            }
+          ],
+          "whole_deck_read_violations": [],
+          "shared_write_violations": [],
+          "peer_enumeration_warnings": [
+            {
+              "tool": "bash",
+              "command": "ls slides/ base.css 2>/dev/null; wc -l base.css",
+              "turn": 1
+            }
+          ],
+          "strict_conformance": false
+        },
+        {
+          "worker": "slide_06",
+          "page": 6,
+          "start_epoch": 1785122238.6286566,
+          "end_epoch": 1785122375.7811065,
+          "duration_seconds": 137.152,
+          "completion_event_found": true,
+          "tool_calls": 12,
+          "peer_read_violations": [],
+          "whole_deck_read_violations": [],
+          "shared_write_violations": [],
+          "peer_enumeration_warnings": [],
+          "strict_conformance": true
+        }
+      ]
+    }
+  ]
+}

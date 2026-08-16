@@ -1,0 +1,197 @@
+\section{评测协议与复现细节}
+\label{app:protocol}
+\setcounter{figure}{0}
+\renewcommand{\thefigure}{A\arabic{figure}}
+\renewcommand{\theHfigure}{A\arabic{figure}}
+
+本附录给出正文实验的完整协议、统计口径、官方 benchmark 的完整维度表、MuralPresenter-9B 与 MuralPresenter-27B 的数据/模型对照，以及复现台账。
+
+\subsection{外部基线协议与消融控制的区别}
+
+ThreadBench 使用六个强通用模型对照。已有 benchmark 重跑使用 Tables~\ref{tab:general}--\ref{tab:edit} 中的五系统组：9B 合成管线、两个未微调对照和两个 MuralPresenter 模型。每个 benchmark 内固定标称输入、Skill、renderer、adapter 与预算。主表将原论文中的代表性领先系统提升到独立的 \emph{reported} 分块，完整 reported 列表见下文。这些数值保留来源协议且不与重跑结果合并。单因素消融（\S6.3）还固定 backbone 与训练变量；这些描述性比较本身都不构成因果证据。
+
+当前发布仅有一个正式参考 case，因此不能据此计算任务级置信区间或显著性检验。受控消融固定 temperature、输入、renderer、预算与失败规则，每个变体运行 3 个 seed；本文描述性报告 seed 间变化，不把它当作任务级不确定性。缺失产物、失败与超时保留在分母中，N/A 与计分覆盖率单列。外部基线因 backbone 不同只作参考，不进入统计检验。我们在 \resulttbd{[TBD:JUDGE\_CASES]} 个任务的 \resulttbd{[TBD:JUDGE\_N]} 个人工评分单元上校准 LLM Judge，并按下述协议得到 \resulttbd{[TBD:JUDGE\_AGREEMENT]} 的一致性。
+
+\subsection{原论文参考分数}
+
+以下为提供上下文的已发表 aggregate values，不是本文复现结果，也不进入假设检验。
+
+\paragraph{PresentBench（reported）。} 原论文 Overall~\citep{chen2026presentbench} 如下，便于与本文重跑结果直接目视比较。
+\begin{center}\small
+\begin{tabular}{lrlr}
+\toprule System & Overall & System & Overall \\
+\midrule
+NotebookLM & 62.5 & Manus 1.6 & 57.8 \\
+Tiangong & 54.7 & Zhipu & 53.6 \\
+PPTAgent v2 & 50.2 & Gamma & 49.2 \\
+Doubao & 48.0 & Qwen & 35.9 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{SlidesGen-Bench（reported）。} 官方 Content/Aesthetics/PEI~\citep{yang2026slidesgenbench}。
+\begin{center}\small
+\begin{tabular}{lccc}
+\toprule System & Content (\%) & Aesthetics & PEI \\
+\midrule
+Zhipu & 88.29 & 22.06 & L2 \\
+Kimi-Banana & 87.09 & 26.58 & L1 \\
+Skywork-Banana & 83.83 & 27.28 & L1 \\
+Kimi-Smart & 82.07 & 18.30 & L2 \\
+Quark & 81.40 & 16.86 & L3 \\
+Skywork & 81.29 & 20.69 & L2 \\
+Kimi-Standard & 79.92 & 19.25 & L2 \\
+NotebookLM & 74.21 & 22.82 & L0 \\
+Gamma & 70.32 & 17.09 & L2 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{DECKBench（reported）。} Task-1 对应合并原论文中相同 system/model 的 slide 与 deck 指标；Task-2 保留原 simulator/editor 配置~\citep{jang2026deckbench}。
+\begin{center}\small
+\begin{tabular}{llccc}
+\toprule System & Model & Deck Fidelity & Slide Layout & Deck TransSim \\
+\midrule
+Evo-Present & GPT-4o & 0.528 & 0.696 & 0.819 \\
+SlideGen & GPT-4o & 0.566 & 0.960 & 0.856 \\
+Auto-Slides & GPT-4o & 0.591 & 0.998 & 0.858 \\
+DECKBench & GPT-4o & 0.584 & 1.000 & 0.879 \\
+DECKBench & Qwen & 0.588 & 0.999 & 0.875 \\
+\bottomrule
+\end{tabular}
+\end{center}
+\begin{center}\small
+\begin{tabular}{llccc}
+\toprule User simulator & Editor & Granularity & $\Delta$DTW & $\Delta$TransSim \\
+\midrule
+GPT-5.1 & GPT-5-mini & Low & 0.01006 & 0.01594 \\
+GPT-5.1 & GPT-5-mini & Medium & 0.01682 & 0.02145 \\
+GPT-5.1 & GPT-5-mini & High & 0.02278 & 0.03230 \\
+Kimi K2 & DeepSeek & Low & 0.01101 & -0.00147 \\
+Kimi K2 & DeepSeek & Medium & 0.00249 & 0.00615 \\
+Kimi K2 & DeepSeek & High & 0.01549 & 0.04287 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{PPT-Eval（reported）。} 官方 computer-use 协议中 Claude-4.5-Opus 的 Success Rate 为 45\%，Average Partial Score 为 57\%~\citep{gandhi2026ppteval}；它不与 DECKBench 或本文 HTML 创作重跑直接比较。
+
+\subsection{官方指标的完整维度}
+
+\paragraph{PresentBench 五维。} 正文主表已给 Overall；此处仅补充其余五个维度，不重复 Overall。
+
+\begin{center}
+\small
+\begingroup
+\let\texttt\resulttbd
+\setlength{\tabcolsep}{5pt}
+\begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}Xccccc@{}}
+\toprule
+System & Fund. & Vis.\&Lay. & Compl. & Corr. & Fidelity \\
+\midrule
+9B 合成管线 & \resulttbd{[TBD:P5\_TC\_FU]} & \resulttbd{[TBD:P5\_TC\_VL]} & \resulttbd{[TBD:P5\_TC\_CP]} & \resulttbd{[TBD:P5\_TC\_CR]} & \resulttbd{[TBD:P5\_TC\_FI]} \\
+Qwen-3.5-9B 未微调 & \resulttbd{[TBD:P5\_Q9\_FU]} & \resulttbd{[TBD:P5\_Q9\_VL]} & \resulttbd{[TBD:P5\_Q9\_CP]} & \resulttbd{[TBD:P5\_Q9\_CR]} & \resulttbd{[TBD:P5\_Q9\_FI]} \\
+Qwen-3.6-27B 未微调 & \resulttbd{[TBD:P5\_Q27\_FU]} & \resulttbd{[TBD:P5\_Q27\_VL]} & \resulttbd{[TBD:P5\_Q27\_CP]} & \resulttbd{[TBD:P5\_Q27\_CR]} & \resulttbd{[TBD:P5\_Q27\_FI]} \\
+MuralPresenter-9B  & \resulttbd{[TBD:P5\_M9\_FU]}  & \resulttbd{[TBD:P5\_M9\_VL]}  & \resulttbd{[TBD:P5\_M9\_CP]}  & \resulttbd{[TBD:P5\_M9\_CR]}  & \resulttbd{[TBD:P5\_M9\_FI]} \\
+MuralPresenter-27B & \resulttbd{[TBD:P5\_M27\_FU]} & \resulttbd{[TBD:P5\_M27\_VL]} & \resulttbd{[TBD:P5\_M27\_CP]} & \resulttbd{[TBD:P5\_M27\_CR]} & \resulttbd{[TBD:P5\_M27\_FI]} \\
+\bottomrule
+\end{tabularx}
+\endgroup
+\end{center}
+
+\paragraph{DECKBench 完整官方字段。} 主表给出选定字段（deck Fidelity、slide Layout Quality、deck Transition Similarity、multi-turn \(\Delta\)-DTW 与 \(\Delta\)-Transition Similarity）；此处补齐其余官方字段，使主表与附录的并集覆盖 DECKBench 全部官方指标。slide 级与 deck 级的 PPL、Faithfulness 用不同 ID 区分。系统与主表一致。
+
+\begin{center}
+\footnotesize
+\begingroup
+\let\texttt\resulttbd
+\setlength{\tabcolsep}{3pt}
+\begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}Xccccccc@{}}
+\toprule
+& \multicolumn{4}{c}{Slide-level} & \multicolumn{3}{c}{Deck-level} \\
+\cmidrule(lr){2-5}\cmidrule(lr){6-8}
+System & PPL & Faith. & Text Sim. & Fig.\ Sim. & PPL & Faith. & DTW \\
+\midrule
+9B 合成管线 & \resulttbd{[TBD:E\_TC\_SPPL]} & \resulttbd{[TBD:E\_TC\_SFA]} & \resulttbd{[TBD:E\_TC\_STX]} & \resulttbd{[TBD:E\_TC\_SFG]} & \resulttbd{[TBD:E\_TC\_DPPL]} & \resulttbd{[TBD:E\_TC\_DFA]} & \resulttbd{[TBD:E\_TC\_DDTW]} \\
+Qwen-3.5-9B 未微调 & \resulttbd{[TBD:E\_Q9\_SPPL]} & \resulttbd{[TBD:E\_Q9\_SFA]} & \resulttbd{[TBD:E\_Q9\_STX]} & \resulttbd{[TBD:E\_Q9\_SFG]} & \resulttbd{[TBD:E\_Q9\_DPPL]} & \resulttbd{[TBD:E\_Q9\_DFA]} & \resulttbd{[TBD:E\_Q9\_DDTW]} \\
+Qwen-3.6-27B 未微调 & \resulttbd{[TBD:E\_Q27\_SPPL]} & \resulttbd{[TBD:E\_Q27\_SFA]} & \resulttbd{[TBD:E\_Q27\_STX]} & \resulttbd{[TBD:E\_Q27\_SFG]} & \resulttbd{[TBD:E\_Q27\_DPPL]} & \resulttbd{[TBD:E\_Q27\_DFA]} & \resulttbd{[TBD:E\_Q27\_DDTW]} \\
+MuralPresenter-9B  & \resulttbd{[TBD:E\_M9\_SPPL]}  & \resulttbd{[TBD:E\_M9\_SFA]}  & \resulttbd{[TBD:E\_M9\_STX]}  & \resulttbd{[TBD:E\_M9\_SFG]}  & \resulttbd{[TBD:E\_M9\_DPPL]}  & \resulttbd{[TBD:E\_M9\_DFA]}  & \resulttbd{[TBD:E\_M9\_DDTW]} \\
+MuralPresenter-27B & \resulttbd{[TBD:E\_M27\_SPPL]} & \resulttbd{[TBD:E\_M27\_SFA]} & \resulttbd{[TBD:E\_M27\_STX]} & \resulttbd{[TBD:E\_M27\_SFG]} & \resulttbd{[TBD:E\_M27\_DPPL]} & \resulttbd{[TBD:E\_M27\_DFA]} & \resulttbd{[TBD:E\_M27\_DDTW]} \\
+\bottomrule
+\end{tabularx}
+\endgroup
+\end{center}
+
+\paragraph{ThreadBench 维度合约。} Table~\ref{tab:thread} 报告两个正式聚合分及两个 Final 有效组分；每次运行还在 \texttt{score\_result.json} 中保留下列维度分。这些维度用于诊断，不构成第三个总分。
+
+\begin{center}\small
+\begin{tabular}{lp{0.75\linewidth}}
+\toprule 组 & 维度 \\
+\midrule
+Intermediate & 材料理解与研究；整册规划；图片资产准备；逐页制作与本地验证 \\
+Final Deck & Knowledge；受众与目标适配；内容选择与密度；叙事与过渡；节奏与冗余；跨页语义一致性；全局视觉一致性 \\
+Final Page & 信息层级与密度；图文关系与视觉编码；构图、对齐与留白；字体、颜色与可读性；技术完整性与素材质量 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{Intermediate criterion 与评分细则。} 正文只保留了评测结构；完整的 criterion 级
+清单如下。每项 criterion 可按主题、任务要求、图片任务或页面展开，Judge 只接收当前单元
+相关的 anchor 与证据。
+
+\begin{center}\small
+\begin{tabularx}{\linewidth}{@{}p{0.18\linewidth}p{0.15\linewidth}X@{}}
+\toprule 维度 & Criteria & 检查内容 \\
+\midrule
+材料/研究 & R01, R02 & 证据覆盖、来源核验、冲突处理，以及向规划的传递 \\
+整册规划 & P01, P02 & 硬要求映射、叙事结构与逐页任务定义 \\
+图片准备 & I01, I02 & 任务定义、获取策略、检查筛选与逐页实际使用 \\
+页面制作 & S01 & 真实渲染、缺陷发现、修复与重渲染确认 \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+Judge 先把证据匹配到显式 anchor，再由确定性代码派生 0/0.5/1 原子分，Knowledge 为
+binary。N/A 只表示语义上不适用，不能替代缺失的必需产物。原子分逐级平均到 criterion
+和维度；v004 中 major 单元得 0.5 或 0 时，分别从所属维度扣 0.1 或 0.2，每个维度的累计
+扣分上限为 0.5。Deck 与 Page 分别执行 \S5 定义的最弱维度衰减，Intermediate 不衰减。
+可选 Preaudit 不计分，只向正式 Judge 传递与当前 criterion 有关的缺陷。正式字段
+\texttt{intermediate\_case\_specific} 与 \texttt{final\_output\_case\_specific} 始终作为
+两个独立输出发布。
+
+\subsection{MuralPresenter-9B 与 MuralPresenter-27B 数据/模型对照}
+
+下表分清两条来源的证据边界：9B 使用可控三 Track 合成管线和 1K 条通过 QC 的语料，27B 则使用规模显著更大的六个异构历史批次。27B 轨迹主要由更高能力的闭源前沿教师模型生成，受商业保密约束不披露具体身份。
+
+\begin{center}
+\small
+\begingroup
+\let\texttt\resulttbd
+\setlength{\tabcolsep}{4pt}
+\begin{tabularx}{\linewidth}{@{}p{0.20\linewidth}XX@{}}
+\toprule
+项 & MuralPresenter-9B & MuralPresenter-27B \\
+\midrule
+数据来源 & 可控合成三 Track（\S4） & 六个异构历史批次 \\
+任务数 & \resulttbd{[TBD:9B\_TASKS]} & 17{,}171 \\
+有效轨迹 & --- & 304{,}275 \\
+SFT 候选任务 & --- & 16{,}073（93.6\%） \\
+基础训练轨迹 & 1{,}000（post-QC） & 293{,}436 \\
+训练曝光 & \resulttbd{[TBD:9B\_EXPOSURES]} & 318{,}422 \\
+rollout 主模型 & DeepSeek-V4-Flash & 更高能力的闭源前沿教师（身份不予披露） \\
+视觉 critic / QC & Gemini-3.5-Flash & Gemini-3.5 仅作 QC 评分 \\
+base model & Qwen-3.5-9B & Qwen-3.5-27B \\
+GPU 小时 & \resulttbd{[TBD:9B\_GPUH]} & 约 1{,}604 \\
+状态 & 已训练完成 & 已训练完成 \\
+\bottomrule
+\end{tabularx}
+\endgroup
+\end{center}
+
+其中训练曝光指过滤与长度打包后进入优化的样本曝光数，与“基础训练轨迹”是不同口径；9B 若不做重采样/长度打包，则该项为 ---。
+
+\subsection{复现台账}
+
+对所有报告的运行，我们冻结并记录候选系统与版本、benchmark 与 materials 的哈希、renderer 与模型设置、推理预算与并发、Judge prompt 与 rubric、人工标注协议，以及 criterion、维度、组与 case 各层结果。当前公开合约仅规定一个正式 case；即使已完成人类–Judge 校准，领域级推断仍受此限制。PersonaHub \(\times\) O*NET track 是冻结的 9B 构造语料组成部分。运行核算（wall-clock、调用数、tokens、估算成本、context overlap、渲染次数、并发）服务复现，但不能替代独立的 Intermediate、Final 分数及其维度明细。
+
+\paragraph{运行画像与轨迹采集边界。} Harness 将面向交付的 inference 与面向训练数据的 synthesis 分开配置。Inference 模式允许压缩模型后续轮次使用的陈旧文本和工具结果，并释放已经消费的图像负载；完整工具结果与不可变执行 Trace 仍然落盘以供审计。Synthesis 模式则关闭历史压缩与丢图，使模型实际看到的上下文与导出的轨迹保持一致；exact-raw recorder 进一步记录最终 provider 请求体、SDK 解析前的响应字节、重试、provider 暴露的视觉辅助轨迹及内容寻址图像证据。训练格式转换前执行逐 Agent 完整性预检，不完整的调用--资产--响应链直接拒收。本文把这一机制视为实现与数据治理边界，而非算法贡献；这里的 ``raw'' 仅指 provider 可观测流量和落盘产物，不包含未暴露的隐藏状态。

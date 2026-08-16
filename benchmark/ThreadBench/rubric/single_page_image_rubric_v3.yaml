@@ -1,0 +1,325 @@
+contract_version: single_page_image_rubric_v3
+rubric_id: single_page_image_rubric_v3
+title: 单页演示文稿通用评测 Rubric v3
+source: single_page_image_rubric_v2.yaml
+based_on: single_page_image_rubric_v2
+revision_summary:
+  - 保留 14 个原有维度及 0–100 五档结构，不改变维度数量和 Judge 路由。
+  - 将五档锚点改写为带明确分数区间、正反例和档内质量要求的可执行描述。
+  - 为每个维度增加 criticality，供外部聚合器应用模块级和总分级规则。
+  - 收紧 80–100 档：完整或可读不再自动进入高分，95–99 仅用于接近标杆，100 极少使用。
+
+scope:
+  total_dimensions: 14
+  modules:
+    content: 4
+    aesthetic: 5
+    html: 5
+
+llm_judge_input_contract:
+  outputs_directory_pattern: <case_dir>/outputs/<generation_model>/<run_id>/
+  outputs_relative_path_base: <case_dir>/outputs/<generation_model>/<run_id>/
+  case_input: {artifact_name: 原始任务指令, case_relative_path: instruction.md}
+  routes:
+    content_aesthetic:
+      evaluation_modes: [visual]
+      raw_input_artifacts:
+        - {artifact_name: 单页最终渲染图, outputs_relative_path: renders/slide_01.png}
+    html_dom:
+      evaluation_modes: [html]
+      raw_input_artifacts:
+        - {artifact_name: 单页最终 HTML, outputs_relative_path: slides/slide_01.html}
+  evaluator_derived_inputs:
+    - artifact_name: 视觉缺陷审计
+      derived_from_outputs_relative_paths: [renders/slide_01.png]
+    - artifact_name: DOM 静态与运行时审计
+      derived_from_outputs_relative_paths: [slides/slide_01.html]
+  rules:
+    - 每个 LLM Judge 只读取其 route 列出的原始产物和由该产物只读派生的审计摘要。
+    - Judge evidence locator 必须使用上述 outputs 相对路径；不得只写 rendered_image、html 等抽象标签或绝对路径。
+    - 缺失输入由 runner 报错，benchmark 不得补写或改写生成产物。
+
+dimension_scale:
+  min: 0
+  max: 100
+  bands:
+    - level: not_met
+      min: 0
+      max: 19
+      description: 几乎没有满足该维度，核心对象缺失、不可用或存在根本性错误。
+    - level: weak
+      min: 20
+      max: 39
+      description: 只满足少量表层要求，主要组成、关系或质量标准存在严重问题。
+    - level: partial
+      min: 40
+      max: 59
+      description: 基本方向成立，但仍有影响理解、使用或专业性的实质缺漏。
+    - level: mostly
+      min: 60
+      max: 79
+      description: 大部分要求得到满足，剩余问题清楚可见但未破坏主体质量。
+    - level: fully
+      min: 80
+      max: 100
+      description: 真正优秀地满足该维度，而非仅仅完整或可读；80–94 表示优秀但仍可能有小问题，95–99 仅用于接近标杆且只剩可忽略改进，100 仅用于有充分证据证明无任何可观察缺陷或改进空间的极少数结果。
+
+judge_instructions:
+  - 对每个可评分维度分别给出 0–100 分，不要把多个维度合并成一个印象分。
+  - 先根据 anchors 选择分数档，再根据实际完成质量和剩余缺陷确定档内具体分数。
+  - 每个维度都必须给出可定位的证据、主要缺陷和简洁评分理由。
+  - 分数低于 100 时必须指出至少一个该维度内的具体不足；只有无可观察缺陷时才可给 100。
+  - 五个区间等宽且都应实际使用；不得从 80 分或任何默认及格分开始，必须先依据缺陷选择最低能够被证据完整支持的区间。
+  - 普通、模板化、仅仅可读或技术上完整的结果可以停留在 40–79；有任何非轻微缺陷时不得高于 94，95–99 只用于接近标杆的结果，100 应极少出现。
+  - 不要由 Judge 计算模块分、总分或权重；外部聚合器应用确定性规则限分、criticality 总分上限和聚合。
+  - 所有维度都必须给出 0–100 数值分，不允许填写 N/A。缺少标准交付物时由 runner 直接报错。
+
+dimensions:
+  - id: C1_core_message
+    module: content
+    name: 单页核心主旨
+    evaluation_mode: visual
+    criticality: critical
+    allow_na: false
+    evidence_sources:
+      - instruction
+      - rendered_image
+    definition: 这一页是否有清晰中心观点，而不是信息散点堆砌。
+    evaluation: >-
+      结合 instruction 判断页面应传达的主题、结论或核心判断，再检查标题、正文、图表和视觉元素是否共同服务同一主旨。
+    anchors:
+      not_met: 0–19：无法识别页面主题或核心判断；标题、正文、图表彼此无关，或核心表达与 instruction 相反。即使局部文字可读，也不能因存在标题而升档。
+      weak: 20–39：只能识别宽泛主题，缺少明确结论或行动信息；多个主要区域各说各话，读者无法判断应记住什么。例如标题只是“市场分析”“项目介绍”，正文只是资料罗列。
+      partial: 40–59：有可复述的基本主旨，但仍然泛化、埋藏或不够聚焦；至少一个主要内容区未服务主旨，或读者必须自行拼接才能得出结论。普通主题页通常落在本档。
+      mostly: 60–79：主旨清楚，标题和大部分主要信息共同支撑同一判断；仍有可见的游离信息、结论力度不足、标题过于描述性或支撑关系不够紧密。
+      fully: 80–100：核心判断高度凝练且第一眼可识别，标题、正文、图表和视觉重点全部强化同一信息。80–94 要求真正优秀；95–99 只允许可忽略的措辞优化；100 仅用于无游离信息、无歧义且无任何改进空间。
+  - id: C2_information_accuracy_and_value
+    module: content
+    name: 信息准确性与有效信息
+    evaluation_mode: visual
+    criticality: critical
+    allow_na: false
+    evidence_sources:
+      - instruction
+      - rendered_image
+    definition: 内容是否准确、有信息增量、有具体事实、案例或论据，并避免编造以及数据不一致。
+    evaluation: >-
+      检查事实、数字、单位、时间、对象关系、图表编码和文字结论是否相互一致，并与 instruction 的已知信息一致。
+    anchors:
+      not_met: 0–19：核心事实、数字、对象关系或结论严重错误，存在明显伪造数据/来源，或页面几乎没有有效信息，已无法用于目标场景。
+      weak: 20–39：有效信息很少且主要由套话组成；存在多处事实偏差，或图表、数字、正文结论明显互相矛盾，读者可能形成错误判断。
+      partial: 40–59：主体方向基本准确，但信息停留在常识或泛泛陈述；具体事实、数据、案例、因果解释或来源不足，并可能有一处不改变大方向的明显不一致。
+      mostly: 60–79：信息准确且有用，具备具体论据、数据、案例或清楚分析；仍有可见的论证缺口、来源不清、信息增量一般或一处轻微不一致。
+      fully: 80–100：信息专业、准确且有明显增量，事实、数字、图表编码和文字结论高度一致并形成有价值判断。95–99 要求论证接近标杆；100 仅用于无事实、来源、数据或逻辑缺陷。
+  - id: C3_focus_and_information_selection
+    module: content
+    name: 信息取舍与单页聚焦
+    evaluation_mode: visual
+    criticality: standard
+    allow_na: false
+    evidence_sources:
+      - instruction
+      - rendered_image
+    definition: 是否适合一页讲清楚，是否避免过载、过空、冗余以及重点不突出。
+    evaluation: >-
+      判断核心信息、支撑信息和细节是否分层，并检查信息密度是否匹配单页沟通场景，而非只按文字数量评分。
+    anchors:
+      not_met: 0–19：信息严重失控到无法阅读或理解；核心内容几乎为空，或大量内容溢出、遮挡、重复，使页面失去单页沟通功能。
+      weak: 20–39：明显过载或过空；重点被大量同等级信息、冗余段落或无关装饰淹没，或只有口号而没有必要支撑，读者无法在合理时间内筛选重点。
+      partial: 40–59：信息量基本可用，但主次层级不清，存在显著冗余、遗漏、重复或局部密度失衡；需要读者主动筛选才能理解重点。
+      mostly: 60–79：取舍合理，重点、支撑信息和细节大体分层，适合单页呈现；仍有一处明显冗余、密度不均、重点竞争或次要信息过强。
+      fully: 80–100：复杂信息被精炼成高效的一页，内容密度与场景高度匹配，重点和支撑关系自然且无冗余。95–99 要求取舍接近标杆；100 仅用于没有任何可见遗漏、冗余或密度问题。
+  - id: C4_context_and_audience_fit
+    module: content
+    name: 场景与受众内容适配
+    evaluation_mode: visual
+    criticality: standard
+    allow_na: false
+    evidence_sources:
+      - instruction
+      - rendered_image
+    definition: 内容深度、语气、措辞以及业务、技术、教学或营销 framing 是否匹配使用场景和目标受众。
+    evaluation: >-
+      从 instruction 识别受众、用途和期望行动，再判断内容深度、术语、解释粒度、语气和论证方式是否匹配。
+    anchors:
+      not_met: 0–19：内容用途、深度和语气与目标场景根本冲突，例如专家技术汇报被做成无事实支撑的消费广告，或儿童教学页充满未解释的专业符号。
+      weak: 20–39：多数内容和 framing 明显错位；目标受众难以理解、无法据此行动，或页面采用了错误媒介/沟通类型的表达方式。
+      partial: 40–59：大方向基本合适，但部分内容明显太浅、太深、太口号化、太学术化或过度营销；仍有较强的通用模板感，而非为目标受众定制。
+      mostly: 60–79：内容深度、术语、语气和论证方式基本匹配受众与用途；只有少量解释粒度、措辞或行动导向偏差。
+      fully: 80–100：内容像为该受众和使用场景专门撰写，深度、语气、术语和期望行动高度匹配，可直接用于目标沟通。95–99 要求几乎没有场景错位；100 仅用于无任何适配缺陷。
+  - id: A1_composition_layout
+    module: aesthetic
+    name: 构图与版式组织
+    evaluation_mode: visual
+    criticality: standard
+    allow_na: false
+    evidence_sources:
+      - rendered_image
+    definition: 评估画面组织、重心、留白、比例、阅读或观看路径。
+    evaluation: 只根据渲染图评价视觉中心、主次关系、对齐、留白、节奏和阅读路径。
+    anchors:
+      not_met: 0–19：构图失效，主体缺失或散乱，页面没有稳定重心；主要元素严重堆叠、错位、裁切或分散，正常观看仍无法形成阅读路径。
+      weak: 20–39：只能看出基本布局框架，但主次不明、重心明显失衡、观看路径混乱或对齐系统多处断裂；像未经整理的网页组件、文档块或模板拼装，视觉组织明显吃力。
+      partial: 40–59：主体和主要区域可识别，页面有基本秩序，但留白、比例、层级、对齐或节奏存在一至数个实质问题；整体可用但普通，仍像初稿、通用 dashboard 或卡片堆叠。
+      mostly: 60–79：视觉中心明确，主次关系清楚，阅读路径基本自然；仍有可见的局部拥挤、空洞、对齐误差、视觉重量失衡或模块节奏不一致，尚不能称为优秀版式。
+      fully: 80–100：画面组织成熟，重心、留白、节奏、比例、对齐和观看路径高度协调并有效引导注意力。80–94 要求真正优秀而非仅整齐；95–99 只允许可忽略微调；100 仅用于无任何版式缺陷或改进空间。
+  - id: A2_visual_elements_hierarchy
+    module: aesthetic
+    name: 视觉元素与层次结构
+    evaluation_mode: visual
+    criticality: standard
+    allow_na: false
+    evidence_sources:
+      - rendered_image
+    definition: 评估色彩、明暗、形态、文字块关系、空间层次和主体层级。
+    evaluation: 只根据渲染图检查配色、光影、字形、图像、形态和空间关系是否形成稳定视觉秩序。
+    anchors:
+      not_met: 0–19：色彩、明暗、字形、形态或空间关系严重冲突，主体层次不可读；低对比、刺眼配色、破碎图形或文字块互相干扰已导致关键信息无法辨认。
+      weak: 20–39：主要元素可辨认，但多个视觉系统互相竞争；配色、字重、字号、图像、图标或空间层次存在明显问题，第一与第二层级难以区分。
+      partial: 40–59：基本可读，色彩和明暗关系大体成立，但协调性、精致度或空间组织普通；存在明显的层级扁平、颜色过多、对比不足、组件风格不一或文字块关系松散。
+      mostly: 60–79：配色、字形、图像、形态和层级较协调，主体能够突出；仍有一处明显的层级竞争、局部低对比、字形不统一、装饰噪声或空间层次不足。
+      fully: 80–100：视觉元素高度统一且有表现力，主体、辅助信息和背景形成清楚丰富的层次。95–99 要求细节接近标杆；100 仅用于无任何色彩、字形、图像或空间关系缺陷。
+  - id: A3_technical_execution
+    module: aesthetic
+    name: 技术执行与生成完成度
+    evaluation_mode: visual
+    criticality: standard
+    allow_na: false
+    evidence_sources:
+      - rendered_image
+    definition: 评估主体稳定性、清晰度、细节、边缘、纹理、文字、渲染状态和导出质量。
+    evaluation: 只评价最终可见结果的制作完成度，不把有意的风格化处理本身视为技术缺陷。
+    anchors:
+      not_met: 0–19：主体崩坏、严重畸形、关键文字不可读、渲染损坏、明显白屏/缺块或半成品状态，无法作为完整视觉结果交付。
+      weak: 20–39：主体可辨认但存在多处明显 AI 畸形、乱码、纹理错误、边缘破损、元素错位或导出异常，其中至少一项影响主要内容使用。
+      partial: 40–59：整体可用且主要内容基本完整，但有一至数处醒目的清晰度、细节、文字、边缘、材质、图像裁切或渲染质量问题，成品感一般。
+      mostly: 60–79：画面清晰完整、主体稳定、细节较扎实；仍有可见的小范围文字/边缘问题、局部素材分辨率不足、轻微错位或技术精修不足。
+      fully: 80–100：制作完成度高，主体、文字、边缘、纹理、渲染和元素状态稳定自然。95–99 只允许放大后才明显的微小改进；100 仅用于所有可见技术细节均无缺陷。
+  - id: A4_style_media_topic_fit
+    module: aesthetic
+    name: 风格统一与媒介/主题适配
+    evaluation_mode: visual
+    criticality: standard
+    allow_na: false
+    evidence_sources:
+      - instruction
+      - rendered_image
+    definition: 评估字体、色彩、图像、装饰、材质和组件语言与主题、媒介及使用场景的一致性。
+    evaluation: 结合 instruction 和渲染图，判断页面是否形成一致的视觉语言，以及该语言是否适合主题气质和单页演示媒介。
+    anchors:
+      not_met: 0–19：字体、色彩、图像、装饰、材质或组件语言像随机拼贴，且整体媒介/主题方向错误；例如科研答辩被做成娱乐海报，或严肃商务页采用儿童卡通风。
+      weak: 20–39：能看出某种风格方向，但主要素材、字体、图标、图表和装饰语言混杂；页面明显不像演示页或与 instruction 指定主题气质严重不符。
+      partial: 40–59：整体风格大体统一并满足基本媒介要求，但视觉语言普通、模板化，或存在一项显著的素材、字体、图标、主题气质和场景不匹配。
+      mostly: 60–79：视觉语言清楚统一，素材和组件选择较一致，适合演示媒介与主题；仍有少量可见的风格漂移、模板感或组件/素材不匹配。
+      fully: 80–100：字体、配色、材质、图形、组件、媒介特性和主题气质形成成熟一致的系统。95–99 要求高度定制且接近标杆；100 仅用于无任何风格冲突或媒介错位。
+  - id: A5_overall_aesthetic_first_impression
+    module: aesthetic
+    name: 整体美观与第一眼观感
+    evaluation_mode: visual
+    criticality: standard
+    allow_na: false
+    evidence_sources:
+      - rendered_image
+    definition: 评估第一眼观感、完整感、协调性、专业质感、吸引力和记忆点。
+    evaluation: 先评价整体第一印象，再结合全页检查这种印象是否由真实的完成度、协调性和视觉吸引力支撑。
+    anchors:
+      not_met: 0–19：第一眼明显破碎、刺眼、廉价、混乱或不完整；主要视觉缺陷立即阻碍观看，难以被认为是可交付的演示结果。
+      weak: 20–39：画面有少量可取之处，但整体不舒服、不稳定或缺乏完成感；多个明显问题共同导致美观度和专业感偏低。
+      partial: 40–59：整体可以接受并具备基本完成感，但普通、模板化或缺少吸引力；精致度、协调性、专业感或记忆点至少一项明显不足。
+      mostly: 60–79：第一眼较美观，画面完整协调并有一定专业感；仍有一处明显影响整体印象的问题，或整体虽稳妥但缺少精炼度和记忆点。
+      fully: 80–100：第一眼美观且完成感强，协调性、专业质感、吸引力和记忆点均有突出证据，可作为高质量样例。95–99 要求接近标杆；100 仅用于无任何整体观感缺陷或改进空间。
+  - id: H1_runnability_self_containment
+    module: html
+    name: 渲染稳定性与独立性
+    evaluation_mode: html
+    criticality: critical
+    allow_na: false
+    evidence_sources:
+      - html
+      - css
+      - dom_audit
+    definition: 断网脱机环境下，页面能否稳定、瞬间渲染；检查致命报错、死循环、未处理异常及对外部图片、字体和 CDN 的强依赖。
+    evaluation: >-
+      必须在断网、干净的 Chromium 环境中测试首次渲染，检查必要资源是否内嵌、是否有致命 console error、是否存在阻塞或持续卡顿。
+    anchors:
+      not_met: 0–19：HTML 无法打开、白屏或因致命异常中断；断网后核心文字和主体均不可用，已经不构成可交付页面。
+      weak: 20–39：页面勉强可见，但核心图片、CSS、字体或脚本依赖外网，断网后主要内容明显缺失；存在持续卡顿、严重 console error 或多次关键网络请求。
+      partial: 40–59：断网后核心主体仍可阅读，但存在实质外部依赖、非致命错误或明显加载缺失，稳定性和独立性不足。
+      mostly: 60–79：页面基本自包含且稳定快速，仅有非核心装饰、备用字体或不影响理解的资源尝试访问外网；仍有可见警告或轻微运行风险。
+      fully: 80–100：页面离线、静态、快速且无错误，所有必要资源独立内嵌。95–99 只允许可忽略的实现改进；100 仅用于零必要网络依赖、零错误和无任何稳定性风险。
+  - id: H2_canvas_geometry_spatial_relations
+    module: html
+    name: 画布几何与空间关系
+    evaluation_mode: html
+    criticality: critical
+    allow_na: false
+    evidence_sources:
+      - html
+      - css
+      - dom_audit
+    definition: 是否构建稳定的 16:9 画布，是否存在非预期重叠遮挡、文字溢出裁切，以及模块上下左右关系是否正确。
+    evaluation: >-
+      使用 bounding box 在 720p 和 1080p 等标准分辨率检查画布比例、越界、重叠、截断、间距、对齐和相对空间关系。
+    anchors:
+      not_met: 0–19：无稳定演示画布，大面积内容飞出视口并被彻底裁切；主要模块严重互相遮挡或空间关系崩坏，关键文字不可读。
+      weak: 20–39：画布比例明显错误或变形，存在多处关键内容重叠、截断、越界，instruction 要求的左右/上下关系发生大幅错位。
+      partial: 40–59：建立了基础画布且主体可见，但有一至数处可观察碰撞、文字溢出、裁切、比例偏差或模块位置错误，已影响专业性或局部阅读。
+      mostly: 60–79：画布比例和主要空间关系基本正确，多分辨率下主体不越界；仍有轻微碰撞、间距/对齐偏差或边缘安全区不足。
+      fully: 80–100：画布稳定适配目标比例，所有主要模块、文本和关系图空间安全且对齐准确。95–99 要求几何接近标杆；100 仅用于零非预期溢出、零遮挡和无任何空间缺陷。
+  - id: H3_semantic_dom_logical_structure
+    module: html
+    name: 可见语义 DOM 与逻辑结构
+    evaluation_mode: html
+    criticality: critical
+    allow_na: false
+    evidence_sources:
+      - html
+      - css
+      - dom_audit
+    definition: 正文和图表是否由真实 DOM 节点构成，DOM 树容器包裹逻辑是否合理，以及代码书写顺序是否与视觉阅读顺序一致。
+    evaluation: >-
+      拒绝纯截图。检查真实文本、可机读内容、逻辑分组、标签语义、DOM 层级与源码顺序是否支持从上到下的阅读和二次处理。
+    anchors:
+      not_met: 0–19：整页由单张纯图或 canvas 冒充且几乎无真实可见文字 DOM，或 DOM 顺序严重混乱到无法表达页面逻辑。
+      weak: 20–39：只有少部分内容可机读；视觉同一卡片的代码散落、源码顺序与视觉严重脱节，或大量关键信息藏在栅格图中。
+      partial: 40–59：多数主体由真实文本/DOM 构成且有基本分组，但标签滥用、容器边界、源码顺序或图表语义仍有明显问题。
+      mostly: 60–79：内容基本可机读、逻辑分组明确、文字和图表被合理包裹；仍有少量语义标签、层级、源码顺序或可访问文本不足。
+      fully: 80–100：DOM 结构清楚准确地反映页面卡片、内容和阅读顺序，所有必要信息可机读且不存在栅格化偷懒。100 仅用于无任何结构或语义缺陷。
+  - id: H4_code_maintainability_editability
+    module: html
+    name: 代码可维护性与二次编辑
+    evaluation_mode: html
+    criticality: standard
+    allow_na: false
+    evidence_sources:
+      - html
+      - css
+      - dom_audit
+    definition: 生成代码是否易于人类二次修改文案和配色，CSS 是否清晰解耦，是否清除了大量冗余死代码。
+    evaluation: >-
+      检查模块边界、DOM 嵌套、独立 style 块、CSS 分类、变量复用、inline style、绝对定位耦合和编辑探针结果。
+    anchors:
+      not_met: 0–19：代码严重混淆或充斥大量死代码/inline style，关键文字无法安全定位修改，微小编辑即导致全页崩坏。
+      weak: 20–39：重度依赖脆弱的绝对定位和像素魔数，文字稍变长即越界；嵌套极深、样式与内容高度耦合，二次编辑风险高。
+      partial: 40–59：模块边界可辨认且有独立样式块，但仍有明显冗余、重复声明、硬编码耦合或定位困难，一般用户只能勉强修改。
+      mostly: 60–79：结构较清楚，主要元素可独立定位修改，CSS 有分类或变量复用；仍有少量耦合、魔数、冗余或编辑探针风险。
+      fully: 80–100：结构扁平清楚，内容、布局和主题样式合理解耦，变量和模块可复用，人类能快速安全编辑。100 仅用于无任何可维护性缺陷。
+  - id: H5_evaluation_integrity_anti_gaming
+    module: html
+    name: 评测诚信与反投机检测
+    evaluation_mode: html
+    criticality: critical
+    allow_na: false
+    evidence_sources:
+      - html
+      - css
+      - dom_audit
+    definition: 拒绝前置交互与作弊手段，检测 opacity:0、零尺寸、移出屏幕外等隐藏关键词，以及动态长动画等规避评测的做法。
+    evaluation: >-
+      对照首屏渲染与 DOM，检查 opacity、visibility、text-indent、尺寸、坐标、颜色、动画和交互依赖；要求内容静态、瞬间、真实可见地呈现。
+    anchors:
+      not_met: 0–19：存在系统性隐藏关键词、同色文字、零尺寸/屏外内容等作弊，或关键内容必须通过交互/长动画才出现，明显规避静态首屏评测。
+      weak: 20–39：存在多个可疑隐藏节点、前置交互或延迟展示机制，虽未完全证明系统性作弊，但已实质影响所见即所得。
+      partial: 40–59：主体总体诚实，但存在个别无意义隐藏节点、事件处理器、动画或延迟逻辑，需要人工复核且降低评测可信度。
+      mostly: 60–79：主要 DOM 文本真实可见且无需交互，页面加载后直接呈现；仅有不影响内容的轻微动态/事件残留或可疑废节点。
+      fully: 80–100：所有所需信息在首屏真实、静态、瞬间可见，无隐藏关键词、交互前置、长动画或投机实现。100 仅用于无任何诚信风险或动态残留。

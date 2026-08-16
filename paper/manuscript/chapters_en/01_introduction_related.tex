@@ -1,0 +1,39 @@
+% Generated mechanically from the reviewed Markdown source.
+% Controller edits should be made in both source and LaTeX when material.
+
+\begin{abstract}
+
+A presentation slide can look correct in isolation yet contradict the deck: a term defined early is silently redefined later, a visual encoding reverses meaning, or a numerical premise is consumed but never established. Such failures arise because authoring decisions persist across stages and pages while execution contexts do not. The missing design variable is responsibility granularity: which pages must share an owner. \textbf{MuralPresenter} externalizes persistent deck state and delegates production to dependency-aligned, non-overlapping slide groups, each jointly authored, rendered, and revised by one Group Agent. Its four-phase workflow grounds content, freezes a deck-wide plan, produces independent groups in parallel, and closes residual relations through whole-deck review. A companion synthesis pipeline enriches three query tracks with Style profiles and task-conditioned long-horizon dependencies, then compiles them into checklists for trajectory filtering. We train MuralPresenter-9B on 1,000 quality-controlled trajectories and MuralPresenter-27B on a larger heterogeneous cohort, and introduce \textbf{ThreadBench} to score intermediate process evidence separately from final artifact quality. On PresentBench, MuralPresenter-9B and MuralPresenter-27B obtain \resulttbd{[TBD:ABS\_M9\_PB]} and \resulttbd{[TBD:ABS\_M27\_PB]} Overall; on ThreadBench they reach \resulttbd{[TBD:ABS\_M9\_THREAD]} and \resulttbd{[TBD:ABS\_M27\_THREAD]} Final. Controlled ablations attribute \resulttbd{[TBD:ABS\_ABLATION\_SUMMARY]} to dependency-aligned responsibility and render-grounded trajectory supervision. Together, the results show how explicit ownership and auditable handoffs support long-horizon presentation authoring.
+
+\end{abstract}
+
+\section{Introduction}
+
+A presentation is a persistent decision object. Authors fix terminology, choose color encodings, set numerical premises, and establish narrative arcs before production begins. These decisions are consumed across distant slides and revisited across versions \citep{maheshwari-etal-2024-presentations,zheng2025pptagent,xu-etal-2025-pregenie}. When consumption fails, a page appears valid in isolation while contradicting the whole: current evaluations report omitted requirements, unsupported claims, numerical errors, and broken cross-slide consistency \citep{chen2026presentbench}.
+
+This persistence creates a dilemma. A single Agent retains unified context but accumulates execution artifacts into a growing history that weakens its use of earlier decisions \citep{sun2025contextfolding}. Stage- or page-level decomposition isolates subtasks but fragments responsibility; whether it helps depends on task structure, information sharing, and validation placement—not on Agent count \citep{kim2025scalingagents}. Neither extreme asks: which pages should jointly own a dependency?
+
+\textbf{MuralPresenter} answers with the \textbf{slide group}. The Orchestrator partitions every page into complete, non-overlapping groups by narrative purpose, design affinity, and cross-slide dependency. One Group Agent generates, inspects, and revises all pages in its group; independent groups run in parallel; whole-deck Review backstops relations that span groups. Persistent state is externalized so each stage reads a projection rather than raw history; deterministic parsing, downloading, rendering, and building remain tools. Figure~\ref{fig:page-topologies} contrasts this topology with sequential and per-slide alternatives. HTML serves as the authoring source, with image, PDF, and PPTX conversion treated as delivery boundaries.
+
+\input{figures/page_topologies_en}
+
+The same dependencies that define slide groups govern training. Three query tracks feed a shared enrichment layer that injects Style, constructs task-conditioned long-horizon dependencies, and compiles them into a QC checklist; candidate trajectories are filtered against that checklist. We train MuralPresenter-9B on a controlled 1K trajectory corpus and MuralPresenter-27B on six heterogeneous historical batches under quality control and reweighting (§4). \textbf{ThreadBench} (Tracing Handoffs, Requirements, and Execution Across Deck Generation) evaluates process--artifact consistency, including cross-page semantic consistency in its Final Deck rubric; PresentBench and SlidesGen-Bench complement it with general quality and DECKBench with multi-turn revision. Our contributions are:
+
+\begin{enumerate}
+\item \textbf{A full-lifecycle, skill-based authoring framework} with an explicit boundary between deterministic tools and isolated Agent contexts.
+\item \textbf{A dependency-aligned responsibility topology} in which one Group Agent jointly owns related pages, and edits replay only at the necessary scope.
+\item \textbf{A controllable synthesis pipeline and two trained models:} MuralPresenter-9B uses 1,000 post-QC trajectories from the three-track construction, while MuralPresenter-27B uses six quality-controlled historical batches.
+\item \textbf{ThreadBench}, a process-aware, artifact-grounded evaluation of intermediate handoffs and final deck quality, paired with general-generation and multi-turn-editing benchmarks.
+\end{enumerate}
+
+The remainder of the paper reviews related work (§2), presents the authoring system and data pipeline (§§3–4), defines ThreadBench and the evaluation protocol (§§5–6), and closes with a traceable case study, validity boundaries, and conclusions (§§7–8).
+
+\section{Related Work}
+
+\textbf{Presentation generation.} Content-selection methods address what belongs on each slide \citep{bandyopadhyay-etal-2024-enhancing-presentation,maheshwari-etal-2024-presentations}; Agent systems add deck planning \citep{zheng2025pptagent}, render-grounded review \citep{xu-etal-2025-pregenie}, specialized roles \citep{xie2026slidebot}, iterative visual refinement \citep{zheng2026deeppresenter}, slide–script coordination and delivery \citep{yang2026deepslide}, and design–code decoupling \citep{cui2026designfirst}. Slide–script coordination and delivery support are prior art; MuralPresenter's distinction is slide-group ownership of cross-slide source-to-target relations.
+
+\textbf{Long-horizon state and Agent granularity.} Growing history impairs the use of earlier information before the context window is exhausted \citep{sun2025contextfolding}; externalizing verified state and launching fresh contexts can stabilize long trajectories \citep{ma2026longhorizonharness}. Because decomposition gains depend on task structure and information flow \citep{kim2025scalingagents}, MuralPresenter aligns group boundaries with dependency structure rather than pipeline stages or page indices.
+
+\textbf{Agentic data and refinement.} Full interaction traces preserve planning decisions and tool use \citep{zeng2023agenttuning,chen2024agentflan}, while iterative feedback teaches diagnosis and repair \citep{madaan2023selfrefine}. MuralPresenter instead accepts trajectories against machine-checkable dependencies injected before rollout; controlled ablations test whether inspect–diagnose–patch traces transfer to editing.
+
+\textbf{Benchmarks.} PresentBench evaluates material-grounded generation \citep{chen2026presentbench}; SlidesGen-Bench covers Content, Aesthetics, and static Editability \citep{yang2026slidesgenbench}; DECKBench studies generation and multi-turn editing \citep{jang2026deckbench}. PPTArena and PPT-Eval probe compound or PowerPoint-native edits \citep{ofengenden2025pptarena,gandhi2026ppteval}, and LH-Bench rates process and output with Skill-grounded rubrics \citep{gupta2026lhbench}. ThreadBench complements final-only evaluation by scoring case-specific Research, Planning, Image, and Slide-production evidence separately from Knowledge, Deck, and Page quality.

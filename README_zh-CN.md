@@ -86,30 +86,6 @@ MURAL 通过可复用的 **MURAL Authoring Skill** 串联四个阶段：
 - **Group replay**：涉及一组关联页面或组内共同视觉语言的修改。
 - **Deck replan**：只有当请求改变整册决策或结构时，才重新规划。
 
-## 冻结发布线的推理与合成模式（可选）
-
-正式 Harness 使用同一个入口，并提供两个明确的运行画像：
-
-- `--mode inference` 是默认的 WebUI/交付路径。已消费图片会从后续活跃上下文释放，
-  早期历史超过阈值后会压缩，以降低重复 Token 与时延；调试 Trace 仍保留。
-- `--mode synthesis` 是训练数据路径。它关闭上述有损上下文维护，为编排器和每个子 Agent
-  保存可重放的消息/图片轨迹及图片 SHA-256；任何一条轨迹不完整都会拒收整条样本。
-
-```bash
-cd harnesses/mural-presenter
-
-# 推理：快速交付
-uv run python infer.py --query "制作一份 8 页演示" \
-  --batch demo-infer --mode inference
-
-# 合成：无损训练轨迹
-uv run python infer.py --input /absolute/path/to/briefs.jsonl \
-  --batch train-synthesis-v1 --workers 4 --mode synthesis
-```
-
-完整的无损边界、断点续跑规则、产物目录、完整性门和环境变量见
-[Harness 运行说明](harnesses/mural-presenter/README.md)。
-
 ## 运行推理（默认：MURAL Presenter v0.2）
 
 当前推荐的推理配套是：
@@ -122,11 +98,6 @@ uv run python infer.py --input /absolute/path/to/briefs.jsonl \
 Orchestrator 第一次读取某个 `SKILL.md` 后锁定该说明版，但说明版语言不决定成品语言；
 成品语言由 query 或 JSONL 行中的 `lang` 字段决定。
 
-v0.2 的两个模式使用完全相同的 Skill、模型参数、单页并行拓扑、工具和质量门。
-`--mode inference` 是默认模式，可释放已消费图片并压缩旧活动上下文；`--mode synthesis`
-关闭这些有损操作，要求根 Agent 和所有子 Agent 提供完整多模态轨迹及 SHA-256 图片清单，
-缺失即拒收。DeepSeek 无签名 Thinking 会保存在轨迹中但不回灌 API；有签名 Thinking 可正常回放。
-
 ```bash
 cd harnesses/mural-presenter-v0.2
 cp .env.example .env                  # 填写模型凭据；不要提交 .env
@@ -136,17 +107,12 @@ uv run --no-project playwright install chromium
 # 单条任务
 uv run --no-project python infer.py \
   --query "制作一份 8 页的 RAVE 论文演示" \
-  --batch demo-v02 --workers 1 --mode inference
+  --batch demo-v02 --workers 1
 
 # JSONL 批量任务：每行至少包含 {"qid":"...","query":"..."}
 uv run --no-project python infer.py \
   --queries /absolute/path/to/briefs.jsonl \
   --batch bench-v02 --workers 4
-
-# 合成：无损多模态训练轨迹
-uv run --no-project python infer.py \
-  --queries /absolute/path/to/briefs.jsonl \
-  --batch synthesis-v02 --workers 4 --mode synthesis
 ```
 
 JSONL 还可提供 `lang`、`slide_count`、`materials`/`attachments`；附件值是绝对路径数组，
@@ -156,7 +122,8 @@ JSONL 还可提供 `lang`、`slide_count`、`materials`/`attachments`；附件�
 
 模型、生图、搜索、纯文本模型外挂 Vision、Thinking/运行上限、产物和续跑规则详见
 [v0.2 Harness 运行说明](harnesses/mural-presenter-v0.2/README.md)。冻结发布线
-`skills/mural-presenter/` + `harnesses/mural-presenter/` 仍作为兼容回退保留，但不再是默认推理路径。
+`skills/mural-presenter/` + `harnesses/mural-presenter/` 仍保留显式的 inference/synthesis
+画像，但不再是默认推理路径。
 
 ## 为什么使用 HTML？
 
@@ -182,13 +149,12 @@ Decks*），同时检查过程证据与最终产物，覆盖知识准确性、�
 | [`webui/`](webui/) | 当前使用的 SenseNova Present WebUI，直接引用仓库根的正式 Skill/Harness |
 | [`skills/mural-presenter/`](skills/mural-presenter/) | 冻结的生命周期 Skill：编排协议、角色卡、参考资料、资源与确定性 Deck 工具 |
 | [`harnesses/mural-presenter/`](harnesses/mural-presenter/) | SenseNova Present 使用的配套多智能体执行 Harness |
-| [`fonts/`](fonts/) | 正式运行时与测试所需的 OFL/开源字体白名单 |
 | [`services/api/`](services/api/) | WebUI 与可复用 MURAL 运行时之间的目标抽取边界 |
 | [`scripts/`](scripts/) | 未来的轻量 CLI 入口；可复用逻辑统一放在 `src/` |
 | [`tests/`](tests/) | 单元、集成、端到端测试与 Fixture 约定 |
 | [`data/`](data/) | 数据目录及发布边界；生成数据不进入 Git |
 | [`artifacts/`](artifacts/) | 单次运行的产物约定；生成的 run 与 export 默认忽略 |
-| [`benchmarks/thread_bench/`](benchmarks/thread_bench/) | 公开 THREAD-Bench 接口约定 |
+| [`benchmark/ThreadBench/`](benchmark/ThreadBench/) | THREAD-Bench 工作仓库：Rubric、Judge、case 约定与聚合代码 |
 | [`assets/logo/`](assets/logo/) | 主角色、紧凑标记、横版组合与可复现导出文件 |
 | [`assets/figures/`](assets/figures/) | PNG 与 PDF 论文配图 |
 | [`docs/`](docs/) | 方法、评测、品牌与发布说明 |

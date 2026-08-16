@@ -1,0 +1,263 @@
+contract_version: long_horizon_agentic_intermediate_rubric_v3
+rubric_id: long_horizon_agentic_intermediate_rubric_v3
+title: Long-horizon Static HTML PPT 中间产物 Agentic 通用 Rubric v3
+language: zh-CN
+
+status:
+  role: case_specific_authoring_reference
+  scored_by_current_runner: false
+  note: >-
+    本文件只为 intermediate_case_specific rubric 提供统一维度、边界、证据和评分点设计；
+    当前 runner 不读取本文件，也不单独计算 common intermediate score。
+
+boundary:
+  evaluation_unit: one_generation_attempt
+  evaluates_only:
+    - Research来源的权威性、适用性、真实访问和可追溯性
+    - 实际搜图工具调用中的keyword/query质量
+    - 实际生图工具调用中的caption/prompt质量
+    - Speech逐页覆盖、页面绑定、口头表达价值和事实边界
+  excludes:
+    - Plan的任务建模、页数规划、内容顺序、页面职责和视觉slot完整性
+    - 最终Deck的内容覆盖、叙事顺序、事实正确性、视觉风格、可读性和完成度
+    - 搜索或生成得到的最终图片像素质量、清晰度、裁切和最终页面使用效果
+    - base.css、visual-system、HTML实现和一般跨中间产物一致性
+    - Agent数量、调用次数、并发度、token、耗时、成本和Harness架构
+    - case特有主题的内容完整性；这些要求由final case-specific rubric从Deck级别检查
+  final_output_owner:
+    common_rubric: rubric/multi_page_image_rubric_v2.yaml
+    case_specific_rubric: "{CASE_DIR}/rubric_versions/{REVISION}/final_case_rubric.json"
+
+authoring_principles:
+  - v3固定Research、Image Request、Speech三个维度；case-specific只保留本case实际适用的评分点。
+  - 通用层定义能力边界，case-specific负责把query中的对象、来源层级、受众、语气和禁用项写入anchors。
+  - 不为覆盖全部query要求而把Plan、最终内容或最终视觉检查重新塞回中间产物rubric。
+  - Research只评价证据链是否权威、真实、可追溯；不重复评价最终Deck是否覆盖全部主题或事实是否正确。
+  - Image只评价真实工具调用参数；Plan和catalog只能用于定位asset_id、slide_id和用途，不能替代真实keyword或caption。
+  - Speech只评价讲稿这一独立交付物；最终Deck的内容顺序和页面视觉质量仍由final rubric评价。
+  - 工具调用次数、Research文件数量、来源数量和Speech字数本身不加分。
+  - 每个case-specific criterion一次Judge调用只评价一个评分点，并使用最小证据包。
+
+terminology:
+  search_keyword: >-
+    实际传给图片搜索工具的query、keyword或等价参数；不是Plan中的建议搜索词，
+    也不是asset catalog对搜索行为的事后概括。
+  generation_caption: >-
+    实际传给生图工具、用于生成图片的caption、prompt或等价自然语言字段；
+    不是最终Deck中显示的figcaption，也不是catalog中的图片说明。
+  context_only_artifacts:
+    - plan/deck.md
+    - plan/slide_*.md
+    - plan/assets.json
+    - plan/visual-system.json
+    - assets/catalog_*.md
+  context_only_rule: >-
+    上述文件只允许帮助Judge确认页面、asset、用途和风格约束；
+    不得用其中预写的keyword或caption替代真实工具调用参数。
+
+applicability:
+  freeze_before_scoring: true
+  dimensions:
+    R: attempt合同要求Research，或query包含需要外部来源支撑的事实、数据、案例或材料时适用。
+    I: 至少存在一个required image request时适用；search与generation评分点分别判断。
+    S: attempt合同要求独立Speech或speaker notes时适用。
+  point_rules:
+    I1_IMAGE_SEARCH_KEYWORD_QUALITY: >-
+      冻结合同或case要求存在search型图片需求时保留。模型应执行search却没有真实调用时记0；
+      本case确实不需要search时，从case-specific rubric删除本criterion。
+    I2_IMAGE_GENERATION_CAPTION_QUALITY: >-
+      冻结合同或case要求存在generate型图片需求时保留。模型应执行generate却没有真实caption/prompt时记0；
+      本case确实不需要generate时，从case-specific rubric删除本criterion。
+  anti_gaming: >-
+    适用性由query、case要求和attempt启动时冻结的工具/产物合同决定，
+    不能因为模型漏做某一步而在评测时改成不适用。
+
+score_contract:
+  range: [0, 1]
+  profiles:
+    binary:
+      allowed_scores: [0, 1]
+      use_for: 必须完整满足、不可用中间档掩盖的硬条件。
+      anchors:
+        0: 任一必要条件不满足，或没有足够证据确认全部条件满足。
+        1: 所有适用必要条件均有可定位证据并完整满足。
+    ternary_3:
+      allowed_scores: [0, 0.5, 1]
+      use_for: Research、keyword、caption和Speech的语义质量。
+      anchors:
+        0: 未完成、方向错误、不可用，或存在关键伪造、错主体、错消费者或事实边界失守。
+        0.5: 基本成立且可用，但普通、模板化、不够具体，或存在一个重大缺口和多个局部问题。
+        1: 参考级完成；准确、具体、可追溯、适合本case，且只有不影响使用的轻微缺陷。
+  required_case_anchors: >-
+    每条case-specific criterion必须提供与profile完全一致的独立anchors，
+    不得只引用本通用文件的全局描述。
+  recommended_aggregation:
+    criterion_to_dimension: arithmetic_mean
+    dimension_to_intermediate_role: arithmetic_mean
+    criterion_weighting: equal
+    note: 三个维度优先独立报告；需要单一中间分时再取适用维度的宏平均。
+
+evidence_contract:
+  instruction:
+    files: ["{CASE_DIR}/instruction.md"]
+    use: 确认本case的对象、受众、用途、语言、风格和事实要求。
+  research_artifacts:
+    files:
+      - "{RUN_DIR}/research/research_*.md"
+      - "{RUN_DIR}/research/materials_*.md"
+      - "{RUN_DIR}/research/knowledge-brief.md"
+    use: 检查来源选择、claim与来源绑定、定位信息、冲突和未知状态。
+  research_trace:
+    files:
+      - "{RUN_DIR}/_trace/subagents/research_*/tool_log.json"
+      - "{RUN_DIR}/_trace/orchestrator/tool_log.json"
+    use: 只截取相关search/open/read调用和返回状态，确认正文是否真实访问；不按调用次数评分。
+  image_search_calls:
+    files:
+      - "{RUN_DIR}/_trace/subagents/image_*/tool_log.json"
+      - "{RUN_DIR}/plan/assets.json"
+      - "{RUN_DIR}/assets/catalog_*.md"
+      - "{RUN_DIR}/plan/slide_*.md"
+    use: 真实search调用参数是评分主体，其余文件仅用于绑定asset_id、slide_id、对象和用途。
+  image_generation_calls:
+    files:
+      - "{RUN_DIR}/_trace/subagents/image_*/tool_log.json"
+      - "{RUN_DIR}/plan/assets.json"
+      - "{RUN_DIR}/assets/catalog_*.md"
+      - "{RUN_DIR}/plan/slide_*.md"
+      - "{RUN_DIR}/plan/visual-system.json"
+    use: 真实generate调用的caption/prompt是评分主体，其余文件仅提供对象、用途、构图和风格约束。
+  speech:
+    files:
+      - "{RUN_DIR}/speech.md"
+      - "{RUN_DIR}/plan/deck.md"
+      - "{RUN_DIR}/plan/slide_*.md"
+      - "{RUN_DIR}/research/knowledge-brief.md"
+    use: speech.md是评分主体；Plan只用于逐页绑定，Research只用于检查讲稿是否新增无依据事实。
+
+dimensions:
+  - id: R
+    name: Research来源权威性与证据完整性
+    definition: >-
+      Research是否为不同类型的关键claim选择适当层级的可靠来源，
+      真实访问来源正文并保留足以复核的claim到来源证据链。
+    excludes:
+      - 是否覆盖query要求的全部内容章节
+      - 最终Deck中的事实是否完整或准确
+      - 搜索次数、来源数量和Research文件数量
+    scoring_points:
+      - id: R1_SOURCE_AUTHORITY_AND_FIT
+        default_profile: ternary_3
+        evaluate: >-
+          来源是否与claim类型相匹配：官方机构、原始材料、标准、数据库、博物馆、
+          学术出版物或可信专业来源是否被用于高风险事实；解释性内容是否使用了足够可靠的二手来源；
+          是否避免把搜索摘要、聚合站、营销软文、自媒体或无署名页面当作关键事实的唯一依据。
+        evidence: [instruction, research_artifacts, research_trace]
+        case_specific_must_define:
+          - 本case关键claim类型和风险级别
+          - 优先来源层级及可接受替代来源
+          - 明确不可接受的来源类型
+        hard_boundaries:
+          - 关键claim主要依赖明显不可靠或与对象无关的来源时最高0.5。
+          - 伪造来源、伪造作者机构或把不存在的材料当作依据时为0。
+      - id: R2_SOURCE_ACCESS_TRACEABILITY_AND_INTEGRITY
+        default_profile: ternary_3
+        evaluate: >-
+          关键claim是否能绑定到真实访问过的来源正文，并保留URL或文件、标题/机构、
+          原文位置或可复核摘录及使用范围；是否诚实标记未读、未知、冲突、推断和二手转述，
+          避免仅有链接、仅有搜索摘要或把未访问材料写成已核实。
+        evidence: [research_artifacts, research_trace]
+        case_specific_must_define:
+          - 哪些claim必须逐项可追溯
+          - 最低定位信息要求
+          - 冲突或无法核实时的允许表达
+        hard_boundaries:
+          - 多个关键claim只有裸链接、搜索摘要或无法复核的转述时最高0.5。
+          - 存在关键伪造引文、伪造访问或将明确未知写成已核实时为0。
+
+  - id: I
+    name: Image真实搜图keyword与生图caption
+    definition: >-
+      对required image requests，实际搜图keyword是否可检索且准确表达对象与场景；
+      实际生图caption/prompt是否准确、具体、可执行，并守住身份和信息承载边界。
+    excludes:
+      - 最终图片像素质量、清晰度、构图结果和美学效果
+      - 图片在最终Deck中的裁切、排版和可读性
+      - Plan中预写但没有真正传给工具的keyword或caption
+      - 搜图结果数量和工具调用次数
+    scoring_points:
+      - id: I1_IMAGE_SEARCH_KEYWORD_QUALITY
+        default_profile: ternary_3
+        applicability: 仅对冻结合同要求的search型图片需求适用。
+        evaluate: >-
+          实际传给搜图工具的keyword/query是否准确写出主体身份、对象名称、地点、
+          时期/事件、视角或场景等必要限定，与目标页面和用途一致；
+          是否避免过宽泛、错实体、把风格形容词当主体、无意义堆词或使用无法检索的长句。
+        evidence: [instruction, image_search_calls]
+        case_specific_must_define:
+          - 必须准确命中的主体、身份和场景
+          - 对地点、时期、视角、媒介或版权来源的必要限定
+          - 错实体和泛化查询的具体失败表现
+        hard_boundaries:
+          - 任一核心request搜错实体、地点、文物、人物或事件时最高0.5。
+          - 多数实际query无法指向required主体或根本没有真实search调用时为0。
+      - id: I2_IMAGE_GENERATION_CAPTION_QUALITY
+        default_profile: ternary_3
+        applicability: 仅对冻结合同要求的generate型图片需求适用。
+        evaluate: >-
+          实际传给生图工具的caption/prompt是否准确表达主体、页面用途、构图、视角、
+          景别、比例、安全区和必要视觉基因，并明确关键禁止项；
+          是否避免伪造身份敏感的真实对象，避免要求模型生成精确文字、年代、数据、地图或图表，
+          且不包含分析过程、互相冲突的风格和不可执行噪声。
+        evidence: [instruction, image_generation_calls]
+        case_specific_must_define:
+          - 生图允许承担的语义范围
+          - 主体、构图、比例、安全区和风格约束
+          - 身份敏感对象及禁止生成的信息类型
+        hard_boundaries:
+          - caption/prompt主体或消费者页面根本错误时最高0.5。
+          - 使用生图伪造身份敏感的真实对象，或要求生成关键精确文字/数据并作为事实使用时为0。
+
+  - id: S
+    name: Speech逐页讲稿与口头表达价值
+    definition: >-
+      Speech是否逐页完整绑定到canonical pages，形成适合目标受众的独立口头讲述轨道，
+      能解释页面与视觉、提供有依据的口头增量，并保持自然转场和事实边界。
+    excludes:
+      - 最终Deck是否覆盖全部内容章节
+      - 最终Deck的叙事顺序、页面视觉质量和文字密度
+      - Speech字数和总时长本身
+    scoring_points:
+      - id: S1_SPEECH_PAGE_COVERAGE_AND_BINDING
+        default_profile: binary
+        evaluate: >-
+          每个canonical page是否恰有一个对应的非空Speech section，
+          且无重复页号、漏页、额外页或明显绑定到错误页面的讲稿。
+        evidence: [speech]
+        case_specific_must_define:
+          - canonical page集合和section格式
+          - 非空section的最低可解析条件
+          - 页码或slide_id绑定规则
+        hard_boundaries:
+          - 任一必要页面缺失、重复、为空、额外或明显错绑即为0。
+      - id: S2_SPEECH_ORAL_VALUE_AND_GROUNDING
+        default_profile: ternary_3
+        evaluate: >-
+          讲稿是否围绕对应页面的核心论点和视觉内容组织成自然口语，
+          提供屏幕文字之外的解释、观察或转场，而不是照读要点；
+          语气是否适合受众和场景，是否避免新增Research之外的重要事实或改变事实含义。
+        evidence: [instruction, speech]
+        case_specific_must_define:
+          - 目标受众、语气和讲述场景
+          - 需要解释的关键视觉或页面论点
+          - 不得由Speech自行新增的高风险事实
+        hard_boundaries:
+          - 多数页面只是照读屏幕、与页面错绑或没有可讲述内容时最高0.5。
+          - Speech新增关键伪造事实或与页面核心结论相反时为0。
+
+case_specific_template:
+  path: examples/long_horizon_intermediate_case_rubric_v3.template.json
+  schema_version_note: >-
+    template文件版本为v3，但当前runner的JSON schema仍是long_horizon_case_specific_rubric_v2；
+    二者是独立版本轴，不得为了文件名一致擅自修改schema_version。
+

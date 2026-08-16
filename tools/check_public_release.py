@@ -8,6 +8,7 @@ import json
 import os
 import re
 from pathlib import Path
+from urllib.parse import unquote
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -92,7 +93,7 @@ def check_markdown_links(files: list[Path]) -> tuple[int, list[str]]:
     for path in (item for item in files if item.suffix.lower() == ".md"):
         text = path.read_text(encoding="utf-8")
         for raw_target in MARKDOWN_LINK.findall(text):
-            target = raw_target.strip().strip("<>").split("#", 1)[0]
+            target = unquote(raw_target.strip().strip("<>").split("#", 1)[0])
             if not target or re.match(r"^(?:https?://|mailto:)", target):
                 continue
             checked += 1
@@ -263,7 +264,7 @@ def check_repository_scaffold() -> list[str]:
         "harnesses/mural-presenter/core/nova_bridge.py",
         "harnesses/mural-presenter/pyproject.toml",
         "configs/releases/mural-paper-v1.json",
-        "benchmarks/thread_bench/README.md",
+        "benchmark/ThreadBench/README.md",
     )
     for filename in required:
         if not (ROOT / filename).is_file():

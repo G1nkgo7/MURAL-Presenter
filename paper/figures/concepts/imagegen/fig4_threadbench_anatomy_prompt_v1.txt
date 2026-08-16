@@ -1,0 +1,22 @@
+Use case: infographic-diagram
+Asset type: full-width academic paper Figure 4 for an ICLR-style paper
+
+Generate a polished ThreadBench anatomy diagram that looks like a fourth figure from the same visual
+family as the three supplied MuralPresenter reference figures. Reuse their four-column rounded-card
+layout, cream-shell black-visor cyan-eye robots, slide thumbnails, dark arrows, pale shadows, and
+green/orange/teal/royal-blue stage palette. Do not copy their subject matter.
+
+Use a very wide white canvas, approximately 2.24:1, with four equal panels and sparse, highly legible
+text. Panel 1 is green and headed "REQUIREMENT THREAD": show a case-specific requirement, a deck strip,
+one long source-to-target arc labeled "dependency span d", chips "FACT", "TERM", "NARRATIVE", "DESIGN",
+"TASK", and a small animal-navigation concept-to-comparison example. Panel 2 is orange and headed
+"PROCESS EVIDENCE": show friendly Research, Planning, Image, and Slide Production robots passing
+persistent artifact cards, ending at "criterion-scoped evidence". Panel 3 is teal and headed
+"FINAL ARTIFACT": show a canonical rendered deck branching into "DECK CHECKS" and "PAGE CHECKS",
+then merging into artifact quality. Panel 4 is blue and headed "TWO OUTPUTS": show equally prominent
+"INTERMEDIATE" and "FINAL" cards, with a bracket labeled "independent scores"; optional preaudit may
+feed defects into judging but is not a score.
+
+Render every quoted label verbatim. Use the same flat paper-native 2.5D illustration quality as the
+references. No formulas, leaderboard, numerical results, paragraph text, extra title, glossy 3D,
+watermark, logo, pseudo-text, or tiny footnotes.

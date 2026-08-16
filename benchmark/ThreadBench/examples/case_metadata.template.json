@@ -1,0 +1,32 @@
+{
+  "domain": "education",
+  "scenario": "classroom_lecture",
+  "audience": "undergraduate_students",
+  "topic": "cybersecurity",
+  "page_function": {
+    "presentation_type": "multi_page",
+    "structure_mode": "partially_specified",
+    "page_count": {
+      "min": 4,
+      "max": 4
+    },
+    "requirements": [
+      {
+        "id": "cover",
+        "function": "opening_cover",
+        "scope": {
+          "type": "first_page"
+        },
+        "cardinality": {
+          "min": 1,
+          "max": 1
+        },
+        "strength": "required",
+        "order_after": []
+      }
+    ],
+    "pages": null
+  },
+  "style": "expository",
+  "complexity": "standard"
+}

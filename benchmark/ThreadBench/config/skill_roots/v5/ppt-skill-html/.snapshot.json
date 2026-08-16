@@ -1,0 +1,29 @@
+{
+  "format": "ppt-skill-snapshot-v1",
+  "id": "efficiency/v5--ec794ce3392f",
+  "track": "efficiency",
+  "all_tracks": [
+    "efficiency"
+  ],
+  "internal_version": "v5.0.0",
+  "all_versions": [
+    "v5.0.0"
+  ],
+  "external_version": "v5",
+  "all_external_versions": [
+    "v5"
+  ],
+  "tree_hash": "ec794ce3392fa825537ea0d65267233753221ecfc2069df2f65e32d3627b8f3e",
+  "skill_md_sha256": "3f54a0cc889dcfc7bb4522aa558f5c6a5f1efee0638d8034dfd1bc9c610c1347",
+  "file_count": 39,
+  "bytes": 1495098,
+  "representative_source": "research/skill-repo/ppt-skill-html-v5",
+  "sources": [
+    "research/skill-repo/ppt-skill-html-v5"
+  ],
+  "present_sources": [
+    "research/skill-repo/ppt-skill-html-v5"
+  ],
+  "source_present": true,
+  "store_path": "snapshots/store/efficiency/v5--ec794ce3392f"
+}

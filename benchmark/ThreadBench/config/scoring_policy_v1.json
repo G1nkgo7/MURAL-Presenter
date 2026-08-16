@@ -1,0 +1,13 @@
+{
+  "contract_version": "dual_rubric_scoring_policy_v1",
+  "policy_id": "common_70_case_specific_30_v1",
+  "aggregation": "weighted_arithmetic_mean",
+  "rubric_weights": {
+    "common": 0.7,
+    "case_specific": 0.3
+  },
+  "internal_aggregation": {
+    "common": "unweighted_criterion_mean",
+    "case_specific": "unweighted_criterion_mean"
+  }
+}

@@ -17,7 +17,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: python -m pip install uv
-      - run: mkdir -p .runtime/tmp
+      - run: mkdir -p .runtime/tmp .runtime/tests
       - run: uv sync --project webui/inference --frozen
       - run: uv sync --project webui/studio --frozen
       - name: Resolve local deployment configuration

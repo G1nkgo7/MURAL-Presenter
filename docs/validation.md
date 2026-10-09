@@ -13,10 +13,15 @@ Test-only `pytest` and `httpx` were installed separately. No model requests were
 - Portable configuration and HTTP tests: 5 passed. The tests exercise configuration preservation,
   runtime selection, FastAPI startup, the main page, health endpoint and four CSS/JS assets.
 - Frozen release/configuration contracts: 95 passed (`test_release_guard.py`, `test_config.py`).
-- WebUI service configuration, runtime retirement and profile tests: 139 passed, 1 skipped.
+- WebUI service configuration, runtime retirement and profile tests: 139 passed, 1 skipped
+  because the suite's default deployed Chromium was unavailable.
 - The launcher's `--check --no-install --no-browser-install` passes with the published `.env.example`.
 - CLI inference `--help`, JavaScript syntax checks and deployment shell syntax checks pass.
 - Real Chromium CSS/DOM preflight passes with a compatible existing browser and shared-library bundle.
+- A Git archive of source commit `adeac82c7332c3d6212bf252b17d44bbef7ef1fc`, with the final manifest
+  pointing to that source commit, passes core/integration verification, the example launcher check
+  and all 5 portable/HTTP tests. It contains no local historical trees or site. The export reused
+  the separate locked-dependency test environments through local environment links.
 
 ## Known limits and failures
 

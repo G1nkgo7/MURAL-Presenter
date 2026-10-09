@@ -2,6 +2,7 @@
 <html lang="zh">
 <head>
   <meta charset="utf-8">
+<script>globalThis.STUDIO_BASE_PATH = {{ request.scope.get('root_path', '')|tojson }};</script>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}MURAL Presenter{% endblock %}</title>
   <script>
@@ -19,12 +20,12 @@
         : serverLanguage;
     } catch (_) {}
   </script>
-  <link rel="icon" type="image/svg+xml" href="/static/logo.svg?v={{ asset_ver }}">
-  <link rel="apple-touch-icon" href="/static/logo.svg?v={{ asset_ver }}">
-  <link rel="stylesheet" href="/static/app.css?v={{ asset_ver }}-previewFullBleed1">
+  <link rel="icon" type="image/svg+xml" href="{{ request.scope.get('root_path', '') }}/static/logo.svg?v={{ asset_ver }}">
+  <link rel="apple-touch-icon" href="{{ request.scope.get('root_path', '') }}/static/logo.svg?v={{ asset_ver }}">
+  <link rel="stylesheet" href="{{ request.scope.get('root_path', '') }}/static/app.css?v={{ asset_ver }}-previewFullBleed1">
 </head>
 <body>
 {% block body %}{% endblock %}
-  <script src="/static/app.js?v={{ asset_ver }}-showcaseOutdoor1-staticPageViewport1" defer></script>
+  <script src="{{ request.scope.get('root_path', '') }}/static/app.js?v={{ asset_ver }}-showcaseOutdoor1-staticPageViewport1" defer></script>
 </body>
 </html>

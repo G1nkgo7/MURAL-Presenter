@@ -7,6 +7,8 @@ the same approved source faces once, through a cacheable Studio endpoint.
 """
 from __future__ import annotations
 
+from .web_paths import BASE_PATH
+
 import hashlib
 import importlib.util
 import os
@@ -95,7 +97,7 @@ def stylesheet() -> str:
         rules.append(
             "@font-face {\n"
             f"  font-family: {family!r};\n"
-            f"  src: url('/api/preview-fonts/{source.name}?v={revision}') format('truetype');\n"
+            f"  src: url('{BASE_PATH}/api/preview-fonts/{source.name}?v={revision}') format('truetype');\n"
             f"  font-weight: {weight};\n"
             f"  font-style: {style};\n"
             "  font-display: block;\n"
@@ -111,7 +113,7 @@ def inject(html: str) -> str:
         return html
     tag = (
         '<meta name="studio-preview-fonts" content="1">\n'
-        f'<link rel="stylesheet" href="/api/preview-fonts.css?v={version()}">\n'
+        f'<link rel="stylesheet" href="{BASE_PATH}/api/preview-fonts.css?v={version()}">\n'
     )
     if "</head>" in html:
         return html.replace("</head>", tag + "</head>", 1)

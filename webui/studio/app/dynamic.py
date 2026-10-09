@@ -1,6 +1,8 @@
 """FastAPI adapter for the vendored dazzle dynamic-deck runtime."""
 from __future__ import annotations
 
+from .web_paths import public_url
+
 import asyncio
 import io
 import json
@@ -167,7 +169,7 @@ def _dynamic_delivery_files(base: Path):
 @router.get("/dynamic")
 def dynamic_page(request: Request, user=Depends(_current_user)):
     # Dynamic and static now share the same composer and editor shell.
-    return RedirectResponse("/?mode=dynamic", status_code=303)
+    return RedirectResponse(public_url("/?mode=dynamic"), status_code=303)
 
 
 @router.get("/api/dynamic/conversations")

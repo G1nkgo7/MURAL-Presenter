@@ -68,6 +68,7 @@ from . import (attachments, auth, custom_fonts, custom_models, dynamic, engine,
                titles, trace, trajectory_monitor)
 from .db import DATA_DIR, connect, init_db
 from .workspace_layout import WorkspaceLayout
+from .web_paths import BASE_PATH, public_url
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
@@ -107,7 +108,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="MURAL Presenter", lifespan=lifespan)
+app = FastAPI(title="MURAL Presenter", lifespan=lifespan, root_path=BASE_PATH)
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 if features.DYNAMIC_ENABLED:
     app.include_router(dynamic.router)
@@ -181,8 +182,8 @@ def preview_font_file(filename: str, user=Depends(require_user)):
 @app.get("/login", response_class=HTMLResponse)
 def login_page(request: Request, user=Depends(current_user)):
     if not features.AUTH_ENABLED:
-        return RedirectResponse("/", status_code=303)
-    return RedirectResponse("/" if user else "/?auth=login", status_code=303)
+        return RedirectResponse(public_url("/"), status_code=303)
+    return RedirectResponse(public_url("/" if user else "/?auth=login"), status_code=303)
 
 
 @app.post("/api/auth/login")
@@ -208,13 +209,13 @@ def login(request: Request, username: str = Form(...), password: str = Form(...)
 @app.post("/api/auth/logout")
 def logout(request: Request, con=Depends(get_db)):
     if not features.AUTH_ENABLED:
-        return RedirectResponse("/", status_code=303)
+        return RedirectResponse(public_url("/"), status_code=303)
     token = request.cookies.get(auth.SESSION_COOKIE)
     if token:
         con.execute("DELETE FROM sessions WHERE token = ?", (token,))
         con.commit()
-    resp = RedirectResponse("/", status_code=303)
-    resp.delete_cookie(auth.SESSION_COOKIE, path="/")
+    resp = RedirectResponse(public_url("/"), status_code=303)
+    resp.delete_cookie(auth.SESSION_COOKIE, path=public_url("/"))
     return resp
 
 
@@ -222,8 +223,8 @@ def logout(request: Request, con=Depends(get_db)):
 @app.get("/register", response_class=HTMLResponse)
 def register_page(request: Request, user=Depends(current_user)):
     if not features.AUTH_ENABLED:
-        return RedirectResponse("/", status_code=303)
-    return RedirectResponse("/" if user else "/?auth=register", status_code=303)
+        return RedirectResponse(public_url("/"), status_code=303)
+    return RedirectResponse(public_url("/" if user else "/?auth=register"), status_code=303)
 
 
 @app.post("/api/auth/register")
@@ -2238,7 +2239,7 @@ def page_edit_source(deck_id: int, page: int, user=Depends(require_user), con=De
         layout, source, css = page_editor.source_payload(row, page)
         annotated = page_editor.SourceDocument(source).annotated()
         standalone = bool(re.search(r"(?is)<!doctype\s+html|<html\b|<head\b|<body\b", source))
-        base = f'/api/decks/{deck_id}/files/' + ("slides/" if standalone else "")
+        base = f'{BASE_PATH}/api/decks/{deck_id}/files/' + ("slides/" if standalone else "")
         if standalone:
             html = annotated
             if re.search(r"<head\b[^>]*>", html, re.I):
@@ -2763,7 +2764,7 @@ def _v1_preview_response(row, content: str, suffix: str = ".html", *, headers=No
             name = references.get(match.group(2))
             if name is None:
                 raise HTTPException(status_code=409, detail="页面包含未授权的本地字体引用")
-            return f'url("/api/decks/{int(row["id"])}/shared-fonts/{name}")'
+            return f'url("{BASE_PATH}/api/decks/{int(row["id"])}/shared-fonts/{name}")'
         content = re.sub(font_url, rewrite, content)
     return Response(content, media_type="text/css" if suffix == ".css" else "text/html",
                     headers={"Cache-Control": "no-store", **(headers or {})})
@@ -2871,7 +2872,7 @@ def deck_attachment_preview(
         if not target.is_file():
             continue
         assets.append({
-            "url": f"/api/decks/{deck_id}/attachments/{attachment_index}/assets/{asset_index}",
+            "url": f"{BASE_PATH}/api/decks/{deck_id}/attachments/{attachment_index}/assets/{asset_index}",
             "label": f"第 {image.get('page')} 页" if image.get("page") else target.name,
             "kind": str(image.get("kind") or "image"),
         })
@@ -3200,7 +3201,7 @@ def deck_page_history(deck_id: int, n: int, user=Depends(require_user), con=Depe
     for item in data.get("items", []):
         rel = item.get("image_url") or ""
         item["image_url"] = (
-            f"/api/decks/{deck_id}/file?rel={urllib.parse.quote(rel)}"
+            f"{BASE_PATH}/api/decks/{deck_id}/file?rel={urllib.parse.quote(rel)}"
             if rel else ""
         )
     return data

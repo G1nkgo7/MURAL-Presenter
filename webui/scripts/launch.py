@@ -432,6 +432,9 @@ def main() -> int:
         "--host", args.host, "--port", str(args.port),
         "--timeout-graceful-shutdown", "5",
     ]
+    root_path = os.environ.get("STUDIO_BASE_PATH", "").rstrip("/")
+    if root_path:
+        command.extend(["--root-path", root_path])
     if args.reload:
         command.append("--reload")
     if keep_awake:

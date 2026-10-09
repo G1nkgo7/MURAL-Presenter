@@ -1,7 +1,7 @@
 {
   "channel": "paper-release-candidate",
   "git": {
-    "source_commit": "adeac82c7332c3d6212bf252b17d44bbef7ef1fc",
+    "source_commit": "7aab7c2f78d044fb8f1947df6887135141a56932",
     "worktree_state": "Portable integration snapshot; original frozen core verified independently by publication inventory."
   },
   "harness": {
@@ -54,6 +54,7 @@
       "webui/inference/runtime.py",
       "webui/inference/serve_one.py",
       "webui/inference/uv.lock",
+      "webui/scripts/cci-gateway.mjs",
       "webui/scripts/launch.py",
       "webui/start.ps1",
       "webui/start.sh",
@@ -78,6 +79,7 @@
       "webui/studio/app/titles.py",
       "webui/studio/app/trace.py",
       "webui/studio/app/trajectory_monitor.py",
+      "webui/studio/app/web_paths.py",
       "webui/studio/app/workspace_layout.py",
       "webui/studio/pyproject.toml",
       "webui/studio/static/app.css",
@@ -101,7 +103,7 @@
       "webui/studio/templates/register.html",
       "webui/studio/uv.lock"
     ],
-    "tree_sha256": "fdbf3db9229b89235aa63eebdfd8565907e950e8f3dc65946b8830e768125370"
+    "tree_sha256": "259bc98a516a8d46397db69a4d2f73578fb7dde1d5e5c5011059fef649b6897c"
   },
   "lineage": {
     "note": "Skill/Harness unchanged; portable launch configuration and matching WebUI integrated.",
@@ -113,7 +115,7 @@
     "upstream_release": "mural-presentbench-qwen35-9b-20260919T163556Z"
   },
   "pair_tree_sha256": "378c3ac7fa26d06b91f5408c7a25e7350b9b37e712611a322e387ae13a2d64e3",
-  "release": "mural-paper-0919-portable-v1",
+  "release": "mural-paper-0919-portable-v2",
   "schema": "mural.release.v2",
   "skill": {
     "key": "mural-presenter-v1",

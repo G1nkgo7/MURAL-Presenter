@@ -3,11 +3,11 @@
 {% block body %}
 <div class="auth-wrap">
   <div class="auth-card">
-    <img class="brand-logo" src="/static/logo.svg?v={{ asset_ver }}" alt="">
+    <img class="brand-logo" src="{{ request.scope.get('root_path', '') }}/static/logo.svg?v={{ asset_ver }}" alt="">
     <div class="brand-big">MURAL Presenter</div>
     <p class="sub">创建一个新账号</p>
     {% if error %}<div class="error">{{ error }}</div>{% endif %}
-    <form method="post" action="/api/auth/register">
+    <form method="post" action="{{ request.scope.get('root_path', '') }}/api/auth/register">
       <label>用户名
         <input type="text" name="username" value="{{ username or '' }}" required autofocus
                minlength="3" maxlength="32" autocomplete="username"
@@ -23,7 +23,7 @@
       </label>
       <button type="submit">注册并进入</button>
     </form>
-    <p class="muted small">已有账号? <a href="/login">去登录</a></p>
+    <p class="muted small">已有账号? <a href="{{ request.scope.get('root_path', '') }}/login">去登录</a></p>
   </div>
 </div>
 {% endblock %}

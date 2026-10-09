@@ -2,11 +2,12 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
+<script>globalThis.STUDIO_BASE_PATH = {{ request.scope.get('root_path', '')|tojson }};</script>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>动态演示 · MURAL Presenter</title>
 <style>
-@font-face{font-family:"Schibsted Grotesk";src:url("/static/fonts/SchibstedGrotesk.ttf") format("truetype-variations");font-weight:400 900;font-display:swap}
-@font-face{font-family:"Instrument Sans";src:url("/static/fonts/InstrumentSans.ttf") format("truetype-variations");font-weight:400 700;font-display:swap}
+@font-face{font-family:"Schibsted Grotesk";src:url("{{ request.scope.get('root_path', '') }}/static/fonts/SchibstedGrotesk.ttf") format("truetype-variations");font-weight:400 900;font-display:swap}
+@font-face{font-family:"Instrument Sans";src:url("{{ request.scope.get('root_path', '') }}/static/fonts/InstrumentSans.ttf") format("truetype-variations");font-weight:400 700;font-display:swap}
 :root{
   --bg:#faf3ea; --panel:#fffdf9; --ink:#2e2014; --muted:#84705b; --soft:#aa947c;
   --line:#e9d9c4; --line2:#f2e7d9; --accent:#e0640f; --accent2:#ff7a3d;
@@ -249,7 +250,7 @@ a{color:var(--accent);text-decoration:none}
 <body>
   <aside id="side">
     <div class="brand">
-      <img class="logo" src="/static/logo.svg" alt="">
+      <img class="logo" src="{{ request.scope.get('root_path', '') }}/static/logo.svg" alt="">
       <div><b>MURAL Presenter</b><small>动态演示 · Dazzle Deck</small></div>
     </div>
     <button class="newbtn" onclick="newConv()">＋ 新对话</button>
@@ -258,7 +259,7 @@ a{color:var(--accent);text-decoration:none}
       <span class="ava" id="ubAva">?</span>
       <span class="un" id="ubName"></span>
       <span class="adm" id="ubAdm" style="display:none">管理员</span>
-      <button class="lo" onclick="location.href='/'">切换模式</button>
+      <button class="lo" onclick="location.href=this.dataset.target" data-target="{{ request.scope.get('root_path', '') }}/">切换模式</button>
     </div>
     <div class="foot"><span id="mh" class="dotg"></span><span id="mhtxt">检查模型…</span></div>
   </aside>
@@ -344,8 +345,8 @@ const esc=s=>(s==null?"":String(s)).replace(/&/g,"&amp;").replace(/</g,"&lt;").r
 // ── 模型健康 + 侧栏 ──
 let MODELS=[], DEFAULT_MODEL="";
 async function health(){
-  try{const r=await fetch("/api/dynamic/conversations");
-    if(r.status===401){location.href="/login";return;}
+  try{const r=await fetch("{{ request.scope.get('root_path', '') }}/api/dynamic/conversations");
+    if(r.status===401){location.href="{{ request.scope.get('root_path', '') }}/login";return;}
     const j=await r.json();
     renderConvs(j.items||[]);
     MODELS=j.models||[]; DEFAULT_MODEL=j.default_model||"";
@@ -402,7 +403,7 @@ async function delConv(ev,cid){
   ev.stopPropagation();
   if(!confirm("删除这个对话？此操作不可恢复。"))return;
   try{
-    const r=await fetch("/api/dynamic/delete",{method:"POST",headers:{"Content-Type":"application/json"},
+    const r=await fetch("{{ request.scope.get('root_path', '') }}/api/dynamic/delete",{method:"POST",headers:{"Content-Type":"application/json"},
       body:JSON.stringify({conv_id:cid})});
     const j=await r.json();
     if(j.error||j.detail){alert(j.error||j.detail);return;}
@@ -664,7 +665,7 @@ $("#fsBtn").onclick=()=>{
 };
 document.addEventListener("fullscreenchange",()=>requestAnimationFrame(fitDeck));
 document.addEventListener("webkitfullscreenchange",()=>requestAnimationFrame(fitDeck));
-$("#dlBtn").onclick=()=>{if(CURRENT){const a=document.createElement("a");a.href="/api/dynamic/download?conv_id="+encodeURIComponent(CURRENT);a.click();}};
+$("#dlBtn").onclick=()=>{if(CURRENT){const a=document.createElement("a");a.href="{{ request.scope.get('root_path', '') }}/api/dynamic/download?conv_id="+encodeURIComponent(CURRENT);a.click();}};
 window.addEventListener("resize",()=>{if(DECKURL)fitDeck();});
 
 // ── 运行控制 ──
@@ -680,7 +681,7 @@ function setRunning(on){
 async function stopConv(){
   if(!CURRENT)return;
   $("#mst").innerHTML='<span class="dotg run"></span>正在停止…（当前步骤完成后中止）';
-  try{await fetch("/api/dynamic/stop",{method:"POST",headers:{"Content-Type":"application/json"},
+  try{await fetch("{{ request.scope.get('root_path', '') }}/api/dynamic/stop",{method:"POST",headers:{"Content-Type":"application/json"},
     body:JSON.stringify({conv_id:CURRENT})});}catch(e){}
 }
 function finishRun(status){
@@ -699,7 +700,7 @@ function resetConvView(){                            // 切换/新建对话：�
 function openStream(cid){
   if(ES){ES.close();ES=null;}
   const gen=++STREAM_GEN;                            // 本流代号
-  const es=new EventSource("/api/dynamic/stream?conv_id="+encodeURIComponent(cid));
+  const es=new EventSource("{{ request.scope.get('root_path', '') }}/api/dynamic/stream?conv_id="+encodeURIComponent(cid));
   // 双重防护：代号过期 或 已不是当前对话 → 丢弃。不重置 MAXSEQ，故 SSE 回放的历史按 seq 去重、仅新事件渲染（治重复渲染）。
   es.onmessage=e=>{if(gen!==STREAM_GEN||cid!==CURRENT)return;try{handle(JSON.parse(e.data));}catch(err){}};
   es.addEventListener("end",()=>{if(gen===STREAM_GEN){es.close();if(ES===es)ES=null;}});
@@ -712,8 +713,8 @@ async function openConv(cid){
   CURRENT=cid;location.hash="conv="+cid;
   feed().innerHTML="";$("#welcome").style.display="none";$("#feedInner").style.display="";
   stickBottom=true;$("#tobottom").classList.remove("on");
-  renderConvs((await (await fetch("/api/dynamic/conversations")).json()).items||[]);
-  let data;try{data=await (await fetch("/api/dynamic/conversation?conv_id="+encodeURIComponent(cid))).json();}catch(e){return;}
+  renderConvs((await (await fetch("{{ request.scope.get('root_path', '') }}/api/dynamic/conversations")).json()).items||[]);
+  let data;try{data=await (await fetch("{{ request.scope.get('root_path', '') }}/api/dynamic/conversation?conv_id="+encodeURIComponent(cid))).json();}catch(e){return;}
   if(cid!==CURRENT)return;                            // 等待期间用户又切走了 → 放弃，避免把旧数据渲染进新对话
   $("#mttl").textContent=(data.meta&&data.meta.title)||"对话";
   // 该会话固定的模型：显示 pin、隐藏选择器
@@ -741,9 +742,9 @@ async function send(){
   const payload={conv_id:CURRENT,message:txt};
   if(isNew)payload.model=($("#modelSel")&&$("#modelSel").value)||DEFAULT_MODEL;   // 模型仅新对话生效
   try{
-    const r=await fetch("/api/dynamic/send",{method:"POST",headers:{"Content-Type":"application/json"},
+    const r=await fetch("{{ request.scope.get('root_path', '') }}/api/dynamic/send",{method:"POST",headers:{"Content-Type":"application/json"},
       body:JSON.stringify(payload)});
-    if(r.status===401){setRunning(false);location.href="/login";return;}
+    if(r.status===401){setRunning(false);location.href="{{ request.scope.get('root_path', '') }}/login";return;}
     const j=await r.json();
     if(!r.ok||j.error||j.detail){const e=document.createElement("div");e.className="errc";e.textContent="⚠ "+(j.error||j.detail||"发送失败");add(e);setRunning(false);return;}
     CURRENT=j.conv_id;location.hash="conv="+CURRENT;
@@ -775,7 +776,7 @@ async function submitAuth(){
   if(!u||!p){$("#auErr").textContent="请输入用户名和密码";return;}
   $("#auSubmit").disabled=true;
   try{
-    const r=await fetch("/api/auth/"+(AUTHMODE==="login"?"login":"register"),
+    const r=await fetch("{{ request.scope.get('root_path', '') }}/api/auth/"+(AUTHMODE==="login"?"login":"register"),
       {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({username:u,password:p})});
     const j=await r.json();
     if(!r.ok||j.error){$("#auErr").textContent="⚠ "+(j.error||"失败");$("#auSubmit").disabled=false;return;}
@@ -786,7 +787,7 @@ async function submitAuth(){
   $("#auSubmit").disabled=false;
 }
 async function logout(){
-  try{await fetch("/api/auth/logout",{method:"POST"});}catch(e){}
+  try{await fetch("{{ request.scope.get('root_path', '') }}/api/auth/logout",{method:"POST"});}catch(e){}
   AUTH={user:null,is_admin:false};CURRENT=null;location.hash="";
   $("#userbar").style.display="none";
   try{resetConvView();feed().innerHTML="";$("#welcome").style.display="";$("#feedInner").style.display="none";}catch(e){}

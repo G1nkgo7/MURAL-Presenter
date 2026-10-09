@@ -7,6 +7,8 @@ batch/sample/stage view for the Studio UI.
 
 from __future__ import annotations
 
+from .web_paths import BASE_PATH
+
 import hashlib
 import json
 import os
@@ -879,7 +881,7 @@ def _page_rows(run: Path, sample: Path) -> list[dict[str, Any]]:
                 numbers.add(int(match.group(1)))
     run_id = quote(_run_id(run))
     sample_id = quote(str((_json(sample / "_trace/orchestrator/config.json", {}) or {}).get("sample_id") or sample.name))
-    base = f"/api/trajectory-monitor/runs/{run_id}/samples/{sample_id}/files"
+    base = f"{BASE_PATH}/api/trajectory-monitor/runs/{run_id}/samples/{sample_id}/files"
     pages: list[dict[str, Any]] = []
     for number in sorted(numbers):
         html = sample / "slides" / f"slide_{number:02d}.html"
@@ -1237,7 +1239,7 @@ def _artifact_rows(run: Path, sample: Path) -> list[dict[str, Any]]:
             "kind": "image" if path.suffix.lower() in IMAGE_SUFFIXES else "document",
             "size": path.stat().st_size,
             "updated_at": _iso(path.stat().st_mtime),
-            "url": f"/api/trajectory-monitor/runs/{quote(_run_id(run))}/artifacts/{quote(relative, safe='/')}",
+            "url": f"{BASE_PATH}/api/trajectory-monitor/runs/{quote(_run_id(run))}/artifacts/{quote(relative, safe='/')}",
         })
     return rows
 
@@ -1310,7 +1312,7 @@ def sample_payload(run: Path, sample_id: str) -> dict[str, Any]:
             "recent_log": _tail_log(run / "run.log", resolved_id),
             "pages": _page_rows(run, sample),
             "presentation_url": (
-                f"/api/trajectory-monitor/runs/{quote(_run_id(run))}/samples/{quote(resolved_id)}/files/present.html"
+                f"{BASE_PATH}/api/trajectory-monitor/runs/{quote(_run_id(run))}/samples/{quote(resolved_id)}/files/present.html"
                 if (sample / "present.html").is_file() else None
             ),
         }
@@ -1502,7 +1504,7 @@ def trajectory_deck_page_history(deck_id: int, n: int = Query(..., ge=1)):
     for item in data.get("items", []):
         relative = str(item.get("image_url") or "")
         item["image_url"] = (
-            f"/api/trajectory-monitor/decks/{deck_id}/file?rel={quote(relative)}"
+            f"{BASE_PATH}/api/trajectory-monitor/decks/{deck_id}/file?rel={quote(relative)}"
             if relative else ""
         )
     return data

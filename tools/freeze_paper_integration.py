@@ -19,10 +19,11 @@ def main() -> None:
     for directory in ("webui/studio/static", "webui/studio/templates"):
         files.update(str(path.relative_to(ROOT)) for path in (ROOT / directory).rglob("*") if path.is_file())
     files.update({"webui/.env.example", "webui/Dockerfile", "webui/compose.yaml",
-                  "webui/start.sh", "webui/start.ps1", "webui/RELEASE_MANIFEST.json"})
+                  "webui/start.sh", "webui/start.ps1", "webui/RELEASE_MANIFEST.json",
+                  "webui/scripts/cci-gateway.mjs"})
     files.update({"scripts/runtime_environment.py", "scripts/run_inference.py",
                   "tools/check_paper_release.py", "tools/freeze_paper_integration.py"})
-    release["release"] = "mural-paper-0919-portable-v1"
+    release["release"] = "mural-paper-0919-portable-v2"
     release["channel"] = "paper-release-candidate"
     release["git"] = {
         "source_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),

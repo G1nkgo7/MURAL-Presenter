@@ -3,6 +3,8 @@
 Open self-registration: users pick a username + password (no email). The first
 admin can still be created via `app.cli create-admin`.
 """
+from .web_paths import public_url
+
 import hashlib
 import os
 import re
@@ -73,7 +75,7 @@ def set_session_cookie(resp, token: str) -> None:
     # Secure flag omitted for local http dev; enable behind TLS in production.
     resp.set_cookie(
         SESSION_COOKIE, token,
-        max_age=SESSION_TTL, httponly=True, samesite="lax", path="/",
+        max_age=SESSION_TTL, httponly=True, samesite="lax", path=public_url("/"),
     )
 
 

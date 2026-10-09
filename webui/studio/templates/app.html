@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 {% block title %}MURAL Presenter Studio{% endblock %}
 {% block body %}
-<link rel="stylesheet" href="/static/page-editor.css?v={{ asset_ver }}">
-<script src="/static/page-editor.js?v={{ asset_ver }}" defer></script>
+<link rel="stylesheet" href="{{ request.scope.get('root_path', '') }}/static/page-editor.css?v={{ asset_ver }}">
+<script src="{{ request.scope.get('root_path', '') }}/static/page-editor.js?v={{ asset_ver }}" defer></script>
 <div class="layout" data-authenticated="{{ 1 if authenticated else 0 }}"
      data-edition="{{ edition }}" data-auth-enabled="{{ 1 if auth_enabled else 0 }}"
      data-dynamic-enabled="{{ 1 if dynamic_enabled else 0 }}"
@@ -11,7 +11,7 @@
   <aside class="sidebar">
     <div class="sidebar-brand-row">
       <div class="brand" aria-label="MURAL Presenter Studio">
-        <span class="brand-mark-wrap"><img class="brand-mark" src="/static/logo.svg?v={{ asset_ver }}" alt=""></span>
+        <span class="brand-mark-wrap"><img class="brand-mark" src="{{ request.scope.get('root_path', '') }}/static/logo.svg?v={{ asset_ver }}" alt=""></span>
         <span class="brand-name"><strong><span>MURAL</span></strong><em><b>Presenter</b><span>Studio</span></em></span>
       </div>
       <button type="button" class="sidebar-toggle" id="sidebar-toggle" aria-label="收起侧栏" aria-expanded="true" title="收起侧栏">
@@ -99,7 +99,7 @@
           {% if auth_enabled %}<button type="button" class="guest-only" data-user-action="auth"{% if authenticated %} hidden{% endif %}><span class="user-menu-icon">↗</span><span data-i18n="login_register">登录 / 注册</span></button>{% endif %}
           <button type="button" data-user-action="new"><span class="user-menu-icon">＋</span><span data-i18n="new_presentation">新建演示</span></button>
           <button type="button" class="auth-only" data-user-action="batch"{% if not authenticated %} hidden{% endif %}><span class="user-menu-icon">⇧</span><span data-i18n="batch">批量生成与下载</span></button>
-          <button type="button" onclick="window.location.href='/trajectory-monitor'"><span class="user-menu-icon">▤</span><span>生成轨迹</span></button>
+          <button type="button" onclick="window.location.href=this.dataset.target" data-target="{{ request.scope.get('root_path', '') }}/trajectory-monitor"><span class="user-menu-icon">▤</span><span>生成轨迹</span></button>
           <button type="button" class="auth-only" id="model-add-trigger" data-user-action="model" aria-haspopup="dialog" aria-controls="model-dialog"{% if not authenticated %} hidden{% endif %}><span class="user-menu-icon">◇</span><span>模型配置</span></button>
           {% if dynamic_enabled %}
           <div class="user-menu-sep"></div>
@@ -122,7 +122,7 @@
           <span class="user-profile-chevron">›</span>
         </button>
       </div>
-      <form id="logout-form" method="post" action="/api/auth/logout" hidden><button type="submit">退出</button></form>
+      <form id="logout-form" method="post" action="{{ request.scope.get('root_path', '') }}/api/auth/logout" hidden><button type="submit">退出</button></form>
     </div>
   </aside>
 
@@ -762,7 +762,7 @@
     <div class="auth-gate-aurora" aria-hidden="true"><i></i><i></i><i></i></div>
     <button type="button" class="auth-gate-close" id="auth-gate-close" aria-label="关闭">×</button>
     <div class="auth-gate-brand">
-      <img src="/static/logo.svg?v={{ asset_ver }}" alt="">
+      <img src="{{ request.scope.get('root_path', '') }}/static/logo.svg?v={{ asset_ver }}" alt="">
       <span><strong>MURAL</strong><b>Presenter</b></span>
     </div>
     <div class="auth-gate-copy">

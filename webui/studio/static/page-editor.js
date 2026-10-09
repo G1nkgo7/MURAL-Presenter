@@ -9,7 +9,7 @@
   const escape = (value) => String(value).replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 
   async function loadSource(deckId, page) {
-    const response = await fetch(`/api/decks/${deckId}/pages/${page}/edit`, {credentials:"same-origin", signal:AbortSignal.timeout(20000)});
+    const response = await fetch(`${globalThis.STUDIO_BASE_PATH || ""}/api/decks/${deckId}/pages/${page}/edit`, {credentials:"same-origin", signal:AbortSignal.timeout(20000)});
     const source = await response.json();
     if (!response.ok) throw new Error(source.detail || "原页面暂不能编辑。");
     const frame = document.createElement("iframe");
@@ -377,7 +377,7 @@
     q("[data-editor-save]").disabled=true; q("[data-editor-export]").disabled=true;
     message("正在保存原 HTML 并重新渲染当前页，请稍候…");
     try {
-      const response=await fetch(`/api/decks/${current.deckId}/pages/${current.page}/edit`, {
+      const response=await fetch(`${globalThis.STUDIO_BASE_PATH || ""}/api/decks/${current.deckId}/pages/${current.page}/edit`, {
         method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},
         body:JSON.stringify({version:current.capture.version,changes:updates}), signal:AbortSignal.timeout(250000),
       });

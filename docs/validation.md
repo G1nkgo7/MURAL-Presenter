@@ -1,5 +1,23 @@
 # Validation — 2026-10-09
 
+## Portable integration v2: shared-port Studio deployment
+
+The original dashboard remains the gateway's root service. Studio uses `/studio/`, while
+the paper website keeps `/mural-presenter/`. The gateway strips only Studio's prefix and
+the launcher passes the same prefix to Uvicorn; this is required for nested static-file mounts.
+
+- Portable HTTP and gateway tests: 9 passed, including root deployment, `/studio`, a nested
+  prefix, real Uvicorn static routing, redirects, cookie scope, request bodies and event streams.
+- Existing WebUI service/profile/retirement regression tests: 139 passed, 1 browser test skipped.
+- Real-browser checks exercised the deployed composer and trajectory navigation, with all
+  same-origin requests kept under `/studio/` and no HTTP or JavaScript errors during those checks.
+- The external root page matched the original dashboard byte-for-byte; the paper website remained
+  available. Both the frozen 254-file core and the refreshed v2 integration digest verified.
+
+No model generation or edits to historical presentation data were used for this routing change.
+
+## Initial portable integration validation
+
 This validates the portable 0919 source package, not newly reproduced paper scores.
 Tests used Python 3.12.13 and separate environments installed from both WebUI `uv.lock` files.
 Test-only `pytest` and `httpx` were installed separately. No model requests were made.

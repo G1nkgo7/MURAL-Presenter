@@ -130,7 +130,7 @@ const ed = {                 // 编辑器状态
 let isAuthenticated = document.querySelector(".layout")?.dataset.authenticated === "1";
 const dynamicEnabled = document.querySelector(".layout")?.dataset.dynamicEnabled !== "0";
 const trajectoryMode = document.querySelector(".layout")?.dataset.trajectoryMode === "1";
-const trajectoryDeckApi = (id, suffix = "") => `/api/trajectory-monitor/decks/${encodeURIComponent(id)}${suffix}`;
+const trajectoryDeckApi = (id, suffix = "") => `${globalThis.STUDIO_BASE_PATH || ""}/api/trajectory-monitor/decks/${encodeURIComponent(id)}${suffix}`;
 let resumeGenerationAfterAuth = false;
 let composerLaunchMorph = null;
 let pageViewTransitionToken = 0;
@@ -933,14 +933,14 @@ async function switchAccount() {
   const button = $('[data-user-action="switch"]');
   if (button) button.disabled = true;
   try {
-    const response = await fetch("/api/auth/logout", {
+    const response = await fetch(`${globalThis.STUDIO_BASE_PATH || ""}/api/auth/logout`, {
       method: "POST",
       credentials: "same-origin",
       redirect: "follow",
     });
     if (!response.ok) throw new Error("切换账号失败，请稍后重试");
     // 重新载入游客态页面，既清除上一账号的界面数据，也直接打开登录弹窗。
-    location.assign("/?auth=login");
+    location.assign(`${globalThis.STUDIO_BASE_PATH || ""}/?auth=login`);
   } catch (error) {
     if (button) button.disabled = false;
     showStudioNotice(error?.message || "切换账号失败，请稍后重试");
@@ -1227,7 +1227,7 @@ async function deleteCustomModel(key, button = null) {
   if (button) button.disabled = true;
   try {
     const id = key.split(":")[1];
-    const response = await fetch(`/api/models/custom/${encodeURIComponent(id)}`, { method: "DELETE" });
+    const response = await fetch(`${globalThis.STUDIO_BASE_PATH || ""}/api/models/custom/${encodeURIComponent(id)}`, { method: "DELETE" });
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.detail || "删除失败");
     customModelItems = customModelItems.filter((item) => item.key !== key);
@@ -1254,7 +1254,7 @@ function renderCustomModelList() {
 }
 
 async function loadCustomModels() {
-  const payload = await jget("/api/models/custom");
+  const payload = await jget(`${globalThis.STUDIO_BASE_PATH || ""}/api/models/custom`);
   customModelItems = payload.models || [];
   customModelItems.forEach((model) => upsertCustomModelOption(model));
   renderCustomModelList();
@@ -1279,7 +1279,7 @@ let serviceSettings = null;
 async function guideOptionalMaterialServices() {
   if (localStorage.getItem("studio_optional_material_services_hint") === "1") return;
   try {
-    const settings = serviceSettings || await jget("/api/settings/services");
+    const settings = serviceSettings || await jget(`${globalThis.STUDIO_BASE_PATH || ""}/api/settings/services`);
     const missing = [];
     if (!settings.image_generation?.available) missing.push("AI 生图");
     if (!settings.web_search?.available) missing.push("联网搜图/搜索");
@@ -1365,7 +1365,7 @@ async function setServiceDialog(open) {
   errorBox.hidden = true;
   if (!open) return;
   try {
-    applyServiceSettings(await jget("/api/settings/services"));
+    applyServiceSettings(await jget(`${globalThis.STUDIO_BASE_PATH || ""}/api/settings/services`));
   } catch (error) {
     errorBox.textContent = "服务配置加载失败：" + error.message;
     errorBox.hidden = false;
@@ -1458,7 +1458,7 @@ async function setEnvironmentDialog(open) {
     $("#environment-model").value = currentModel;
   }
   try {
-    renderEnvironmentCheck(await jget("/api/settings/environment-check"));
+    renderEnvironmentCheck(await jget(`${globalThis.STUDIO_BASE_PATH || ""}/api/settings/environment-check`));
   } catch (error) {
     const box = $("#environment-check-error");
     box.textContent = "上次检验结果加载失败：" + error.message;
@@ -1478,7 +1478,7 @@ async function runEnvironmentCheck() {
   $("#environment-check-meta").textContent = "正在检查当前 v1 的本地依赖与配置，不发送外部模型请求";
   $("#environment-check-list").innerHTML = "";
   try {
-    const response = await fetch("/api/settings/environment-check", {
+    const response = await fetch(`${globalThis.STUDIO_BASE_PATH || ""}/api/settings/environment-check`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ model: $("#environment-model").value }),
@@ -1514,14 +1514,14 @@ function editorPresentationKind() {
   return ed.kind === "dynamic" || ed.pptOutput === "dynamic_html" ? "dynamic" : "static";
 }
 function fileUrl(n) {
-  if (ed.kind === "dynamic") return `/dynamic/files/${ed.id}/shots/page_${pad2(n)}.png?t=${ed.dynamicStamp || 0}`;
+  if (ed.kind === "dynamic") return `${globalThis.STUDIO_BASE_PATH || ""}/dynamic/files/${ed.id}/shots/page_${pad2(n)}.png?t=${ed.dynamicStamp || 0}`;
   const t = (ed.rtimes && ed.rtimes[String(n)]) || 0;   // mtime 作缓存戳:重渲后换新图
   if (ed.pptOutput === "dynamic_html") {
-    return `/api/decks/${ed.id}/file?rel=shots/page_${pad2(n)}.png&t=${t}`;
+    return `${globalThis.STUDIO_BASE_PATH || ""}/api/decks/${ed.id}/file?rel=shots/page_${pad2(n)}.png&t=${t}`;
   }
   return trajectoryMode
     ? `${trajectoryDeckApi(ed.id, "/file")}?rel=renders/slide_${pad2(n)}.png&t=${t}`
-    : `/api/decks/${ed.id}/file?rel=renders/slide_${pad2(n)}.png&t=${t}`;
+    : `${globalThis.STUDIO_BASE_PATH || ""}/api/decks/${ed.id}/file?rel=renders/slide_${pad2(n)}.png&t=${t}`;
 }
 
 /* ---------------- 侧栏列表 ---------------- */
@@ -1811,7 +1811,7 @@ function closeHistoryRenameDialog() {
 
 async function updateHistoryItem(target, changes, { quiet = false } = {}) {
   try {
-    await jpatch(`/api/history/${target.kind}/${encodeURIComponent(target.id)}`, changes);
+    await jpatch(`${globalThis.STUDIO_BASE_PATH || ""}/api/history/${target.kind}/${encodeURIComponent(target.id)}`, changes);
     if (changes.title && String(ed.id) === String(target.id) && ed.kind === target.kind) {
       $("#ed-title").textContent = changes.title;
     }
@@ -1826,11 +1826,11 @@ async function updateHistoryItem(target, changes, { quiet = false } = {}) {
 async function regenerateHistoryItem(target) {
   try {
     const response = target.kind === "dynamic"
-      ? await fetch("/api/dynamic/regenerate", {
+      ? await fetch(`${globalThis.STUDIO_BASE_PATH || ""}/api/dynamic/regenerate`, {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ conv_id: target.id }),
         })
-      : await fetch(`/api/decks/${encodeURIComponent(target.id)}/regenerate`, { method: "POST" });
+      : await fetch(`${globalThis.STUDIO_BASE_PATH || ""}/api/decks/${encodeURIComponent(target.id)}/regenerate`, { method: "POST" });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(payload.detail || payload.error || "重新生成失败");
     if (target.kind === "dynamic") await openDynamic(payload.conv_id, { subscribeNow: true });
@@ -1890,9 +1890,9 @@ async function loadDecks(active) {
   }
   try {
     const [staticResult, dynamicResult] = await Promise.all([
-      jget(trajectoryMode ? "/api/trajectory-monitor/decks" : "/api/decks").catch(() => ({ decks: [] })),
+      jget(trajectoryMode ? `${globalThis.STUDIO_BASE_PATH || ""}/api/trajectory-monitor/decks` : `${globalThis.STUDIO_BASE_PATH || ""}/api/decks`).catch(() => ({ decks: [] })),
       dynamicEnabled
-        ? jget("/api/dynamic/conversations").catch(() => ({ items: [] }))
+        ? jget(`${globalThis.STUDIO_BASE_PATH || ""}/api/dynamic/conversations`).catch(() => ({ items: [] }))
         : Promise.resolve({ items: [] }),
     ]);
     syncDynamicModels(dynamicResult);
@@ -1957,8 +1957,8 @@ function askDelete(row, id, kind = "static") {
 async function removeDeck(id, kind = "static") {
   try {
     const r = kind === "dynamic"
-      ? await fetch("/api/dynamic/delete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ conv_id: id }) })
-      : await fetch(`/api/decks/${id}`, { method: "DELETE" });
+      ? await fetch(`${globalThis.STUDIO_BASE_PATH || ""}/api/dynamic/delete`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ conv_id: id }) })
+      : await fetch(`${globalThis.STUDIO_BASE_PATH || ""}/api/decks/${id}`, { method: "DELETE" });
     if (!r.ok) throw new Error(await r.text());
   } catch (e) { alert("删除失败: " + e.message); return; }
   if (String(ed.id) === String(id)) closeEditor();
@@ -2076,19 +2076,19 @@ function attachmentSizeLabel(size = 0) {
 }
 function deckAttachmentPreviewUrls(item = {}, index = 0) {
   if (!/^\d+$/.test(String(ed.id || ""))) return { url: item.url || "", fallbackUrl: "", previewUrl: "" };
-  const dedicatedUrl = `/api/decks/${ed.id}/attachments/${index}`;
+  const dedicatedUrl = `${globalThis.STUDIO_BASE_PATH || ""}/api/decks/${ed.id}/attachments/${index}`;
   let rel = String(item.preview_rel || "").replace(/^\/+/, "");
   // The dedicated endpoint is the canonical original attachment. Workspace
   // paths are optional derived previews and may disappear after pipeline
   // staging, so they must never be the primary PDF/open-in-new-window URL.
   const workspaceUrl = rel
-    ? `/api/decks/${ed.id}/file?rel=${encodeURIComponent(rel)}`
+    ? `${globalThis.STUDIO_BASE_PATH || ""}/api/decks/${ed.id}/file?rel=${encodeURIComponent(rel)}`
     : "";
   const suppliedUrl = String(item.url || "");
   return {
     url: suppliedUrl || dedicatedUrl,
     fallbackUrl: suppliedUrl ? dedicatedUrl : workspaceUrl,
-    previewUrl: `/api/decks/${ed.id}/attachments/${index}/preview`,
+    previewUrl: `${globalThis.STUDIO_BASE_PATH || ""}/api/decks/${ed.id}/attachments/${index}/preview`,
   };
 }
 function attachmentObjectUrl(file) {
@@ -2359,7 +2359,7 @@ function ensureFontPreviewStylesheet() {
   const link = document.createElement("link");
   link.id = "studio-font-preview-css";
   link.rel = "stylesheet";
-  link.href = "/api/preview-fonts.css";
+  link.href = `${globalThis.STUDIO_BASE_PATH || ""}/api/preview-fonts.css`;
   document.head.appendChild(link);
 }
 function renderFontControls() {
@@ -2521,7 +2521,7 @@ async function send() {
   if (pipelineHasCap("custom_fonts")) fontFiles.forEach((f) => body.append("font_files", f));
   $("#send").disabled = true;
   try {
-    const r = await fetch("/api/decks", { method: "POST", body });
+    const r = await fetch(`${globalThis.STUDIO_BASE_PATH || ""}/api/decks`, { method: "POST", body });
     if (r.status === 401) {
       isAuthenticated = false;
       clearComposerLaunchMorph({ restore: true });
@@ -2561,7 +2561,7 @@ async function sendSensePresentDazzle(query) {
   body.set("effort", selectedEffort());
   button.disabled = true;
   try {
-    const response = await fetch("/api/decks", { method: "POST", body });
+    const response = await fetch(`${globalThis.STUDIO_BASE_PATH || ""}/api/decks`, { method: "POST", body });
     if (response.status === 401) {
       isAuthenticated = false;
       clearComposerLaunchMorph({ restore: true });
@@ -2588,7 +2588,7 @@ async function sendDynamic(query) {
   if (!model) { clearComposerLaunchMorph({ restore: true }); alert("当前没有可用的动态模型"); return; }
   button.disabled = true;
   try {
-    const r = await fetch("/api/dynamic/send", {
+    const r = await fetch(`${globalThis.STUDIO_BASE_PATH || ""}/api/dynamic/send`, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         message: query,
@@ -2641,7 +2641,7 @@ function batchStatusText(batch) {
 async function loadBatches(selectId = selectedBatchId) {
   const box = $("#batch-history");
   try {
-    const { batches } = await jget("/api/batches");
+    const { batches } = await jget(`${globalThis.STUDIO_BASE_PATH || ""}/api/batches`);
     if (!batches.length) {
       box.innerHTML = '<div class="muted small">还没有批次</div>';
       $("#batch-detail").hidden = true;
@@ -2691,14 +2691,14 @@ function renderBatchDetail(batch) {
   });
   const download = $("#batch-download");
   download.hidden = !batch.download_ready;
-  download.href = batch.download_ready ? `/api/batches/${batch.id}/download` : "#";
+  download.href = batch.download_ready ? `${globalThis.STUDIO_BASE_PATH || ""}/api/batches/${batch.id}/download` : "#";
 }
 
 async function selectBatch(id) {
   if (batchTimer) { clearTimeout(batchTimer); batchTimer = null; }
   selectedBatchId = id;
   try {
-    const batch = await jget(`/api/batches/${id}`);
+    const batch = await jget(`${globalThis.STUDIO_BASE_PATH || ""}/api/batches/${id}`);
     renderBatchDetail(batch);
     if (!batch.terminal && !$("#batch-modal").hidden) {
       batchTimer = setTimeout(() => selectBatch(id), 3000);
@@ -2772,7 +2772,7 @@ async function submitBatch(event) {
   button.textContent = "正在创建…";
   $("#batch-error").hidden = true;
   try {
-    const response = await fetch("/api/batches", { method: "POST", body });
+    const response = await fetch(`${globalThis.STUDIO_BASE_PATH || ""}/api/batches`, { method: "POST", body });
     if (!response.ok) {
       let message = await response.text();
       try { message = JSON.parse(message).detail || message; } catch {}
@@ -2845,7 +2845,7 @@ async function openDeck(id) {
                       workflowArtifactCache: {}, workflowArtifactLoading: "", workflowArtifactRequest: 0,
                       workflowDocuments: {}, workflowDocumentSignature: "", workflowDocumentLoading: "",
                       specialistArtifacts: {}, agentTimings: {}, overallTiming: null,
-                      staticDeckUrl: trajectoryMode ? trajectoryDeckApi(id, "/files/present.html") : `/api/decks/${id}/files/present.html`, staticDeckReady: false,
+                      staticDeckUrl: trajectoryMode ? trajectoryDeckApi(id, "/files/present.html") : `${globalThis.STUDIO_BASE_PATH || ""}/api/decks/${id}/files/present.html`, staticDeckReady: false,
                       staticDeckFinal: false, staticHtmlStamp: 0, staticStamp: Date.now(),
                       fullQuery: "",
                       briefMeta: {}, attachments: [], staticFollowups: [], staticConversationTurns: [],
@@ -2874,7 +2874,7 @@ async function openDeck(id) {
   ed.deckLoadController = controller;
   const timeout = setTimeout(() => controller.abort(), 20000);
   const isCurrent = () => ed.deckLoadController === controller && ed.id === id;
-  const progressPromise = jget(trajectoryMode ? trajectoryDeckApi(id, "/progress") : `/api/decks/${id}/progress`, {signal: controller.signal});
+  const progressPromise = jget(trajectoryMode ? trajectoryDeckApi(id, "/progress") : `${globalThis.STUDIO_BASE_PATH || ""}/api/decks/${id}/progress`, {signal: controller.signal});
   const workspaceTransition = transitionComposerToEditor();
   try {
     const p = await progressPromise;
@@ -2963,7 +2963,7 @@ async function openDynamic(convId, { subscribeNow = false } = {}) {
   $$("#pr-steps li").forEach((li) => (li.className = ""));
   $("#canvas-img").hidden = true; $("#canvas-deck").hidden = true;
   buildFilmstrip(); select(0, { byUser: false });
-  const conversationPromise = jget(`/api/dynamic/conversation?conv_id=${encodeURIComponent(convId)}`);
+  const conversationPromise = jget(`${globalThis.STUDIO_BASE_PATH || ""}/api/dynamic/conversation?conv_id=${encodeURIComponent(convId)}`);
   const workspaceTransition = transitionComposerToEditor();
   let data;
   try { data = await conversationPromise; }
@@ -3182,7 +3182,7 @@ function renderDynamicChrome() {
 
 function subscribeDynamic(convId) {
   if (ed.sse) ed.sse.close();
-  const es = new EventSource(`/api/dynamic/stream?conv_id=${encodeURIComponent(convId)}`); ed.sse = es;
+  const es = new EventSource(`${globalThis.STUDIO_BASE_PATH || ""}/api/dynamic/stream?conv_id=${encodeURIComponent(convId)}`); ed.sse = es;
   es.onmessage = (message) => {
     if (ed.kind !== "dynamic" || ed.id !== convId) { es.close(); return; }
     try { applyDynamicEvent(JSON.parse(message.data)); } catch {}
@@ -3195,7 +3195,7 @@ function startDynamicConversationPoll(convId) {
   const poll = async () => {
     if (ed.kind !== "dynamic" || String(ed.id) !== String(convId)) return;
     try {
-      const data = await jget(`/api/dynamic/conversation?conv_id=${encodeURIComponent(convId)}`);
+      const data = await jget(`${globalThis.STUDIO_BASE_PATH || ""}/api/dynamic/conversation?conv_id=${encodeURIComponent(convId)}`);
       (data.events || []).forEach((event) => applyDynamicEvent(event));
       if (!data.active) {
         if (ed.status === "running") ed.status = data.meta?.status || "interrupted";
@@ -3262,7 +3262,7 @@ function apply(p) {
   ed.pptOutput = p.ppt_output || ed.pptOutput || "static_html";
   if (p.html_entry) ed.staticDeckUrl = trajectoryMode
     ? trajectoryDeckApi(ed.id, `/files/${p.html_entry}`)
-    : `/api/decks/${ed.id}/files/${p.html_entry}`;
+    : `${globalThis.STUDIO_BASE_PATH || ""}/api/decks/${ed.id}/files/${p.html_entry}`;
   const presentationKind = editorPresentationKind();
   $("#editor").dataset.output = presentationKind;
   setRailLabels(presentationKind);
@@ -3831,7 +3831,7 @@ async function loadPageHistory(n, { quiet = false, prefetch = false, force = fal
   const request = prefetch ? ed.historyRequest : ++ed.historyRequest;
   let pending = ed.pageHistoryPending.get(page);
   if (!pending) {
-    pending = jget(`${trajectoryMode ? trajectoryDeckApi(ed.id, "/page-history") : `/api/decks/${ed.id}/page-history`}?n=${page}`);
+    pending = jget(`${trajectoryMode ? trajectoryDeckApi(ed.id, "/page-history") : `${globalThis.STUDIO_BASE_PATH || ""}/api/decks/${ed.id}/page-history`}?n=${page}`);
     ed.pageHistoryPending.set(page, pending);
   }
   try {
@@ -3885,7 +3885,7 @@ function speechFromMarkdown(text, n, source = "speech.md") {
 
 async function loadDynamicSpeechFile(n) {
   for (const rel of ["speech.md", "plan/speech.md"]) {
-    const response = await fetch(`/dynamic/files/${encodeURIComponent(ed.id)}/${rel}`, { credentials: "same-origin" });
+    const response = await fetch(`${globalThis.STUDIO_BASE_PATH || ""}/dynamic/files/${encodeURIComponent(ed.id)}/${rel}`, { credentials: "same-origin" });
     if (response.ok) return speechFromMarkdown(await response.text(), n, rel);
     if (response.status !== 404) throw new Error(`讲稿读取失败 (${response.status})`);
   }
@@ -3896,7 +3896,7 @@ async function loadDynamicPageSpeech(n, { quiet = false } = {}) {
   if (ed.kind !== "dynamic" || !ed.id || n <= 0) return;
   const request = ++ed.speechRequest;
   try {
-    const data = await jget(`/api/dynamic/page-speech?conv_id=${encodeURIComponent(ed.id)}&n=${n}`);
+    const data = await jget(`${globalThis.STUDIO_BASE_PATH || ""}/api/dynamic/page-speech?conv_id=${encodeURIComponent(ed.id)}&n=${n}`);
     if (request !== ed.speechRequest || ed.kind !== "dynamic" || ed.sel !== n) return;
     renderPageSpeech(data || {}, n);
   } catch (error) {
@@ -4019,7 +4019,7 @@ function renderActions(status) {
                  <span class="export-menu-icon" aria-hidden="true">⌘</span><span class="export-menu-copy"><b>复制输出路径</b><small>复制服务器上的产物目录</small></span>
                </button>
                <span class="export-menu-separator" aria-hidden="true"></span>
-               <a class="export-menu-item" href="/api/dynamic/download?conv_id=${encodeURIComponent(ed.id)}" role="menuitem">
+               <a class="export-menu-item" href="${globalThis.STUDIO_BASE_PATH || ""}/api/dynamic/download?conv_id=${encodeURIComponent(ed.id)}" role="menuitem">
                  <span class="export-menu-icon" aria-hidden="true">↓</span><span class="export-menu-copy"><b>下载 .zip</b><small>包含动态 HTML、图片与本地资源</small></span>
                </a>
              </div>
@@ -4039,7 +4039,7 @@ function renderActions(status) {
       renderActions("stopped");
       showStudioNotice("生成已中断", { type: "info", duration: 2800 });
       try {
-        await fetch("/api/dynamic/stop", {
+        await fetch(`${globalThis.STUDIO_BASE_PATH || ""}/api/dynamic/stop`, {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ conv_id: ed.id }),
         });
@@ -4094,12 +4094,12 @@ function renderActions(status) {
                <span class="export-menu-icon export-file-icon" aria-hidden="true">↓</span><span class="export-menu-copy"><b>导出 ${label}</b><small>${note} · 按需生成</small></span>
              </button>`).join("") : (dynamicHtml
                ? ""
-               : `<a class="export-menu-item" href="/api/decks/${ed.id}/pptx" role="menuitem">
+               : `<a class="export-menu-item" href="${globalThis.STUDIO_BASE_PATH || ""}/api/decks/${ed.id}/pptx" role="menuitem">
                     <span class="export-menu-icon export-file-icon" aria-hidden="true">P</span><span class="export-menu-copy"><b>导出 .pptx</b><small>下载 PowerPoint 文件</small></span>
-                  </a>`) + `<a class="export-menu-item" href="/api/decks/${ed.id}/download" role="menuitem">
+                  </a>`) + `<a class="export-menu-item" href="${globalThis.STUDIO_BASE_PATH || ""}/api/decks/${ed.id}/download" role="menuitem">
                <span class="export-menu-icon" aria-hidden="true">↓</span><span class="export-menu-copy"><b>下载 .zip</b><small>下载完整工程与资源</small></span>
              </a>`}
-             ${isV1 ? `<a class="export-menu-item" href="/api/decks/${ed.id}/project-download" role="menuitem">
+             ${isV1 ? `<a class="export-menu-item" href="${globalThis.STUDIO_BASE_PATH || ""}/api/decks/${ed.id}/project-download" role="menuitem">
                <span class="export-menu-icon" aria-hidden="true">⌘</span><span class="export-menu-copy"><b>下载作者工程包</b><small>页面源码、规划与研究材料；非便携演示包</small></span>
              </a>` : ""}
              <span class="export-menu-separator" aria-hidden="true"></span>
@@ -4123,7 +4123,7 @@ function renderActions(status) {
     renderActions("interrupted");
     showStudioNotice("生成已中断", { type: "info", duration: 2800 });
     try {
-      await fetch(`/api/decks/${ed.id}/cancel`, { method: "POST" });
+      await fetch(`${globalThis.STUDIO_BASE_PATH || ""}/api/decks/${ed.id}/cancel`, { method: "POST" });
     } catch (error) {
       showStudioNotice(`停止请求发送失败：${error.message}`, { type: "error" });
     }
@@ -4133,7 +4133,7 @@ function renderActions(status) {
     const retryLabel = recoverable ? "从头重新生成" : "↻ 重新生成";
     rb.disabled = true; rb.textContent = "排队中…";
     try {
-      const r = await fetch(`/api/decks/${ed.id}/retry`, { method: "POST" });
+      const r = await fetch(`${globalThis.STUDIO_BASE_PATH || ""}/api/decks/${ed.id}/retry`, { method: "POST" });
       if (!r.ok) throw new Error((await r.json()).detail || "失败");
       await loadDecks(ed.id);
       openDeck(ed.id);                       // 重新进入直播
@@ -4143,7 +4143,7 @@ function renderActions(status) {
   if (resume) resume.onclick = async () => {
     resume.disabled = true; resume.textContent = "恢复中…";
     try {
-      const r = await fetch(`/api/decks/${ed.id}/resume`, { method: "POST" });
+      const r = await fetch(`${globalThis.STUDIO_BASE_PATH || ""}/api/decks/${ed.id}/resume`, { method: "POST" });
       if (!r.ok) throw new Error((await r.json()).detail || "失败");
       await loadDecks(ed.id);
       openDeck(ed.id);
@@ -4164,7 +4164,7 @@ async function downloadDeckExport(format) {
   renderActions(ed.status);
   const notice = showStudioNotice(`正在生成 ${format.toUpperCase()}，完成后将自动下载…`, { type: "info", duration: 0 });
   try {
-    const response = await fetch(`/api/decks/${encodeURIComponent(deckId)}/export/${format}`, { method: "POST" });
+    const response = await fetch(`${globalThis.STUDIO_BASE_PATH || ""}/api/decks/${encodeURIComponent(deckId)}/export/${format}`, { method: "POST" });
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
       throw new Error(error.detail || `HTTP ${response.status}`);
@@ -4184,7 +4184,7 @@ async function downloadDeckExport(format) {
       const fallbackCount = response.headers.get("X-Mural-Raster-Fallbacks");
       const result = showStudioNotice(`可编辑 PPTX 已生成：${textCount} 个原生文本对象，${fallbackCount} 处复杂效果保留为局部图片。字体未嵌入，接收端需安装报告所列字体。`, { type: "info", duration: 0 });
       const reportLink = document.createElement("a");
-      reportLink.href = `/api/decks/${encodeURIComponent(deckId)}/file?rel=${report}`;
+      reportLink.href = `${globalThis.STUDIO_BASE_PATH || ""}/api/decks/${encodeURIComponent(deckId)}/file?rel=${report}`;
       reportLink.textContent = " 查看编辑覆盖报告";
       reportLink.target = "_blank";
       reportLink.rel = "noopener";
@@ -4243,7 +4243,7 @@ function bindFontResolution() {
   if (!button) return;
   button.onclick = async () => {
     try {
-      const data = await jget(`/api/decks/${ed.id}/font-resolution`);
+      const data = await jget(`${globalThis.STUDIO_BASE_PATH || ""}/api/decks/${ed.id}/font-resolution`);
       if (!data.ready || !(data.resolutions || []).length) {
         showStudioNotice("字体解析尚未生成（需要至少一次打包渲染）", { type: "info", duration: 3600 });
         return;
@@ -4393,8 +4393,8 @@ async function copyOutputLocation() {
   button.textContent = "读取中…";
   try {
     const endpoint = ed.kind === "dynamic"
-      ? `/api/dynamic/output-location?conv_id=${encodeURIComponent(ed.id)}`
-      : `/api/decks/${encodeURIComponent(ed.id)}/output-location`;
+      ? `${globalThis.STUDIO_BASE_PATH || ""}/api/dynamic/output-location?conv_id=${encodeURIComponent(ed.id)}`
+      : `${globalThis.STUDIO_BASE_PATH || ""}/api/decks/${encodeURIComponent(ed.id)}/output-location`;
     const payload = await jget(endpoint);
     await writeClipboardText(payload.path || "");
     setTemporaryButtonText(button, "目录已复制", "⌘ 复制输出目录");
@@ -4611,7 +4611,7 @@ function workflowArtifactUrl(file) {
   const path = rawImage ? `/trace-images/${rawImage[1]}` : `/files/${rel}`;
   return trajectoryMode
     ? trajectoryDeckApi(ed.id, path)
-    : `/api/decks/${encodeURIComponent(ed.id)}${path}`;
+    : `${globalThis.STUDIO_BASE_PATH || ""}/api/decks/${encodeURIComponent(ed.id)}${path}`;
 }
 
 function workflowArtifactFiles() {
@@ -4805,7 +4805,7 @@ function syncWorkflowArtifactSelection() {
 function workflowAgentTraceUrl(agentKey) {
   const base = trajectoryMode
     ? trajectoryDeckApi(ed.id, `/agent-trace/${encodeURIComponent(agentKey)}`)
-    : `/api/decks/${encodeURIComponent(ed.id)}/agent-trace/${encodeURIComponent(agentKey)}`;
+    : `${globalThis.STUDIO_BASE_PATH || ""}/api/decks/${encodeURIComponent(ed.id)}/agent-trace/${encodeURIComponent(agentKey)}`;
   const params = new URLSearchParams();
   if (ed.workflowTraceSegment && ed.workflowTraceSegmentPinned) params.set("segment", ed.workflowTraceSegment);
   params.set("source", ed.workflowTraceSource || "messages");
@@ -5267,7 +5267,7 @@ async function loadWorkflowToolOutput(toolId, {force = false} = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 10000);
   try {
-    const response = await fetch(`/api/decks/${encodeURIComponent(deckId)}/tool-output/${encodeURIComponent(toolId)}?cursor=${state.cursor}`, {cache: "no-store", signal: controller.signal});
+    const response = await fetch(`${globalThis.STUDIO_BASE_PATH || ""}/api/decks/${encodeURIComponent(deckId)}/tool-output/${encodeURIComponent(toolId)}?cursor=${state.cursor}`, {cache: "no-store", signal: controller.signal});
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.detail || "诊断读取失败");
     if (ed.id !== deckId) return;
@@ -5548,7 +5548,7 @@ function renderWorkflowProviderAttempts() {
         more.disabled = true;
         const deckId = ed.id;
         try {
-          const response = await fetch(`/api/decks/${deckId}/provider-trace/${encodeURIComponent(attempt)}/${source}?cursor=${state.cursor}&limit=65536`);
+          const response = await fetch(`${globalThis.STUDIO_BASE_PATH || ""}/api/decks/${deckId}/provider-trace/${encodeURIComponent(attempt)}/${source}?cursor=${state.cursor}&limit=65536`);
           if (!response.ok) throw new Error(response.status === 404 ? "尚未记录；可稍后重试" : `读取失败 (${response.status})`);
           const value = await response.json();
           state.content += value.content;
@@ -6105,7 +6105,7 @@ async function sendWorkflowFollowup(event) {
   form.classList.add("is-sending");
   syncWorkflowComposer();
   try {
-    const response = await fetch(`/api/decks/${ed.id}/continue`, {
+    const response = await fetch(`${globalThis.STUDIO_BASE_PATH || ""}/api/decks/${ed.id}/continue`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ message }),
@@ -8201,7 +8201,7 @@ async function syncStaticHistoricalTurnFeeds() {
     node.dataset.feedState = "loading";
     const revision = Number(node.dataset.revision) || 0;
     try {
-      const payload = await jget(`/api/decks/${encodeURIComponent(ed.id)}/turn-feed?revision_no=${revision}`);
+      const payload = await jget(`${globalThis.STUDIO_BASE_PATH || ""}/api/decks/${encodeURIComponent(ed.id)}/turn-feed?revision_no=${revision}`);
       if (ed.kind !== "static" || !node.isConnected) return;
       node.dataset.feedState = "ready";
       const workflowList = node.closest("#workflow-message-list");
@@ -8356,7 +8356,7 @@ async function sendTaskFollowup(event) {
   try {
     const isDynamic = ed.kind === "dynamic";
     const response = await fetch(
-      isDynamic ? "/api/dynamic/send" : `/api/decks/${ed.id}/continue`,
+      isDynamic ? `${globalThis.STUDIO_BASE_PATH || ""}/api/dynamic/send` : `${globalThis.STUDIO_BASE_PATH || ""}/api/decks/${ed.id}/continue`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -10326,8 +10326,8 @@ function specialistGalleryMarkup(items, { artifactMode = "inline", modifier = ""
   return list.length ? `<div class="specialist-gallery${list.length === 1 ? " single" : ""}${modifier ? ` ${modifier}` : ""}">${list.map(item => {
     const rel = String(item.path);
     const version = Number(item.mtime || 0);
-    const full = `/api/decks/${encodeURIComponent(ed.id)}/file?rel=${encodeURIComponent(rel)}`;
-    const thumb = item.legacy ? `${full}&v=${version}` : `/api/decks/${encodeURIComponent(ed.id)}/asset-thumbnail?rel=${encodeURIComponent(rel)}&v=${version}`;
+    const full = `${globalThis.STUDIO_BASE_PATH || ""}/api/decks/${encodeURIComponent(ed.id)}/file?rel=${encodeURIComponent(rel)}`;
+    const thumb = item.legacy ? `${full}&v=${version}` : `${globalThis.STUDIO_BASE_PATH || ""}/api/decks/${encodeURIComponent(ed.id)}/asset-thumbnail?rel=${encodeURIComponent(rel)}&v=${version}`;
     const label = String(item.name || rel.split("/").at(-1)).replace(/\.[^.]+$/, "").replace(/^generated-[a-f0-9]+$/i, "生成素材").replace(/^contact-sheet$/i, "素材总览");
     const origins = { downloaded: "网络图片 · 已下载", generated: "AI 生成", material: "用户材料", derived: "派生素材", unclassified: "来源未登记" };
     const origin = String(item.origin || "unclassified");
@@ -10598,7 +10598,7 @@ function muralMakingMarkup(view, hero = false, { checklist = true } = {}) {
   const current = view.rows.filter(row => row.state === "running").map(row => `P${row.page}`).join("、");
   return `${hero ? `<section class="mural-making-hero${view.active ? " active" : ""}" aria-label="${view.loadingRecords ? "MURAL 任务加载" : "MURAL 制作进度"}">
     <header><span class="ce-text">${escapeHtml(view.status)}</span>${view.loadingRecords ? "" : `<span>${progress} 页已有预览</span>`}</header>
-    <div class="mural-making-brand"><img src="/static/logo.svg" alt="MURAL Logo"><strong>MURAL</strong>
+    <div class="mural-making-brand"><img src="${globalThis.STUDIO_BASE_PATH || ""}/static/logo.svg" alt="MURAL Logo"><strong>MURAL</strong>
       <p>${escapeHtml(view.loadingRecords ? view.active ? "正在载入页面、消息与执行轨迹" : "未能读取任务记录，请重试" : !view.active ? "当前未继续生成，请查看任务记录与后续操作" : current ? `${current} 正在制作` : view.total ? "页面按实际任务并行推进" : "正在规划 · 页数尚未确定")}</p>
       ${view.loadingRecords ? "" : `<b>${progress}<small>页已有预览</small></b>`}
       ${view.total ? `<progress value="${view.previews}" max="${view.total}" aria-label="已生成预览页数"></progress>` : ""}
@@ -10885,7 +10885,7 @@ async function fetchLive() {
   const cursor = Number(ed.liveEventCursor || 0);
   try {
     const suffix = `/livefeed?cursor=${encodeURIComponent(cursor)}`;
-    const payload = await jget(trajectoryMode ? trajectoryDeckApi(deckId, suffix) : `/api/decks/${deckId}${suffix}`);
+    const payload = await jget(trajectoryMode ? trajectoryDeckApi(deckId, suffix) : `${globalThis.STUDIO_BASE_PATH || ""}/api/decks/${deckId}${suffix}`);
     if (ed.id !== deckId) return;
     if (payload.live_event_schema === "mural.live-event.v1") {
       const reset = payload.live_cursor_reset === true;
@@ -10993,7 +10993,7 @@ async function loadPlan(n) {
   }
   if (cached) { renderPlan(n, cached); return; }
   let info;
-  try { info = await jget(`${trajectoryMode ? trajectoryDeckApi(ed.id, "/slideinfo") : `/api/decks/${ed.id}/slideinfo`}?n=${n}`); }
+  try { info = await jget(`${trajectoryMode ? trajectoryDeckApi(ed.id, "/slideinfo") : `${globalThis.STUDIO_BASE_PATH || ""}/api/decks/${ed.id}/slideinfo`}?n=${n}`); }
   catch { panel.hidden = true; return; }
   if (ed.sel !== n) return;                                // 用户已切到别页
   if (!info.exists) {
@@ -11028,7 +11028,7 @@ function renderPlan(n, info) {
   const link = $("#pp-html");
   if (info.html_rel) {
     link.hidden = false;
-    link.href = trajectoryMode ? trajectoryDeckApi(ed.id, `/files/${info.html_rel}`) : `/api/decks/${ed.id}/files/${info.html_rel}`;
+    link.href = trajectoryMode ? trajectoryDeckApi(ed.id, `/files/${info.html_rel}`) : `${globalThis.STUDIO_BASE_PATH || ""}/api/decks/${ed.id}/files/${info.html_rel}`;
     link.textContent = n === 0 ? "设计系统 css" : "页面源码";
   } else link.hidden = true;
   $("#pp-md").innerHTML = info.html;
@@ -11036,7 +11036,7 @@ function renderPlan(n, info) {
   panel.classList.toggle("has-assets", !!assets.length);
   $("#pp-assets").hidden = !assets.length;
   $("#pp-assets-grid").innerHTML = assets.map((a) =>
-    `<img class="pp-asset" src="${trajectoryMode ? trajectoryDeckApi(ed.id, `/files/${a}`) : `/api/decks/${ed.id}/files/${a}`}" title="${escapeHtml(a)}">`).join("");
+    `<img class="pp-asset" src="${trajectoryMode ? trajectoryDeckApi(ed.id, `/files/${a}`) : `${globalThis.STUDIO_BASE_PATH || ""}/api/decks/${ed.id}/files/${a}`}" title="${escapeHtml(a)}">`).join("");
   $$(".pp-asset").forEach((img) =>
     (img.onclick = () => { $("#lb-img").src = img.src; $("#lightbox").hidden = false; }));
   panel.classList.toggle("collapsed", !!ed.ppCollapsed);
@@ -11045,7 +11045,7 @@ function renderPlan(n, info) {
 
 /* ----- SSE ----- */
 function subscribe(id) {
-  const es = new EventSource(`/api/decks/${id}/events`);
+  const es = new EventSource(`${globalThis.STUDIO_BASE_PATH || ""}/api/decks/${id}/events`);
   ed.sse = es;
   es.onmessage = (ev) => {
     if (ed.id !== id) { es.close(); return; }
@@ -11106,11 +11106,11 @@ document.addEventListener("click", (e) => {
 $$('[data-auth-tab]').forEach((button) => button.addEventListener("click", () => setAuthTab(button.dataset.authTab)));
 $("#auth-login-form")?.addEventListener("submit", (event) => {
   event.preventDefault();
-  submitAuthForm(event.currentTarget, "/api/auth/login");
+  submitAuthForm(event.currentTarget, `${globalThis.STUDIO_BASE_PATH || ""}/api/auth/login`);
 });
 $("#auth-register-form")?.addEventListener("submit", (event) => {
   event.preventDefault();
-  submitAuthForm(event.currentTarget, "/api/auth/register");
+  submitAuthForm(event.currentTarget, `${globalThis.STUDIO_BASE_PATH || ""}/api/auth/register`);
 });
 $("#auth-gate-close")?.addEventListener("click", () => setAuthGate(false));
 $("#auth-gate")?.addEventListener("click", (event) => {
@@ -11419,7 +11419,7 @@ $("#service-form").addEventListener("submit", async (event) => {
   submit.disabled = true;
   const originalText = submit.textContent;
   try {
-    const response = await fetch("/api/settings/services", {
+    const response = await fetch(`${globalThis.STUDIO_BASE_PATH || ""}/api/settings/services`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -11463,7 +11463,7 @@ $("#model-form").addEventListener("submit", async (event) => {
   errorBox.hidden = true;
   submit.disabled = true;
   try {
-    const response = await fetch("/api/models/custom", {
+    const response = await fetch(`${globalThis.STUDIO_BASE_PATH || ""}/api/models/custom`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -11569,7 +11569,7 @@ if ($("#font-trigger")) {
   });
 }
 function startNewConversation() {
-  if (trajectoryMode) { window.location.href = "/"; return; }
+  if (trajectoryMode) { window.location.href = (globalThis.STUDIO_BASE_PATH || "") + "/"; return; }
   if (!$("#batch-modal").hidden) closeBatchModal();
   if (!$("#model-modal").hidden) setModelDialog(false);
   setUserMenu(false);
@@ -11651,7 +11651,7 @@ $("#batch-modal").addEventListener("click", (e) => {
   if (e.target.id === "batch-modal") closeBatchModal();
 });
 $("#back-btn").addEventListener("click", () => {
-  if (trajectoryMode) { window.location.href = "/"; return; }
+  if (trajectoryMode) { window.location.href = (globalThis.STUDIO_BASE_PATH || "") + "/"; return; }
   closeEditor(); loadDecks();
 });
 $("#prev-btn").addEventListener("click", () => ed.sel > 1 && select(ed.sel - 1, { byUser: true }));

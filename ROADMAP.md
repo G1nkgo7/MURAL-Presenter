@@ -1,30 +1,9 @@
-# MURAL public roadmap
+# Release follow-up
 
-This roadmap records release gates rather than dates. A checked item means the corresponding
-public artifact exists and has passed its stated gate.
+- Confirm the project license with the rights holders.
+- Add final paper authors, title, URL/DOI and an immutable paper tag.
+- Publish the complete experiment adapter/input/font provenance and permitted result artifacts.
+- Validate a real model-backed WebUI generation and the full benchmark reproduction separately.
 
-## Preview
-
-- [x] Freeze the public method name and expansion.
-- [x] Publish the brand system and system diagrams.
-- [x] Publish bilingual project and method documentation.
-- [x] Publish a bilingual launch article and deployable project site.
-- [x] Reserve the public implementation, data, evaluation, and product Web UI boundaries.
-
-## Paper and evaluation
-
-- [ ] Freeze a clean implementation commit and Skill hash.
-- [ ] Freeze the 50-case THREAD-Bench schema and case identifiers.
-- [ ] Calibrate judges and publish aggregation rules.
-- [ ] Complete PresentBench, SlidesGen-Bench, THREAD-Bench, and DECKBench runs.
-- [ ] Replace all result placeholders with traceable tables and confidence intervals where applicable.
-- [ ] Publish manuscript metadata and a stable paper URL.
-
-## Public artifacts
-
-- [ ] Select and publish licenses for code, data, benchmark, and visual assets.
-- [ ] Release the MURAL Authoring Skill and minimal runnable implementation.
-- [ ] Release benchmark cases, judge prompts, and evaluation scripts.
-- [ ] Release training-data documentation and permitted trajectory subset.
-- [ ] Release model checkpoints when reproducibility and safety review are complete.
-- [ ] Add archival citation metadata and checksums.
+The current branch packages the 0919 source pair and matching WebUI. These follow-ups are not
+claimed as completed by source-integrity or offline integration tests.

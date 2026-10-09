@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}SenseNova-Present{% endblock %}</title>
+  <title>{% block title %}MURAL Presenter{% endblock %}</title>
   <script>
     try {
       const savedTheme = localStorage.getItem("studio_theme");
@@ -19,12 +19,12 @@
         : serverLanguage;
     } catch (_) {}
   </script>
-  <link rel="icon" type="image/png" href="/static/sensenova-icon.png?v={{ asset_ver }}">
-  <link rel="apple-touch-icon" href="/static/sensenova-apple-icon.png?v={{ asset_ver }}">
+  <link rel="icon" type="image/svg+xml" href="/static/logo.svg?v={{ asset_ver }}">
+  <link rel="apple-touch-icon" href="/static/logo.svg?v={{ asset_ver }}">
   <link rel="stylesheet" href="/static/app.css?v={{ asset_ver }}-previewFullBleed1">
 </head>
 <body>
 {% block body %}{% endblock %}
-  <script src="/static/app.js?v={{ asset_ver }}-showcaseOutdoor1" defer></script>
+  <script src="/static/app.js?v={{ asset_ver }}-showcaseOutdoor1-staticPageViewport1" defer></script>
 </body>
 </html>

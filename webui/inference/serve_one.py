@@ -15,11 +15,17 @@ job.json:
      "run_dir": "/abs/.../decks/7", "dry_run": false, "batch": "studio"}
 """
 import argparse
+import hashlib
 import importlib.util
 import importlib
 import inspect
 import json
 import os
+from pathlib import Path
+import re
+import shutil
+import signal
+import subprocess
 import sys
 import time
 import traceback
@@ -149,8 +155,298 @@ def _uses_clean_runner(job):
         or mode in {
             "mural-presenter-v0.3-adaptive",
             "mural-presenter-v0.4-adaptive",
+            # v0.5 shares the exact v0.4 harness/runner contract; it differs
+            # only in the skill package (base.css, layout primitives, prompts).
+            "mural-presenter-v0.5-adaptive",
+            # v0.6 remains routable for historical retries. v1.0 is the
+            # public paper/data-synthesis release and uses the same broker-owned
+            # run_batch entry contract.
+            "mural-presenter-v0.6-adaptive",
+            "mural-presenter-v1.0-adaptive",
+            # Ablation variants share the exact v0.4 harness/runner contract;
+            # they only differ in skill knowledge (nk) and solo_mode env flag.
+            "mural-presenter-v0.4-solo",
+            "mural-presenter-v0.4-nk",
+            "mural-presenter-v0.4-nk-solo",
         }
     )
+
+
+def _uses_mural_v1_runner(job):
+    """Route the shared-runtime v1 profile through its native CLI contract."""
+    return str((job.get("pipeline") or {}).get("skill_mode") or "") == (
+        "mural-presenter-v1"
+    )
+
+
+def _mural_v1_attachment_paths(seed):
+    """Return original Studio uploads plus any explicit intent for native v1 staging.
+
+    Each element is ``(path, intent)``; ``intent`` is ``None`` unless the Studio
+    seed attachment record carries an explicit ``intent`` (style_reference /
+    content_source / mixed). Studio's current upload UI does not yet collect a
+    per-attachment intent, so this stays ``None`` for existing decks and only
+    activates once a seed record supplies one — the harness then routes it
+    instead of flattening every image to ``mixed``.
+    """
+    paths = []
+    seen = set()
+    for collection in (seed.get("attachments") or [], seed.get("_raw_attachments") or []):
+        if not isinstance(collection, list):
+            continue
+        for item in collection:
+            if not isinstance(item, dict):
+                continue
+            raw = item.get("path") or item.get("source_path")
+            if not raw:
+                continue
+            path = Path(str(raw)).expanduser().resolve()
+            marker = str(path)
+            if marker in seen:
+                continue
+            if not path.is_file():
+                raise FileNotFoundError(f"Studio attachment does not exist: {path}")
+            seen.add(marker)
+            intent = item.get("intent")
+            paths.append((path, str(intent) if intent else None))
+    return paths
+
+
+def _build_mural_v1_font_request(seed):
+    """Build the canonical font-request JSON WITHOUT writing into the workspace.
+
+    Under pure layout v2 the workspace must stay empty until the Harness writes
+    ``_state/workspace.json`` first. So the WebUI only resolves + validates the
+    pinned Studio font objects here and returns a canonical request string; the
+    Harness (SkillRuntime) writes ``_state/font-request.json`` after it creates
+    the WorkspaceState manifest.
+    """
+    config = seed.get("font_config")
+    if not isinstance(config, dict):
+        return None
+    user_id = str(config.get("user_id") or "")
+    active_user = str(os.environ.get("MURAL_USER_ID") or "")
+    if not user_id or user_id != active_user:
+        raise ValueError("Studio font request does not belong to the active user")
+    data_value = os.environ.get("MURAL_STUDIO_DATA_DIR") or os.environ.get("STUDIO_DATA_DIR")
+    if not data_value:
+        raise ValueError("Studio data root is required for a pinned font request")
+    studio_data = Path(data_value).expanduser().resolve()
+    private_root = (studio_data / "users" / user_id / "_shared" / "fonts").resolve()
+    pinned = []
+    for item in config.get("fonts") or []:
+        if not isinstance(item, dict):
+            raise ValueError("Studio custom font record must be an object")
+        record = dict(item)
+        record.pop("path", None)
+        relative = Path(str(record.get("object_ref") or ""))
+        if relative.is_absolute() or not relative.parts or ".." in relative.parts:
+            raise ValueError("Studio custom font object reference is invalid")
+        source = (studio_data / relative).resolve()
+        try:
+            source.relative_to(private_root)
+        except ValueError as exc:
+            raise ValueError("Studio custom font object escapes the active user's store") from exc
+        if not source.is_file() or source.is_symlink() or not source.stat().st_size:
+            raise FileNotFoundError(f"Studio custom font object does not exist: {relative}")
+        digest = hashlib.sha256(source.read_bytes()).hexdigest()
+        if digest != str(record.get("sha256") or ""):
+            raise ValueError(f"Studio custom font object hash mismatch: {relative}")
+        if int(record.get("bytes") or 0) != source.stat().st_size:
+            raise ValueError(f"Studio custom font object size mismatch: {relative}")
+        record.pop("source_path", None)
+        pinned.append(record)
+    payload = {
+        "schema": "mural.font-request.v1",
+        "version": int(config.get("version") or 1),
+        "deck_id": int(config.get("deck_id") or 0),
+        "user_id": user_id,
+        "license_acknowledged": bool(config.get("license_acknowledged")),
+        "roles": dict(config.get("roles") or {}),
+        "fonts": pinned,
+    }
+    return json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
+
+
+def _run_mural_v1(job):
+    """Run one Studio job through the shared-runtime v1 native CLI."""
+    pipe = job.get("pipeline") or {}
+    root = Path(str(pipe.get("path") or "")).expanduser().resolve()
+    entry = str(pipe.get("entry") or "infer.py")
+    infer_path = root / entry
+    if entry != "infer.py" or not infer_path.is_file():
+        raise RuntimeError(f"MURAL v1 infer entry does not exist: {infer_path}")
+
+    sample_id = job["sample_id"]
+    seed = dict(job["seed"])
+    run_dir = Path(job["run_dir"]).expanduser().resolve()
+    started = time.time()
+    if job.get("dry_run"):
+        rec = {
+            "sample_id": sample_id,
+            "run_dir": str(run_dir),
+            "status": "completed",
+            "dry_run": True,
+            "skill_name": (job.get("skill") or {}).get("name"),
+            "skill_language": (job.get("skill") or {}).get("language"),
+            "resume_workspace": bool(job.get("resume_workspace")),
+        }
+        return _write_result(str(run_dir), rec, job, started)
+
+    run_dir.mkdir(parents=True, exist_ok=True)
+    font_request_json = _build_mural_v1_font_request(seed)
+    command = [
+        sys.executable,
+        str(infer_path),
+        "--query",
+        str(seed.get("query") or ""),
+        "--workspace",
+        str(run_dir),
+        "--mode",
+        str(seed.get("run_mode") or "inference"),
+        "--authoring-profile",
+        str(seed.get("authoring_profile") or "auto"),
+        "--language",
+        str(seed.get("lang") or "auto"),
+        "--title",
+        str(seed.get("title") or seed.get("query") or "MURAL Presentation")[:240],
+    ]
+    # inference 与 synthesis 都由用户按需导出；训练准入只依赖当前页面验收。
+    command.extend(["--no-pdf", "--no-pptx", "--no-zip"])
+    page_count = int(seed.get("slide_count") or 0)
+    if page_count > 0:
+        command.extend(["--page-count", str(page_count)])
+    revision = seed.get("_revision")
+    if isinstance(revision, dict):
+        command.extend([
+            "--revision-json",
+            json.dumps(revision, ensure_ascii=False, sort_keys=True),
+        ])
+    staged_attachments = _mural_v1_attachment_paths(seed)
+    # --attachment-intent is a parallel list; the harness requires it to align
+    # one-to-one with --attachment when present. Emit it for every attachment
+    # (empty string = unspecified) only when at least one carries an intent, so
+    # decks without any intent keep the exact historical argument vector.
+    emit_intents = any(intent for _path, intent in staged_attachments)
+    for attachment, intent in staged_attachments:
+        command.extend(["--attachment", str(attachment)])
+        if emit_intents:
+            command.extend(["--attachment-intent", str(intent or "")])
+
+    child_env = os.environ.copy()
+    result_path = run_dir / "result.json"
+    prior_result = result_path.stat() if result_path.is_file() else None
+    host_path = run_dir / "_state" / "skill-runtime.json"
+    prior_host = host_path.stat() if host_path.is_file() else None
+    if font_request_json is not None:
+        child_env["MURAL_FONT_REQUEST_JSON"] = font_request_json
+    process = subprocess.Popen(
+        command,
+        cwd=str(root),
+        env=child_env,
+        stdin=subprocess.DEVNULL,
+    )
+    previous_handlers = {}
+
+    def forward_signal(signum, _frame):
+        if process.poll() is None:
+            process.send_signal(signum)
+
+    for signum in (signal.SIGINT, signal.SIGTERM):
+        previous_handlers[signum] = signal.getsignal(signum)
+        signal.signal(signum, forward_signal)
+    try:
+        returncode = process.wait()
+    finally:
+        for signum, handler in previous_handlers.items():
+            signal.signal(signum, handler)
+    harness_result = {}
+    result_stat = result_path.stat() if result_path.is_file() else None
+    fresh_result = result_stat is not None and (prior_result is None or
+        (result_stat.st_ino, result_stat.st_mtime_ns, result_stat.st_size) !=
+        (prior_result.st_ino, prior_result.st_mtime_ns, prior_result.st_size))
+    if fresh_result:
+        try:
+            value = json.loads(result_path.read_text(encoding="utf-8"))
+            if isinstance(value, dict):
+                harness_result = value
+        except (OSError, ValueError):
+            harness_result = {}
+    training_rejected = (
+        harness_result.get("schema") == "mural.result.v1"
+        and harness_result.get("status") == "completed"
+        and harness_result.get("artifact_status") == "complete"
+        and harness_result.get("exit_reason") == "training_rejected"
+        and harness_result.get("training_admission") == "rejected"
+    )
+    critic_pending = (
+        harness_result.get("schema") == "mural.result.v1"
+        and harness_result.get("status") == "error"
+        and harness_result.get("artifact_status") == "complete"
+        and harness_result.get("exit_reason") == "critic_incomplete"
+        and harness_result.get("training_admission") == "pending"
+    )
+    if (returncode and not (training_rejected or critic_pending)) or not harness_result:
+        failure = {}
+        host_stat = host_path.stat() if host_path.is_file() else None
+        if host_stat is not None and (prior_host is None or
+            (host_stat.st_ino, host_stat.st_mtime_ns, host_stat.st_size) !=
+            (prior_host.st_ino, prior_host.st_mtime_ns, prior_host.st_size)):
+            try:
+                host = json.loads(host_path.read_text(encoding="utf-8"))
+                if isinstance(host, dict) and host.get("status") == "failed":
+                    failure = host.get("agent_failed") or {}
+            except (OSError, ValueError):
+                pass
+        if not isinstance(failure, dict):
+            failure = {}
+        error_type = str(failure.get("error_type") or "")
+        exit_reason = "process_interrupted" if returncode < 0 else {
+            "RepeatedToolFailureError": "tool_circuit_open",
+            "AgentTurnLimitError": "agent_turn_limit",
+            "AgentProviderError": "api_failed",
+            "AgentInterruptedError": "process_interrupted",
+            "ResourceSlotTimeout": "resource_queue_timeout",
+            "AgentProtocolError": "agent_protocol_error",
+        }.get(error_type, "runtime_error")
+        rec = {
+            "sample_id": sample_id,
+            "run_dir": str(run_dir),
+            "status": "error",
+            "exit_reason": exit_reason,
+            "error_type": error_type,
+            "failure": failure,
+            "error": (
+                f"MURAL v1 exited with code {returncode}" + (
+                    ": " + str(failure["error_summary"]) if failure.get("error_summary") else "")
+                if returncode
+                else "MURAL v1 produced no valid result.json"
+            ),
+            "resume_workspace": bool(job.get("resume_workspace")),
+        }
+        return _write_result(str(run_dir), rec, job, started)
+
+    page_count = int(harness_result.get("page_count") or 0)
+    skill_ref = json.loads((run_dir / "_state" / "skill-ref.json").read_text(encoding="utf-8"))
+    if skill_ref.get("schema") != "mural.skill-ref.v1" or not skill_ref.get("skill_name"):
+        raise RuntimeError("MURAL v1 completed without a valid pinned Skill identity")
+    rec = {
+        **harness_result,
+        "sample_id": sample_id,
+        "run_dir": str(run_dir),
+        "n_slides": page_count,
+        "engine_returncode": returncode,
+        "accept_detail": {
+            "n_pages": page_count,
+            "delivery_manifest": harness_result.get("delivery_manifest"),
+        },
+        "skill_name": skill_ref["skill_name"],
+        "skill_language": (job.get("skill") or {}).get("language"),
+        "selected_skill_name": job.get("selected_skill_name") or (job.get("skill") or {}).get("name"),
+        "selected_skill_version": job.get("skill_version"),
+        "resume_workspace": bool(job.get("resume_workspace")),
+    }
+    return _write_result(str(run_dir), rec, job, started)
 
 
 def _install_subagent_turn_adapter(job):
@@ -203,8 +499,12 @@ def _write_result(run_dir, rec, job, started):
     rec["pipeline_version"] = job.get("pipeline_version", "infer")
     rec["skill_version"] = job.get("skill_version")
     os.makedirs(run_dir, exist_ok=True)
-    with open(os.path.join(run_dir, "result.json"), "w", encoding="utf-8") as f:
+    pending = os.path.join(run_dir, f".result-{os.getpid()}.pending")
+    with open(pending, "w", encoding="utf-8") as f:
         json.dump(rec, f, ensure_ascii=False, indent=2)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(pending, os.path.join(run_dir, "result.json"))
     return rec
 
 
@@ -243,7 +543,14 @@ def _run_clean_infer(job):
         return _write_result(run_dir, rec, job, started)
 
     infer = _load_module("pptagent_clean_infer", infer_path, root)
-    from core import model_call, run_batch  # noqa: E402
+    from core import environment_doctor, model_call, run_batch  # noqa: E402
+
+    if str(pipe.get("skill_mode") or "") == "mural-presenter-v1.0-adaptive":
+        from core.release_guard import verify_runtime_release  # noqa: E402
+
+        verify_runtime_release(
+            str(seed.get("run_mode") or os.environ.get("MURAL_RUN_MODE", "inference"))
+        )
 
     if os.environ.get("MODEL_BACKEND", "").lower() == "openai":
         import openai_backend  # noqa: E402
@@ -274,18 +581,59 @@ def _run_clean_infer(job):
     )
     config["thinking_transport"] = str(seed.get("thinking_transport") or "")
     config["thinking"] = config["effective_thinking"]
+    config["requested_effort"] = str(
+        seed.get("requested_effort") or ""
+    ).strip().lower()
+    config["effective_effort"] = str(
+        seed.get("effective_effort", seed.get("thinking_effort") or "")
+    ).strip().lower()
+    config["effort"] = config["effective_effort"]
     skill = job.get("skill") or {}
     if skill.get("language") == "auto":
         config["skill_name"], config["skill_language"] = run_batch.select_skill(seed)
     else:
         config["skill_name"] = skill.get("name")
         config["skill_language"] = skill.get("language")
+    # ``run_batch.worker`` only consumes a supervisor-owned Doctor report; it
+    # must never launch provider probes per sample.  Studio is the supervisor
+    # for this one-Deck job, so run its cheap local check once and inject the
+    # resulting batch contract before entering the worker.  The worker copies
+    # the same report into ``_trace`` after it atomically creates the workspace.
+    doctor_report = environment_doctor.run_lightweight_environment_check(
+        config,
+        required_attachment_suffixes=run_batch.attachment_suffixes([seed]),
+    )
+    if doctor_report.get("checked") is not True or doctor_report.get("ready") is not True:
+        raise RuntimeError(
+            "Studio environment preflight blocked execution: "
+            + "; ".join(
+                str(item)
+                for item in doctor_report.get("fatal_errors") or ["unknown failure"]
+            )
+        )
+    config["_environment_doctor"] = doctor_report
     task = {
         "sample_id": sample_id,
         "seed": seed,
         "run_dir": run_dir,
         "config": config,
     }
+    if bool(job.get("resume_workspace")):
+        if not run_batch.run_dir_recoverable(run_dir):
+            rec = {
+                "sample_id": sample_id,
+                "run_dir": run_dir,
+                "status": "error",
+                "error": "workspace does not satisfy the durable resume contract",
+                "resume_workspace": True,
+            }
+            return _write_result(run_dir, rec, job, started)
+        trace_source = run_batch._latest_orchestrator_trace(run_dir)
+        task.update({
+            "resume_workspace": True,
+            "resume_trace_source": str(trace_source or ""),
+            "resume_attempt": run_batch._next_resume_attempt(run_dir),
+        })
 
     infer._load_render_environment()
     infer._configure_runtime_environment()
@@ -308,10 +656,17 @@ def _run_clean_infer(job):
     # clean run_batch.worker keeps its pre-Agent config fields. Auto's actual
     # first-turn choice is authoritative in the orchestrator trace config.
     try:
-        with open(
-            os.path.join(run_dir, "_trace", "orchestrator", "config.json"),
-            encoding="utf-8",
-        ) as f:
+        selected_trace = (
+            run_batch._latest_orchestrator_trace(run_dir)
+            if bool(job.get("resume_workspace"))
+            else None
+        )
+        selected_config = (
+            selected_trace.parent / "config.json"
+            if selected_trace is not None
+            else os.path.join(run_dir, "_trace", "orchestrator", "config.json")
+        )
+        with open(selected_config, encoding="utf-8") as f:
             trace_config = json.load(f)
         selected_name = trace_config.get("skill_name") or selected_name
         selected_version = trace_config.get("skill_language") or selected_version
@@ -321,6 +676,7 @@ def _run_clean_infer(job):
     rec["skill_language"] = selected_version
     rec["selected_skill_name"] = selected_name
     rec["selected_skill_version"] = selected_version
+    rec["resume_workspace"] = bool(job.get("resume_workspace"))
     return _write_result(run_dir, rec, job, started)
 
 
@@ -393,8 +749,10 @@ def main():
     run_dir = job["run_dir"]
     dry = bool(job.get("dry_run"))
 
-    if _uses_clean_runner(job):
-        rec = _run_clean_infer(job)
+    if not _uses_mural_v1_runner(job):
+        raise RuntimeError("unsupported_harness: only mural-presenter-v1 is active")
+    if _uses_mural_v1_runner(job):
+        rec = _run_mural_v1(job)
         accept_detail = rec.get("accept_detail")
         accepted_pages = (
             accept_detail.get("n_pages")

@@ -4,7 +4,7 @@ from pathlib import Path
 
 CORE_PATH = (
     Path(__file__).resolve().parents[2]
-    / "harnesses/mural-presenter/core/__init__.py"
+    / "archive/mural-presenter-pre-v0.6/harnesses/mural-presenter/core/__init__.py"
 )
 SPEC = importlib.util.spec_from_file_location("mural_presenter_contract", CORE_PATH)
 CORE = importlib.util.module_from_spec(SPEC)

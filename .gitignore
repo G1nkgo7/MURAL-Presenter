@@ -1,77 +1,63 @@
-# OS and editors
-.DS_Store
-Thumbs.db
-*.swp
-*.swo
-.idea/
-.vscode/
-
-# Python
-__pycache__/
-*.py[cod]
-.venv/
-harnesses/*/CONCURRENCY
-
-# Node / site builds
-node_modules/
-.vinext/
-.wrangler/
-dist/
-.next/
-
-# Local configuration and credentials
+# Local environments and credentials
 .env
 .env.*
 !.env.example
-*.pem
-*.key
+.secrets/
+.venv/
+.venv-*/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+node_modules/
+.DS_Store
 
-# Paper and experiment scratch
-tmp/
-*.aux
-*.bbl
-*.blg
-*.log
-*.out
-*.synctex.gz
-results/private/
-data/private/
+# Independent website and recoverable local work
+/site/
+/.snapshots/
+/.runtime/
+/.agents/
+/.codex/
+/.aws/
+/AGENTS.md
 
-# Generated datasets and runtime artifacts
-data/raw/
-data/interim/
-data/processed/
-data/cache/
-artifacts/runs/
-artifacts/cache/
-artifacts/exports/
-
-# Local rollout state and generated benchmark outputs
-/artifacts/
-/_outputs/
-/webui/studio/data/
-/benchmark/PresentBench/smoke/results/
-/benchmark/ThreadBench/**/results/
+# Deployment settings and generated outputs
+/configs/runtime.local.json
+/configs/runtime.*.local.json
+/configs/data_pipeline/
+/harnesses/*/runs/
 /harnesses/*/logs/
+/harnesses/*/canary/
+/webui/studio/data/
+/webui/studio/studio/data/
+/webui/studio/artifacts/
+/webui/.github/
+/webui/inference/data*/
+/webui/inference/runs/
+/webui/runtime/
+/artifacts/
+/data/
+/benchmark/**/results/
+/benchmark/**/runs/
+/benchmark/**/smoke/results/
+*.log
+*.pid
+*.db
+*.db-*
 
-# Internal research snapshots and source-reference exports
+# Historical local material, not part of the paper source release
+/archive/
+/paper/
+/blog/
+/train/
 /research/
+/variants/
+/mainline/
 /references/
-/paper/history/
-/paper/plan/
-/paper/*overleaf.zip
-/paper/manuscript/rendered_review*/
-/paper/manuscript/review_*.png
+/src/
+/services/
 
-# Local handoff and debugging notes
-HANDOFF-*.md
-*-FIX-PLAN.md
-REFINE-ROOTCAUSE.md
-
-# Fonts without confirmed public redistribution rights
-fonts/AaJinRiHuaQing-ChunLanMaoKun-2.ttf
-fonts/DuanNingYingBiKaiShuCuTi-2.ttf
-fonts/JinNianYeYaoJiaYouYa-2.ttf
-fonts/RuanMengXiaoGuoDong-2.ttf
-fonts/叶根友钢笔行书简体_爱给网_aigei_com.ttf
-fonts/迷你简硬笔行书字体下载_爱给网_aigei_com.ttf
+# Additional fonts and benchmark data require an explicit release review
+/fonts/
+/benchmark/ThreadBench/
+/benchmark/PresentBench/data/

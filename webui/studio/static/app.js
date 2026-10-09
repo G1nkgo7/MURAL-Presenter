@@ -6,10 +6,13 @@ const pad2 = (n) => String(n).padStart(2, "0");
 const STATUS_LABEL = {
   waiting: "等待上一版", queued: "排队中", running: "生成中", completed: "已完成", failed: "失败", rejected: "未通过",
   error: "失败", stopped: "已中断", interrupted: "已中断", max_turns: "已达轮次上限", idle: "待继续",
+  paused_recoverable: "通道中断 · 可继续",
   not_started: "未开始",
 };
 const isStaticActiveStatus = (status) => ["waiting", "queued", "running"].includes(status);
 const isStaticGeneratingStatus = (status) => ["queued", "running"].includes(status);
+const WORKFLOW_TRACE_REFRESH_MS = 12000;
+const WORKFLOW_TRACE_REQUEST_TIMEOUT_MS = 15000;
 const PHASE_LABEL = {
   starting: "启动中", planning: "规划大纲", researching: "检索资料", designing: "配图设计",
   delegating: "页面制作", rendering: "页面制作", verifying: "成稿校验", done: "完成", failed: "失败",
@@ -20,7 +23,7 @@ const TOOL_LABEL = {
   read_file: "研读资料", write_file: "撰写页面", edit_file: "修改页面",
   patch: "调整页面", terminal: "运行制作工具",
   vision_analyze: "检查画面", web_search: "搜索资料", web_fetch: "查阅网页", web_extract: "提取网页要点",
-  image_generate: "绘制配图", fetch_image: "下载真实图片", delegate_task: "分派任务",
+  image_generate: "绘制配图", fetch_image: "下载图片", delegate_task: "分派任务",
 };
 function actText(p) {
   const a = p && p.activity;
@@ -33,12 +36,12 @@ function actText(p) {
   else if (key.startsWith("material")) who = "素材整理";
   else if (key.startsWith("image")) who = "视觉素材";
   else if (key.startsWith("review")) who = "整稿校验";
-  else if (key.startsWith("slide_group_")) who = "页面组制作";
+  else if (key.startsWith("slide_group_")) who = orchestrationAgentMeta(key).label;
   else if (slide) who = `第 ${Number(slide[1])} 页制作`;
   const action = {
     read: "整理资料", read_file: "整理资料", write: "设计页面", write_file: "设计页面",
     edit: "优化页面", edit_file: "优化页面", patch: "优化页面", terminal: "生成页面预览",
-    bash: "生成页面预览", vision_analyze: "检查页面效果", image_generate: "生成视觉素材", fetch_image: "下载真实图片",
+    bash: "生成页面预览", vision_analyze: "检查页面效果", image_generate: "生成视觉素材", fetch_image: "下载图片",
     web_search: "查找参考资料", web_fetch: "整理参考资料", web_extract: "提取网页要点", delegate_task: "安排页面制作",
   }[a.tool] || TOOL_LABEL[a.tool] || "推进制作";
   return `${who} · ${action}`;
@@ -50,8 +53,11 @@ const PHASE_STEP = {
 };
 const STEP_ORDER = ["plan", "research", "render", "verify", "done"];
 
-function runErrorText(value) {
+function runErrorText(value, kind) {
   const message = String(value || "生成失败");
+  if (kind === "release_hash_mismatch" || /frozen MURAL release hash mismatch|verify_runtime_release/i.test(message)) {
+    return "运行时 Release 校验未通过：当前 skill/harness 与已冻结发布的哈希不一致，任务在首次模型请求前即被拒绝（release_hash_mismatch，非 Provider/API 故障）。";
+  }
   if (message.includes("empty_giveup")) {
     return "模型连续返回空响应，自愈重试后仍未恢复。请重新发起任务（empty_giveup）。";
   }
@@ -105,8 +111,8 @@ function clearStudioNotices() {
   [...stack.children].forEach((notice) => dismissStudioNotice(notice));
 }
 
-function notifyRunFailure(value, fallback = "生成未能完成") {
-  const message = runErrorText(value || fallback);
+function notifyRunFailure(value, fallback = "生成未能完成", kind) {
+  const message = runErrorText(value || fallback, kind);
   const cancelled = /已取消|取消|已中断|中断|已停止|停止|cancel(?:led|ed)?/i.test(message);
   showStudioNotice(cancelled ? "生成已中断" : message, {
     type: cancelled ? "info" : "error",
@@ -272,12 +278,15 @@ const SUGGESTION_POOL = [
 const NOVA_DOT_FONT = {
   A: ["01110", "10001", "10001", "11111", "10001", "10001", "10001"],
   E: ["11111", "10000", "10000", "11110", "10000", "10000", "11111"],
+  L: ["10000", "10000", "10000", "10000", "10000", "10000", "11111"],
+  M: ["10001", "11011", "10101", "10101", "10001", "10001", "10001"],
   N: ["10001", "11001", "11001", "10101", "10011", "10011", "10001"],
   O: ["01110", "10001", "10001", "10001", "10001", "10001", "01110"],
   P: ["11110", "10001", "10001", "11110", "10000", "10000", "10000"],
   R: ["11110", "10001", "10001", "11110", "10100", "10010", "10001"],
   S: ["01111", "10000", "10000", "01110", "00001", "00001", "11110"],
   T: ["11111", "00100", "00100", "00100", "00100", "00100", "00100"],
+  U: ["10001", "10001", "10001", "10001", "10001", "10001", "01110"],
   V: ["10001", "10001", "10001", "10001", "10001", "01010", "00100"],
 };
 
@@ -290,21 +299,24 @@ function initNovaDoodle() {
   const motion = matchMedia("(prefers-reduced-motion: reduce)");
   const dots = [];
   const brandDots = [];
-  const brandLetters = "SENSENOVA";
+  const brandLetters = "MURAL";
   const letters = "PRESENT";
   const centers = [53, 102, 151, 200, 249, 298, 347];
-  const brandCenters = [38, 78.5, 119, 159.5, 200, 240.5, 281, 321.5, 362];
+  const brandCenters = [102, 151, 200, 249, 298];
+  const brandCenterY = 78;
   const accentMap = [
     { row: 2, col: 1, color: "blue" }, null,
     { row: 6, col: 3, color: "purple" }, null,
     { row: 5, col: 4, color: "mint" }, null,
     { row: 3, col: 4, color: "coral" },
   ];
+  const switchLogo = host.querySelector(".nova-switch-logo");
   let visible = true;
   let frame = 0;
   let startedAt = performance.now();
   let pointerX = .5;
   let pointerY = .5;
+  let logoActive = false;
 
   function abstractStrength(tile, row, col, letterOn) {
     const dx = col - 3;
@@ -322,7 +334,7 @@ function initNovaDoodle() {
       for (let col = 0; col < 7; col += 1) {
         const dx = col - 3;
         const dy = row - 4;
-        // Seven compact rounded fields show PRESENT together in one frame.
+        // 七个紧凑的圆角粒子场在同一帧中完整呈现 PRESENT。
         if (Math.hypot(dx * 1.14, dy) > 4.72) continue;
         const glyphRow = row - 1;
         const glyphCol = col - 1;
@@ -354,14 +366,16 @@ function initNovaDoodle() {
         const glyphCol = col - 1;
         const letterOn = glyphRow >= 0 && glyphRow < 7 && glyphCol >= 0 && glyphCol < 5
           && glyph[glyphRow][glyphCol] === "1";
+        const accent = accentMap[tile];
         brandDots.push({
           tile, row, col,
-          x: centerX + dx * 4.35,
-          y: 78 + dy * 5.55,
-          letterStrength: letterOn ? 1 : .09 + ((row * 7 + col * 11 + tile * 3) % 5) * .04,
+          x: centerX + dx * 5.35,
+          y: brandCenterY + dy * 6.15,
+          letterStrength: letterOn ? 1 : .10 + ((row * 13 + col * 7 + tile * 5) % 5) * .045,
           abstractStrength: abstractStrength(tile, row, col, letterOn),
-          seed: (tile * 83 + row * 23 + col * 37) % 127,
-          delay: tile * 48 + Math.hypot(dx, dy) * 25 + ((row + col) % 3) * 17,
+          accent: accent && row === accent.row && col === accent.col ? accent.color : "",
+          seed: (tile * 97 + row * 19 + col * 31) % 113,
+          delay: tile * 62 + Math.hypot(dx, dy) * 28 + ((row + col) % 3) * 20,
         });
       }
     }
@@ -389,10 +403,16 @@ function initNovaDoodle() {
   }
 
   function brandPointColor(colors, position, alpha = 1) {
-    // Keep SENSE unmistakably purple and let NOVA resolve into mint through a
-    // continuous blend instead of a hard color seam between two letters.
+    // MURAL 仅替换颜色，点阵几何与动画时序仍和 PRESENT 完全共用。
+    const tone = brandPointTone(colors, position);
+    return colorMix(tone, tone, 1, alpha);
+  }
+
+  function brandPointTone(colors, position) {
     const blend = easeState(Math.max(0, Math.min(1, (position - .30) / .58)));
-    return colorMix(colors.brandPurple, colors.brandGreen, blend, alpha);
+    return colors.brandPurple.map((value, index) => Math.round(
+      value + (colors.brandGreen[index] - value) * blend
+    ));
   }
 
   function easeState(value) {
@@ -424,6 +444,18 @@ function initNovaDoodle() {
       return { brand: 1 - easeState(progress), active: true, direction: -1, progress };
     }
     return { brand: 0, active: false, direction: 0, progress: 0 };
+  }
+
+  function syncLogoState(transition) {
+    if (!switchLogo) return;
+    const shouldShow = transition.brand > .015;
+    host.classList.toggle("brand-visible", shouldShow);
+    if (shouldShow && !logoActive) {
+      switchLogo.classList.remove("logo-redraw");
+      void switchLogo.getBoundingClientRect();
+      switchLogo.classList.add("logo-redraw");
+    }
+    logoActive = shouldShow;
   }
 
   function brandAmount(elapsed) {
@@ -485,11 +517,11 @@ function initNovaDoodle() {
     const elapsed = now - startedAt;
     const abstract = abstractAmount(elapsed);
     const transition = brandState(elapsed);
+    syncLogoState(transition);
     const transitionEnergy = transition.active ? Math.sin(Math.PI * transition.progress) : 0;
     const sweep = ((elapsed / 4300) % 1) * 380 + 10;
     context.setTransform(dpr, 0, 0, dpr, 0, 0);
     context.clearRect(0, 0, rect.width, rect.height);
-
     context.save();
     for (const dot of dots) {
       const switchState = dotSwitchState(dot, transition, false);
@@ -537,37 +569,37 @@ function initNovaDoodle() {
       const switchState = dotSwitchState(dot, transition, true);
       if (switchState.alpha <= .002) continue;
       context.globalAlpha = switchState.alpha;
-      const reveal = motion.matches ? 1 : Math.max(0, Math.min(1, (elapsed - dot.delay) / 420));
+      const reveal = motion.matches ? 1 : Math.max(0, Math.min(1, (elapsed - dot.delay) / 460));
       if (!reveal) continue;
       const revealEase = 1 - Math.pow(1 - reveal, 3);
-      const localDelay = motion.matches ? 0 : Math.max(0, Math.min(1, abstract * 1.45 - dot.tile * .022 - dot.seed * .0007));
+      const localDelay = motion.matches ? 0 : Math.max(0, Math.min(1, abstract * 1.48 - dot.tile * .028 - dot.seed * .0008));
       const state = easeState(localDelay);
       const strength = dot.letterStrength + (dot.abstractStrength - dot.letterStrength) * state;
-      const shimmer = motion.matches ? 0 : Math.max(0, 1 - Math.abs(dot.x - sweep) / 22) * .30;
+      const shimmer = motion.matches ? 0 : Math.max(0, 1 - Math.abs(dot.x - sweep) / 25) * .26;
       const pointerDistance = Math.hypot(dot.x / 400 - pointerX, dot.y / 154 - pointerY);
-      const pointerPower = motion.matches ? 0 : Math.max(0, 1 - pointerDistance / .15);
-      const breath = motion.matches ? 0 : Math.sin(elapsed * .0021 + dot.seed * .18 + dot.tile) * .055;
-      const orbit = transitionEnergy * Math.sin(dot.seed * .27 + dot.tile) * 1.15;
+      const pointerPower = motion.matches ? 0 : Math.max(0, 1 - pointerDistance / .16);
+      const breath = motion.matches ? 0 : Math.sin(elapsed * .0019 + dot.seed * .19 + dot.tile) * .06;
+      const orbit = transitionEnergy * Math.sin(dot.seed * .33 + dot.tile) * 1.35;
       const scatter = scatterVector(dot, switchState, transition.direction);
-      const px = (dot.x + scatter.x + Math.cos(dot.seed) * orbit) * sx;
-      const py = (dot.y + scatter.y + Math.sin(dot.seed) * orbit) * sy;
-      const intensity = Math.max(0, Math.min(1, strength + shimmer + pointerPower * .22 + breath));
-      const isLetterDot = dot.letterStrength > .8;
-      const radius = ((isLetterDot ? 2.08 : 1.56) + intensity * (isLetterDot ? .62 : .42) + breath * .24)
-        * Math.min(sx, sy) * revealEase;
+      const hoverOffset = pointerPower * 1.55;
+      const px = (dot.x + scatter.x + Math.cos(dot.seed) * orbit + (dot.x / 400 - pointerX) * hoverOffset) * sx;
+      const py = (dot.y + scatter.y + Math.sin(dot.seed) * orbit + (dot.y / 154 - pointerY) * hoverOffset) * sy;
+      const intensity = Math.max(0, Math.min(1, strength + shimmer + pointerPower * .24 + breath));
+      const radius = (2.0 + intensity * .56 + breath * .28) * Math.min(sx, sy) * revealEase;
       const gradient = Math.max(0, Math.min(1, (dot.x - 24) / 352));
-      const letterColor = brandPointColor(colors, gradient, .96);
-      const fill = isLetterDot
-        ? letterColor
-        : colorMix(colors.base, colors.mid, intensity * .72, .82 + intensity * .12);
-      if (isLetterDot && shimmer > .30) {
+      const brandTone = brandPointTone(colors, gradient);
+      const fill = dot.accent
+        ? colorMix(colors.mid, brandTone, .82, .93)
+        : colorMix(colors.base, brandTone, intensity, .84 + intensity * .15);
+
+      if (dot.accent || intensity > .86) {
         context.beginPath();
-        context.arc(px, py, radius * 2.05, 0, Math.PI * 2);
-        context.fillStyle = brandPointColor(colors, gradient, .085 * shimmer);
+        context.arc(px, py, radius * (dot.accent ? 2.25 : 1.75), 0, Math.PI * 2);
+        context.fillStyle = brandPointColor(colors, gradient, dot.accent ? .12 : .035);
         context.fill();
       }
       context.beginPath();
-      context.arc(px, py, Math.max(.5, radius), 0, Math.PI * 2);
+      context.arc(px, py, Math.max(.55, radius), 0, Math.PI * 2);
       context.fillStyle = fill;
       context.fill();
     }
@@ -718,7 +750,7 @@ function syncSkillPicker() {
   const dynamic = creationMode === "dynamic";
   control.classList.remove("fixed");
   trigger.setAttribute("aria-disabled", "false");
-  current.textContent = dynamic ? "SenseNova Dynamic HTML" : (select.selectedOptions[0]?.textContent.trim() || "Auto（自动选择）");
+  current.textContent = dynamic ? "MURAL Dynamic HTML" : (select.selectedOptions[0]?.textContent.trim() || "Auto（自动选择）");
   $$("#skill-menu [data-skill]").forEach((item) => {
     const selected = dynamic ? item.dataset.skill === dynamicSkill : item.dataset.skill === select.value;
     item.classList.toggle("selected", selected);
@@ -731,7 +763,7 @@ function renderSkillMenu() {
   const select = $("#skill-sel");
   if (!menu || !select) return;
   const options = creationMode === "dynamic"
-    ? [{ value: "sense-present-dazzle", label: "SenseNova Dynamic HTML", disabled: false, title: "sn-ppt-dazzle + 专属动态 Harness" }]
+    ? [{ value: "sense-present-dazzle", label: "MURAL Dynamic HTML", disabled: false, title: "sn-ppt-dazzle + 专属动态 Harness" }]
     : [...select.options]
         .filter((option) => option.value !== "long-horizon")
         .map((option) => ({
@@ -881,14 +913,14 @@ function applyAuthenticatedUser(payload) {
   if (layout) layout.dataset.authenticated = "1";
   $$(".auth-only").forEach((element) => (element.hidden = false));
   $$(".guest-only").forEach((element) => (element.hidden = true));
-  const name = payload.display_name || payload.username || "SenseNova 用户";
+  const name = payload.display_name || payload.username || "MURAL 用户";
   const initial = Array.from(name)[0]?.toUpperCase() || "S";
   const menuName = $(".user-menu-account strong");
   const menuMeta = $(".user-menu-account small");
   const profileName = $(".user-profile-copy strong");
   const profileMeta = $(".user-profile-copy small");
   if (menuName) menuName.textContent = name;
-  if (menuMeta) menuMeta.textContent = "SenseNova Studio 用户";
+  if (menuMeta) menuMeta.textContent = "MURAL Studio 用户";
   if (profileName) profileName.textContent = name;
   if (profileMeta) profileMeta.textContent = "个人账号";
   const menuAvatar = $(".user-menu-account .user-avatar");
@@ -1016,7 +1048,7 @@ function setTheme(theme, { remember = true } = {}) {
 const UI_COPY = {
   zh: {
     new_chat: "新对话", history: "历史记录", theme: "主题", login_register: "登录 / 注册", new_presentation: "新建演示",
-    history_search: "搜索历史记录", all_skills: "全部 Skill", all_models: "全部模型", no_history_matches: "没有匹配的历史记录",
+    history_search: "搜索历史记录", no_history_matches: "没有匹配的历史记录",
     batch: "批量生成与下载", add_model: "添加模型", static_presentation: "静态演示",
     dynamic_presentation: "动态演示", switch_account: "切换账号", logout: "退出登录",
     hero_title: "今天，你想展示什么？", start_inspiration: "从一个灵感开始", refresh: "换一批", prompt_placeholder: "描述你的主题、受众和想要的效果…",
@@ -1030,7 +1062,7 @@ const UI_COPY = {
   },
   en: {
     new_chat: "New chat", history: "History", theme: "Theme", login_register: "Sign in / Register", new_presentation: "New presentation",
-    history_search: "Search history", all_skills: "All skills", all_models: "All models", no_history_matches: "No matching history",
+    history_search: "Search history", no_history_matches: "No matching history",
     batch: "Batch generation & download", add_model: "Add model", static_presentation: "Static presentation",
     dynamic_presentation: "Dynamic presentation", switch_account: "Switch account", logout: "Sign out",
     hero_title: "What would you like to present today?", start_inspiration: "Start with an idea", refresh: "Refresh", prompt_placeholder: "Describe your topic, audience, and desired outcome…",
@@ -1063,8 +1095,8 @@ function setLanguage(language, { remember = true } = {}) {
   const selector = $("#settings-language");
   if (selector) selector.value = currentLanguage;
   if (isAuthenticated && historyRows.length) {
-    updateHistoryFilterOptions();
     renderHistoryRows();
+    renderHistorySearchResults();
   }
   setCreationMode(creationMode, { remember: false });
   setSidebarCollapsed(document.querySelector(".layout")?.classList.contains("sidebar-collapsed"), { remember: false });
@@ -1132,7 +1164,7 @@ function syncDynamicModels(payload = {}) {
 function escapeHtml(s) {
   return (s || "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 }
-async function jget(u) { const r = await fetch(u); if (!r.ok) throw new Error(await r.text()); return r.json(); }
+async function jget(u, options) { const r = await fetch(u, options); if (!r.ok) throw new Error(await r.text()); return r.json(); }
 async function jpatch(u, body) {
   const r = await fetch(u, {
     method: "PATCH",
@@ -1151,7 +1183,7 @@ let customModelItems = [];
 function upsertCustomModelOption(model, { select = false } = {}) {
   const main = $("#model-sel");
   const defaultPipeline = main.options[0]?.dataset.defaultPipeline || $("#pipeline-sel")?.value || "";
-  [main, $("#batch-model")].filter(Boolean).forEach((target) => {
+  [main, $("#batch-model"), $("#service-title-task-model")].filter(Boolean).forEach((target) => {
     let option = [...target.options].find((item) => item.value === model.key);
     if (!option) {
       option = document.createElement("option");
@@ -1163,6 +1195,9 @@ function upsertCustomModelOption(model, { select = false } = {}) {
     option.dataset.defaultPipeline = defaultPipeline;
     option.dataset.custom = "1";
     option.dataset.thinkingToggle = model.thinking_toggle ? "1" : "0";
+    option.dataset.effortLevels = (model.effort_levels || []).join(",");
+    option.dataset.effortWithoutThinking = (model.effort_levels_without_thinking || []).join(",");
+    option.dataset.effortDefault = model.thinking_effort || "";
   });
   if (select) {
     main.value = model.key;
@@ -1174,7 +1209,7 @@ function upsertCustomModelOption(model, { select = false } = {}) {
 function removeCustomModelOption(key) {
   const main = $("#model-sel");
   const wasSelected = main?.value === key;
-  [$("#model-sel"), $("#batch-model")].filter(Boolean).forEach((target) => {
+  [$("#model-sel"), $("#batch-model"), $("#service-title-task-model")].filter(Boolean).forEach((target) => {
     const option = [...target.options].find((item) => item.value === key);
     if (option) option.remove();
   });
@@ -1260,7 +1295,7 @@ async function guideOptionalMaterialServices() {
 }
 
 function syncServiceCards() {
-  ["image", "search"].forEach((name) => {
+  ["image", "search", "visual-critic"].forEach((name) => {
     const enabled = $(`#service-${name}-enabled`)?.checked;
     $(`[data-service-card="${name}"]`)?.classList.toggle("is-enabled", !!enabled);
   });
@@ -1288,11 +1323,21 @@ function applyServiceSettings(payload) {
   const image = serviceSettings.image_generation || {};
   const search = serviceSettings.web_search || {};
   const generation = serviceSettings.generation || {};
-  $("#service-max-tokens").value = generation.max_tokens || 65536;
-  $("#service-streaming-enabled").checked = generation.streaming_enabled !== false;
-  $("#service-static-max-turns").value = generation.static_max_turns ?? 4096;
-  $("#service-static-subagent-max-turns").value = generation.static_subagent_max_turns ?? 200;
+  $("#service-max-tokens").value = generation.max_tokens || 40960;
+  $("#service-streaming-enabled").checked = generation.streaming_enabled === true;
+  $("#service-visual-critic-enabled").checked = generation.enable_visual_critic === true;
+  $("#service-static-max-turns").value = generation.static_max_turns ?? 240;
+  $("#service-static-subagent-max-turns").value = generation.static_subagent_max_turns ?? 240;
   $("#service-dynamic-max-turns").value = generation.dynamic_max_turns || 4096;
+  const titleTaskModel = $("#service-title-task-model");
+  const configuredTaskModel = generation.title_task_model || "deployment-model";
+  if (titleTaskModel) {
+    const available = [...titleTaskModel.options].some((option) => option.value === configuredTaskModel);
+    titleTaskModel.value = available
+      ? configuredTaskModel
+      : ([...titleTaskModel.options].some((option) => option.value === "deployment-model")
+        ? "deployment-model" : (titleTaskModel.options[0]?.value || ""));
+  }
   $("#service-image-enabled").checked = !!image.enabled;
   $("#service-image-provider").value = image.provider || "openai_images";
   $("#service-image-url").value = image.base_url || "";
@@ -1324,6 +1369,132 @@ async function setServiceDialog(open) {
   } catch (error) {
     errorBox.textContent = "服务配置加载失败：" + error.message;
     errorBox.hidden = false;
+  }
+}
+
+const ENVIRONMENT_CHECK_LABELS = {
+  skill_source: "当前 Skill 源码",
+  skill_snapshot: "固定 Skill 版本",
+  skill_scripts: "Skill 命令入口",
+  model_credentials: "模型凭证配置（非探活）",
+  playwright: "Playwright Python 依赖",
+  pillow: "Pillow 图像依赖",
+  pymupdf: "PDF 解析依赖",
+  rapidocr: "RapidOCR 依赖",
+  opencv: "OCR 图像运行库",
+  python_docx: "DOCX 解析依赖",
+  python_pptx: "PPTX 解析依赖",
+  openpyxl: "XLSX 解析依赖",
+  libreoffice: "LibreOffice 命令可发现性",
+  formal_inference_runtime: "正式 inference 运行环境",
+  skill_harness_pair: "Skill / Harness 配对",
+  renderer: "Chromium 渲染",
+  renderer_prerequisites: "Chromium 运行条件",
+  render_broker: "渲染调度器",
+  runtime_writable: "运行目录写入",
+  fonts: "中文字体",
+  serif_font: "中文衬线字体",
+  typography_route_fonts: "字体路线",
+  main_model_multimodal: "主模型多模态",
+  main_model_and_external_vision: "主模型与视觉服务",
+  model_configuration: "模型配置",
+  independent_visual_verifier: "独立视觉 Critic",
+  bounded_web_extract_transport: "网页提取传输",
+  requested_attachment_parsers: "附件解析器",
+  libreoffice_preview: "Office 预览",
+  web_search: "联网搜索",
+  image_generate: "AI 生图",
+};
+
+function renderEnvironmentCheck(payload = {}) {
+  const summary = $("#environment-check-summary");
+  const title = $("#environment-check-title");
+  const meta = $("#environment-check-meta");
+  const list = $("#environment-check-list");
+  const status = payload.checked ? (payload.status || "blocked") : "idle";
+  summary.className = `environment-check-summary is-${status}`;
+  if (!payload.checked) {
+    title.textContent = "尚未检验";
+    meta.textContent = "选择模型后检查本地运行条件";
+    list.innerHTML = "";
+    return;
+  }
+  const titles = {
+    ready: payload.live_probes ? "环境可用" : "本地预检通过（未探活外部服务）",
+    degraded: "本地环境有可选缺失项",
+    blocked: "环境存在阻塞项",
+  };
+  title.textContent = titles[status] || "环境检验已完成";
+  const checkedAt = payload.checked_epoch
+    ? new Date(Number(payload.checked_epoch) * 1000).toLocaleString()
+    : "";
+  const duration = payload.duration_ms ? fmtDur(Number(payload.duration_ms) / 1000) : "";
+  const runtime = payload.runtime_aligned === true
+    ? "生成 / 附件 / OCR 已对齐"
+    : (payload.runtime_aligned === false ? "运行解释器未对齐" : "");
+  meta.textContent = [payload.model_label, runtime, checkedAt, duration].filter(Boolean).join(" · ");
+  list.innerHTML = (payload.checks || []).map((item) => {
+    const label = ENVIRONMENT_CHECK_LABELS[item.id]
+      || item.id.replace(/^attachment_/, "附件：").replaceAll("_", " ");
+    const latency = item.latency_ms ? `${(item.latency_ms / 1000).toFixed(1)}s` : "";
+    const scope = item.required ? "必需" : "可选";
+    return `<div class="environment-check-item ${item.ok ? "ok" : "fail"}">
+      <i>${item.ok ? "✓" : "!"}</i>
+      <span><strong>${escapeHtml(label)} · ${scope}</strong><small>${escapeHtml(item.detail || "")}</small></span>
+      <em>${latency}</em>
+    </div>`;
+  }).join("");
+}
+
+async function setEnvironmentDialog(open) {
+  if (open && !requireAuthentication()) return;
+  const modal = $("#environment-modal");
+  modal.hidden = !open;
+  document.body.classList.toggle("modal-open", open);
+  $("#environment-check-error").hidden = true;
+  if (!open) return;
+  const currentModel = $("#model-sel")?.value;
+  if (currentModel && $(`#environment-model option[value="${CSS.escape(currentModel)}"]`)) {
+    $("#environment-model").value = currentModel;
+  }
+  try {
+    renderEnvironmentCheck(await jget("/api/settings/environment-check"));
+  } catch (error) {
+    const box = $("#environment-check-error");
+    box.textContent = "上次检验结果加载失败：" + error.message;
+    box.hidden = false;
+  }
+}
+
+async function runEnvironmentCheck() {
+  const button = $("#environment-check-run");
+  const errorBox = $("#environment-check-error");
+  errorBox.hidden = true;
+  button.disabled = true;
+  button.textContent = "检验中…";
+  const summary = $("#environment-check-summary");
+  summary.className = "environment-check-summary is-running";
+  $("#environment-check-title").textContent = "正在检验运行环境";
+  $("#environment-check-meta").textContent = "正在检查当前 v1 的本地依赖与配置，不发送外部模型请求";
+  $("#environment-check-list").innerHTML = "";
+  try {
+    const response = await fetch("/api/settings/environment-check", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: $("#environment-model").value }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.detail || "环境检验失败");
+    renderEnvironmentCheck(payload);
+  } catch (error) {
+    summary.className = "environment-check-summary is-blocked";
+    $("#environment-check-title").textContent = "环境检验未完成";
+    $("#environment-check-meta").textContent = "请检查运行服务后重试";
+    errorBox.textContent = error.message;
+    errorBox.hidden = false;
+  } finally {
+    button.disabled = false;
+    button.textContent = "重新检验";
   }
 }
 
@@ -1361,9 +1532,28 @@ const HISTORY_GROUPS = [
 ].filter((group) => dynamicEnabled || group.key !== "dynamic");
 let historyContextTarget = null;
 let historyRows = [];
+let historySearchActiveIndex = 0;
+let historyTitleTimer = null;
 
 function historyTitle(row) {
   return String(row.display_title || row.title || "未命名");
+}
+
+function syncStaticTitle(id, payload) {
+  if (!payload || !(payload.display_title || payload.title)) return;
+  const title = historyTitle(payload);
+  const row = historyRows.find((item) => item.kind === "static" && String(item.id) === String(id));
+  if (row && historyTitle(row) !== title) {
+    row.title = payload.title;
+    row.display_title = title;
+    row.title_source = payload.title_source ?? row.title_source;
+    renderHistoryRows();
+    if (!$("#history-search-modal")?.hidden) renderHistorySearchResults();
+  }
+  if (ed.kind === "static" && String(ed.id) === String(id) && $("#ed-title").textContent !== title) {
+    $("#ed-title").textContent = title;
+    setTopbar(title, `${editorPresentationKind() === "dynamic" ? "动态" : "静态"}演示 · AI 生成内容请注意核验`);
+  }
 }
 
 function historySkillKey(row) {
@@ -1384,35 +1574,94 @@ function historyModelLabel(row) {
   return String(row.model_label || modelLabel(key));
 }
 
-function updateHistoryFilterSelect(select, rows, keyFor, labelFor, allLabel) {
-  if (!select) return;
-  const selected = select.value;
-  const options = new Map();
-  rows.forEach((row) => {
-    const key = keyFor(row);
-    if (key) options.set(key, labelFor(row) || key);
-  });
-  select.innerHTML = `<option value="">${escapeHtml(allLabel)}</option>${[...options]
-    .sort((a, b) => a[1].localeCompare(b[1]))
-    .map(([key, label]) => `<option value="${escapeHtml(key)}">${escapeHtml(label)}</option>`)
-    .join("")}`;
-  select.value = options.has(selected) ? selected : "";
-}
-
-function updateHistoryFilterOptions() {
-  updateHistoryFilterSelect($("#history-skill-filter"), historyRows, historySkillKey, historySkillLabel, uiText("all_skills"));
-  updateHistoryFilterSelect($("#history-model-filter"), historyRows, historyModelKey, historyModelLabel, uiText("all_models"));
-}
-
-function filteredHistoryRows() {
+function searchedHistoryRows() {
   const query = String($("#history-search-input")?.value || "").trim().toLowerCase();
-  const skill = $("#history-skill-filter")?.value || "";
-  const model = $("#history-model-filter")?.value || "";
-  return historyRows.filter((row) => (
-    (!query || historyTitle(row).toLowerCase().includes(query))
-    && (!skill || historySkillKey(row) === skill)
-    && (!model || historyModelKey(row) === model)
-  ));
+  if (!query) return historyRows;
+  return historyRows.filter((row) => [
+    historyTitle(row), historySkillLabel(row), historyModelLabel(row),
+    STATUS_LABEL[row.status] || row.status,
+  ].some((value) => String(value || "").toLowerCase().includes(query)));
+}
+
+function openHistoryRow(row) {
+  if (!row) return;
+  setHistorySearch(false);
+  row.kind === "dynamic" ? openDynamic(row.id) : openDeck(+row.id);
+}
+
+function renderHistorySearchResults() {
+  const box = $("#history-search-results");
+  if (!box) return;
+  const rows = searchedHistoryRows();
+  historySearchActiveIndex = Math.min(Math.max(0, historySearchActiveIndex), Math.max(0, rows.length - 1));
+  if (!rows.length) {
+    box.innerHTML = `<div class="history-search-empty">${escapeHtml(uiText("no_history_matches"))}</div>`;
+    return;
+  }
+  box.innerHTML = rows.map((row, index) => {
+    const visualKind = row.groupKind || row.kind;
+    const kindLabel = visualKind === "dynamic" ? uiText("dynamic_presentation") : uiText("static_presentation");
+    const statusLabel = STATUS_LABEL[row.status] || row.status || "";
+    const meta = [kindLabel, statusLabel].filter(Boolean).join(" · ");
+    return `<button type="button" class="history-search-result${index === historySearchActiveIndex ? " active" : ""}"
+      data-history-search-index="${index}" role="option" aria-selected="${index === historySearchActiveIndex ? "true" : "false"}">
+      <span class="kind-mark ${visualKind} s-${escapeHtml(String(row.status || ""))}" aria-hidden="true"></span>
+      <span class="history-search-result-title">${escapeHtml(historyTitle(row))}</span>
+      <span class="history-search-result-meta">${escapeHtml(meta)}</span>
+      <span class="history-search-enter" aria-hidden="true">↵</span>
+    </button>`;
+  }).join("");
+}
+
+function setHistorySearch(open) {
+  const modal = $("#history-search-modal");
+  const trigger = $("#history-search-trigger");
+  if (!modal) return;
+  modal.hidden = !open;
+  trigger?.setAttribute("aria-expanded", open ? "true" : "false");
+  document.body.classList.toggle("history-search-open", open);
+  if (open) {
+    historySearchActiveIndex = 0;
+    $("#history-search-input").value = "";
+    renderHistorySearchResults();
+    requestAnimationFrame(() => $("#history-search-input")?.focus());
+  } else if (document.activeElement?.closest("#history-search-modal")) {
+    trigger?.focus();
+  }
+}
+
+function initHistorySearch() {
+  const modal = $("#history-search-modal");
+  const input = $("#history-search-input");
+  $("#history-search-trigger")?.addEventListener("click", () => setHistorySearch(true));
+  $("#history-search-close")?.addEventListener("click", () => setHistorySearch(false));
+  modal?.addEventListener("click", (event) => {
+    if (event.target === modal) setHistorySearch(false);
+    const result = event.target.closest("[data-history-search-index]");
+    if (result) openHistoryRow(searchedHistoryRows()[+result.dataset.historySearchIndex]);
+  });
+  input?.addEventListener("input", () => {
+    historySearchActiveIndex = 0;
+    renderHistorySearchResults();
+  });
+  input?.addEventListener("keydown", (event) => {
+    const rows = searchedHistoryRows();
+    if (event.key === "Escape") {
+      event.preventDefault();
+      setHistorySearch(false);
+      return;
+    }
+    if (!rows.length || !["ArrowDown", "ArrowUp", "Enter"].includes(event.key)) return;
+    event.preventDefault();
+    if (event.key === "Enter") {
+      openHistoryRow(rows[historySearchActiveIndex]);
+      return;
+    }
+    const direction = event.key === "ArrowDown" ? 1 : -1;
+    historySearchActiveIndex = (historySearchActiveIndex + direction + rows.length) % rows.length;
+    renderHistorySearchResults();
+    $("#history-search-results .history-search-result.active")?.scrollIntoView({ block: "nearest" });
+  });
 }
 
 function historyGroupState() {
@@ -1595,16 +1844,7 @@ async function regenerateHistoryItem(target) {
 function renderHistoryRows() {
   const box = $("#deck-list");
   if (!box) return;
-  const rows = filteredHistoryRows();
-  const hasFilter = Boolean(
-    $("#history-search-input")?.value.trim()
-    || $("#history-skill-filter")?.value
-    || $("#history-model-filter")?.value
-  );
-  if (!rows.length && historyRows.length && hasFilter) {
-    box.innerHTML = `<div class="history-filter-empty">${escapeHtml(uiText("no_history_matches"))}</div>`;
-    return;
-  }
+  const rows = historyRows;
   const state = historyGroupState();
   const grouped = {
     pinned: rows.filter((d) => d.pinned),
@@ -1637,16 +1877,12 @@ function renderHistoryRows() {
   });
 }
 
-function initHistoryFilters() {
-  $("#history-search-input")?.addEventListener("input", renderHistoryRows);
-  $("#history-skill-filter")?.addEventListener("change", renderHistoryRows);
-  $("#history-model-filter")?.addEventListener("change", renderHistoryRows);
-}
-
 async function loadDecks(active) {
+  clearTimeout(historyTitleTimer);
+  historyTitleTimer = null;
   const box = $("#deck-list");
-  const tools = $("#history-tools");
-  if (tools) tools.hidden = !isAuthenticated;
+  const searchTrigger = $("#history-search-trigger");
+  if (searchTrigger) searchTrigger.hidden = !isAuthenticated;
   if (!isAuthenticated) {
     historyRows = [];
     box.innerHTML = '<button type="button" class="guest-history" data-open-auth>登录后查看历史演示</button>';
@@ -1674,8 +1910,12 @@ async function loadDecks(active) {
     ];
     if (!trajectoryMode) rows.sort((a, b) => String(b.sortAt).localeCompare(String(a.sortAt)));
     historyRows = rows;
-    updateHistoryFilterOptions();
+    syncStaticTitle(ed.id, rows.find((row) => row.kind === "static" && String(row.id) === String(ed.id)));
     renderHistoryRows();
+    if (!$("#history-search-modal")?.hidden) renderHistorySearchResults();
+    if (rows.some((row) => row.title_refresh_pending)) {
+      historyTitleTimer = setTimeout(() => loadDecks(ed.id), 2000);
+    }
   } catch { box.innerHTML = '<div class="muted small pad">加载失败</div>'; }
 }
 
@@ -1687,6 +1927,7 @@ function openDeckFromLocationHash() {
   const requested = match && $$("#deck-list .deck-item").find((item) =>
     item.dataset.kind === match[1] && item.dataset.id === requestedId);
   if (requested) requested.click();
+  else if (trajectoryMode && requestedId) openDeck(+requestedId);
   else if (trajectoryMode) $("#deck-list .deck-item")?.click();
 }
 
@@ -1753,13 +1994,13 @@ const PIPELINE_LABEL = {
   "mural-presenter-v0.3-harness": "MURAL Presenter v0.3 · Adaptive Ownership",
   "mural-presenter-v0.4-harness": "MURAL Presenter v0.4 · Adaptive Quality",
   "mural-next-harness": "MURAL Next experimental harness",
-  "sense-present-standard-harness": "SenseNova Static HTML Harness",
-  "sense-present-dazzle-harness": "SenseNova Dynamic HTML Harness",
+  "sense-present-standard-harness": "MURAL Static HTML Harness",
+  "sense-present-dazzle-harness": "MURAL Dynamic HTML Harness",
   "sense-present-ppt-skill-harness": "Sense Present PPT Skill Suite Harness",
 };
 const SKILL_LABEL = {
-  "sense-present-standard": "SenseNova Static HTML",
-  "sense-present-dazzle": "SenseNova Dynamic HTML",
+  "sense-present-standard": "MURAL Static HTML",
+  "sense-present-dazzle": "MURAL Dynamic HTML",
   "sense-present-ppt-skill": "Sense Present PPT Skill Suite",
   auto: "Auto（自动选择）",
   zh: "中文 Skill",
@@ -1785,10 +2026,12 @@ const SKILL_LABEL = {
 let attachFiles = [];               // composer 已选附件(File);仅所选管线 caps 含 attachments 时可用
 let fontFiles = [];                 // 用户授权上传的字体；与普通材料分开提交和挂载
 const FONT_ROLE_OPTIONS = {
-  title: ["Noto Sans SC", "Noto Serif SC", "Smiley Sans", "ZCOOL XiaoWei", "Ma Shan Zheng", "Bebas Neue", "Playfair Display", "Space Grotesk", "Sora"],
-  body: ["Noto Sans SC", "Noto Serif SC", "LXGW WenKai", "DM Sans", "Manrope"],
-  number: ["IBM Plex Mono", "Archivo", "Montserrat", "Oswald", "Bebas Neue", "Sora"],
-  annotation: ["LXGW WenKai", "Zhi Mang Xing", "Dancing Script", "Kalam"],
+  display: ["Inter Tight", "Geist", "Poppins", "Plus Jakarta Sans", "Space Grotesk", "Sora", "Bebas Neue", "Playfair Display", "Smiley Sans", "ZCOOL XiaoWei"],
+  title: ["Noto Sans SC", "Noto Serif SC", "Inter", "Inter Tight", "Geist", "Poppins", "Figtree", "Smiley Sans", "ZCOOL XiaoWei", "Ma Shan Zheng", "Bebas Neue", "Playfair Display", "Space Grotesk", "Sora"],
+  body: ["Noto Sans SC", "Noto Serif SC", "Inter", "Open Sans", "Roboto", "Figtree", "Plus Jakarta Sans", "LXGW WenKai", "DM Sans", "Manrope"],
+  number: ["IBM Plex Mono", "JetBrains Mono", "Geist Mono", "Roboto Mono", "Archivo", "Montserrat", "Oswald", "Bebas Neue", "Sora"],
+  annotation: ["LXGW WenKai", "Zhi Mang Xing", "Dancing Script", "Kalam", "Caveat"],
+  mono: ["IBM Plex Mono", "JetBrains Mono", "Geist Mono", "Roboto Mono"],
 };
 const attachmentObjectUrls = new Map();
 let attachmentViewerRequestId = 0;
@@ -1835,15 +2078,16 @@ function deckAttachmentPreviewUrls(item = {}, index = 0) {
   if (!/^\d+$/.test(String(ed.id || ""))) return { url: item.url || "", fallbackUrl: "", previewUrl: "" };
   const dedicatedUrl = `/api/decks/${ed.id}/attachments/${index}`;
   let rel = String(item.preview_rel || "").replace(/^\/+/, "");
-  // Only use a workspace path when the backend explicitly exposed one.
-  // Parsed PDF/Office/text inputs are not copied into attachments/raw, so
-  // synthesising that path produced a 404 that an iframe could not recover from.
+  // The dedicated endpoint is the canonical original attachment. Workspace
+  // paths are optional derived previews and may disappear after pipeline
+  // staging, so they must never be the primary PDF/open-in-new-window URL.
   const workspaceUrl = rel
     ? `/api/decks/${ed.id}/file?rel=${encodeURIComponent(rel)}`
     : "";
+  const suppliedUrl = String(item.url || "");
   return {
-    url: item.url || workspaceUrl || dedicatedUrl,
-    fallbackUrl: item.url ? (workspaceUrl || dedicatedUrl) : dedicatedUrl,
+    url: suppliedUrl || dedicatedUrl,
+    fallbackUrl: suppliedUrl ? dedicatedUrl : workspaceUrl,
     previewUrl: `/api/decks/${ed.id}/attachments/${index}/preview`,
   };
 }
@@ -2107,16 +2351,28 @@ function setFontPanel(open) {
 
 window.addEventListener("resize", queueFontPanelPosition);
 window.visualViewport?.addEventListener("resize", queueFontPanelPosition);
+function ensureFontPreviewStylesheet() {
+  // Load the shared built-in preview faces once so the role dropdowns can
+  // preview each family. Same resource the deck preview iframe uses, so the
+  // config preview and the exported deck resolve identical sources.
+  if (document.getElementById("studio-font-preview-css")) return;
+  const link = document.createElement("link");
+  link.id = "studio-font-preview-css";
+  link.rel = "stylesheet";
+  link.href = "/api/preview-fonts.css";
+  document.head.appendChild(link);
+}
 function renderFontControls() {
+  ensureFontPreviewStylesheet();
   $$('[data-font-role]').forEach((select) => {
     const previous = select.value || "auto";
     const role = select.dataset.fontRole;
     const options = ['<option value="auto">智慧匹配</option>'];
     (FONT_ROLE_OPTIONS[role] || []).forEach((family) => options.push(
-      `<option value="builtin:${escapeHtml(family)}">${escapeHtml(family)}</option>`
+      `<option value="builtin:${escapeHtml(family)}" style="font-family:${escapeHtml(JSON.stringify(family))}">${escapeHtml(family)}</option>`
     ));
     fontFiles.forEach((file) => options.push(
-      `<option value="custom:${escapeHtml(file.name)}">上传 · ${escapeHtml(file.name)}</option>`
+      `<option value="custom:${escapeHtml(file.name)}">用户字体 · ${escapeHtml(file.name)}</option>`
     ));
     select.innerHTML = options.join("");
     select.value = [...select.options].some((item) => item.value === previous) ? previous : "auto";
@@ -2150,13 +2406,52 @@ function syncFontControl() {
   if (!enabled) setFontPanel(false);
   if (!enabled && fontFiles.length) clearFontFiles();
 }
-function attachmentMode() {
-  const el = $("#attachment-mode");
-  return el ? el.value : "web_parse";
-}
-
 function thinkingEnabled() {
   return modelSupportsThinking() && !!$("#thinking-sel")?.checked;
+}
+
+function effortLevels(option = null) {
+  const selected = option || $("#model-sel")?.selectedOptions?.[0];
+  return (selected?.dataset.effortLevels || "")
+    .split(",")
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function selectedEffort() {
+  const levels = selectableEffortLevels();
+  const value = $("#effort-sel")?.value || "";
+  return levels.includes(value) ? value : "";
+}
+
+function selectableEffortLevels(option = null) {
+  const selected = option || $("#model-sel")?.selectedOptions?.[0];
+  if (selected?.dataset.thinkingToggle === "1" && !thinkingEnabled()) {
+    const allowed = (selected.dataset.effortWithoutThinking || "").split(",");
+    return effortLevels(selected).filter((level) => allowed.includes(level));
+  }
+  return effortLevels(selected);
+}
+
+function syncEffortControl() {
+  const control = $("#effort-control");
+  const select = $("#effort-sel");
+  const option = $("#model-sel")?.selectedOptions?.[0];
+  if (!control || !select || !option) return;
+  const levels = selectableEffortLevels(option);
+  const available = levels.length > 0;
+  control.hidden = !available;
+  select.disabled = !available;
+  if (!levels.length) {
+    select.replaceChildren();
+    return;
+  }
+  const saved = localStorage.getItem(`studio_effort_${option.value}`);
+  const preferred = levels.includes(saved)
+    ? saved
+    : (levels.includes(option.dataset.effortDefault) ? option.dataset.effortDefault : levels[0]);
+  select.innerHTML = levels.map((level) => `<option value="${level}">${level}</option>`).join("");
+  select.value = preferred;
 }
 
 function modelSupportsThinking() {
@@ -2175,6 +2470,7 @@ function syncThinkingControl() {
     supported && (saved === null ? true : saved === "1"),
     { remember: false },
   );
+  syncEffortControl();
 }
 
 function setThinkingEnabled(enabled, { remember = true } = {}) {
@@ -2184,6 +2480,8 @@ function setThinkingEnabled(enabled, { remember = true } = {}) {
   input.checked = !!enabled;
   trigger.setAttribute("aria-checked", enabled ? "true" : "false");
   if (remember) localStorage.setItem("studio_thinking", enabled ? "1" : "0");
+  syncEffortControl();
+  syncBatchEffortControl();
 }
 
 async function send() {
@@ -2216,7 +2514,7 @@ async function send() {
   body.set("style", $("#style-sel") ? $("#style-sel").value : "");
   body.set("scheme", $("#scheme-sel") ? $("#scheme-sel").value : "");   // 主题/风格/色系 = 生成偏好(空=自动)
   body.set("thinking", thinkingEnabled() ? "1" : "0");
-  body.set("attachment_mode", attachmentMode());
+  body.set("effort", selectedEffort());
   body.set("font_roles", JSON.stringify(fontRoleConfig()));
   body.set("font_license_ack", $("#font-license-ack")?.checked ? "1" : "0");
   if (pipelineHasCap("attachments")) attachFiles.forEach((f) => body.append("files", f));  // 仅支持附件的管线才带
@@ -2260,6 +2558,7 @@ async function sendSensePresentDazzle(query) {
   body.set("style", $("#style-sel")?.value || "");
   body.set("scheme", $("#scheme-sel")?.value || "");
   body.set("thinking", thinkingEnabled() ? "1" : "0");
+  body.set("effort", selectedEffort());
   button.disabled = true;
   try {
     const response = await fetch("/api/decks", { method: "POST", body });
@@ -2419,11 +2718,31 @@ async function openBatchModal() {
   $("#batch-error").hidden = true;
   const mainModel = $("#model-sel").value;
   if ($(`#batch-model option[value="${mainModel}"]`)) $("#batch-model").value = mainModel;
+  syncBatchEffortControl();
   const mainSkill = $("#skill-sel").value;
   if ($(`#batch-skill option[value="${mainSkill}"]`)) $("#batch-skill").value = mainSkill;
-  $("#batch-attachment-mode").value = attachmentMode();
   $("#batch-modal").hidden = false;
   await loadBatches();
+}
+
+function syncBatchEffortControl() {
+  const option = $("#batch-model")?.selectedOptions?.[0];
+  const control = $("#batch-effort-control");
+  const select = $("#batch-effort");
+  if (!option || !control || !select) return;
+  const levels = selectableEffortLevels(option);
+  control.hidden = levels.length === 0;
+  select.disabled = levels.length === 0;
+  if (!levels.length) {
+    select.replaceChildren();
+    return;
+  }
+  const saved = localStorage.getItem(`studio_effort_${option.value}`);
+  const preferred = levels.includes(saved)
+    ? saved
+    : (levels.includes(option.dataset.effortDefault) ? option.dataset.effortDefault : levels[0]);
+  select.innerHTML = levels.map((level) => `<option value="${level}">${level}</option>`).join("");
+  select.value = preferred;
 }
 
 function closeBatchModal() {
@@ -2442,12 +2761,12 @@ async function submitBatch(event) {
   const body = new FormData($("#batch-form"));
   body.set("model", $("#batch-model").value);
   body.set("skill", $("#batch-skill").value);
-  body.set("attachment_mode", $("#batch-attachment-mode").value);
   body.set("slide_count", currentSlideCount());
   body.set("theme", $("#theme-sel")?.value || "");
   body.set("style", $("#style-sel")?.value || "");
   body.set("scheme", $("#scheme-sel")?.value || "");
   body.set("thinking", thinkingEnabled() ? "1" : "0");
+  body.set("effort", $("#batch-effort-control")?.hidden ? "" : ($("#batch-effort")?.value || ""));
   const button = $("#batch-submit");
   button.disabled = true;
   button.textContent = "正在创建…";
@@ -2461,7 +2780,6 @@ async function submitBatch(event) {
     }
     const batch = await response.json();
     $("#batch-form").reset();
-    $("#batch-attachment-mode").value = attachmentMode();
     renderBatchDetail(batch);
     await loadDecks();
     await loadBatches(batch.id);
@@ -2476,12 +2794,18 @@ async function submitBatch(event) {
 
 /* ---------------- 编辑器 ---------------- */
 function closeEditor({ showComposerView = true } = {}) {
+  ed.deckLoadController?.abort();
+  ed.deckLoadController = null;
+  const messages = $("#workflow-message-list");
+  if (messages) { messages.replaceChildren(); delete messages.dataset.renderKey; }
   setProcRailOpen(false);
   if (ed.sse) { ed.sse.close(); ed.sse = null; }
   if (ed.timer) { clearInterval(ed.timer); ed.timer = null; }
   if (ed.dynamicPollTimer) { clearTimeout(ed.dynamicPollTimer); ed.dynamicPollTimer = null; }
+  cancelWorkflowAgentTraceRequest();
   stopLive();
   ed.id = null;
+  ed.workflowToolOutputs = {};
   const frame = $("#canvas-deck");
   frame.hidden = true; frame.src = "about:blank";
   delete frame.dataset.deckKind;
@@ -2489,6 +2813,19 @@ function closeEditor({ showComposerView = true } = {}) {
   delete frame.dataset.pendingSlide;
   if (location.hash.match(/^#(?:static|dynamic)-/)) history.replaceState(null, "", location.pathname + location.search);
   if (showComposerView) showComposer();
+}
+
+function renderDeckLoadState(failed = false) {
+  const empty = $("#canvas-empty");
+  empty.hidden = false;
+  empty.innerHTML = `<div class="workstream-head deck-load-state" role="status">
+    ${muralMakingMarkup({rows: [], total: 0, previews: 0, active: !failed, loadingRecords: true,
+      status: failed ? "任务记录读取失败" : "正在读取任务记录"}, true)}
+    ${failed ? '<p>连接失败或读取超过 20 秒。这不代表生成失败；可以重试或返回列表。</p>' : ""}
+    ${failed ? '<button type="button" data-deck-load-retry>重新读取</button>' : ""}</div>`;
+  const retry = empty.querySelector("[data-deck-load-retry]");
+  if (retry) retry.onclick = () => openDeck(ed.id);
+  syncViewToggle();
 }
 
 async function openDeck(id) {
@@ -2500,18 +2837,27 @@ async function openDeck(id) {
   Object.assign(ed, { id, kind: "static", total: 0, authored: new Set(), rendered: new Set(), sel: null, follow: true, status: null,
                       lastPhase: null, feedSeen: new Set(), finalized: false, planCache: {},
                       ppCollapsed: true,
-                      feed: {}, pageAgents: {}, workspaceView: "process", viewMode: "ppt",
+                      feed: {}, pageAgents: {}, workflow: {}, muralRuntime: {}, liveEventCursor: 0, liveEventSchema: "", workspaceView: "workflow", viewMode: "ppt",
+                      workflowPane: "page", workflowPage: 1, workflowNodeOffsets: {}, workflowPanelCollapsed: { files: false, conversation: false }, workflowArtifactRel: "", workflowArtifactFallback: null,
+                      workflowSplitRatio: workflowSplitRatio(localStorage.getItem("studio_workflow_split_ratio")),
+                      workflowOwnerAgent: "", workflowOwnerTask: "", workflowSelectedNodeId: "",
+                      workflowConversationMode: "history", workflowTraceAgent: "", workflowTraceSegment: "", workflowTraceSource: "messages", workflowTracePayload: null, workflowTraceLoading: false, workflowTraceRequest: 0, workflowTraceAbortController: null, workflowTraceExpanded: false, workflowTraceLoadedAt: 0,
+                      workflowArtifactCache: {}, workflowArtifactLoading: "", workflowArtifactRequest: 0,
+                      workflowDocuments: {}, workflowDocumentSignature: "", workflowDocumentLoading: "",
                       specialistArtifacts: {}, agentTimings: {}, overallTiming: null,
                       staticDeckUrl: trajectoryMode ? trajectoryDeckApi(id, "/files/present.html") : `/api/decks/${id}/files/present.html`, staticDeckReady: false,
                       staticDeckFinal: false, staticHtmlStamp: 0, staticStamp: Date.now(),
                       fullQuery: "",
                       briefMeta: {}, attachments: [], staticFollowups: [], staticConversationTurns: [],
+                      resumeEligible: false, resumeExitReason: null,
                       conKey: null, conLines: [],
                       atimes: {}, rtimes: {}, staticDirtyPages: new Set(), phLines: {}, historyRequest: 0,
                       pageHistoryCache: new Map(), pageHistoryPending: new Map(),
+                      canvasSpec: null,
                       historyScopePage: null, historyRenderKey: "", speechRenderKey: "",
                       speechScopePage: null, speechRequest: 0, speechPages: new Map(), hasAnySpeech: false, stopRequested: false });
   $("#editor").dataset.kind = "static";
+  setCanvasSpec(ed.canvasSpec);
   setRailLabels("static");
   $("#plan-panel").hidden = true;
   $("#pr-feed").innerHTML = "";
@@ -2519,42 +2865,51 @@ async function openDeck(id) {
   $("#pr-count").textContent = "–";
   $("#pr-bar").style.width = "0%";
   $$("#pr-steps li").forEach((li) => (li.className = ""));
-  buildFilmstrip();                       // 含 00 · 过程帧(total 未知时也先有它)
+  buildFilmstrip();
   $("#canvas-img").hidden = true;
   $("#canvas-deck").hidden = true;
-  $("#canvas-empty").hidden = false;
-  $("#canvas-empty .ce-text").textContent = "正在筹备…";
+  renderDeckLoadState();
   $("#follow-btn").classList.add("on");
-  const progressPromise = jget(trajectoryMode ? trajectoryDeckApi(id, "/progress") : `/api/decks/${id}/progress`);
+  const controller = new AbortController();
+  ed.deckLoadController = controller;
+  const timeout = setTimeout(() => controller.abort(), 20000);
+  const isCurrent = () => ed.deckLoadController === controller && ed.id === id;
+  const progressPromise = jget(trajectoryMode ? trajectoryDeckApi(id, "/progress") : `/api/decks/${id}/progress`, {signal: controller.signal});
   const workspaceTransition = transitionComposerToEditor();
-  let p;
-  try { p = await progressPromise; }
-  catch {
-    await workspaceTransition;
-    showStudioNotice("演示加载失败，请稍后重试", { type: "error" });
-    finishComposerLaunchMorph();
-    return;
-  }
-  $("#ed-title").textContent = p.title || "演示文稿";
-  apply(p);
-  setTopbar(
-    p.title || "演示文稿",
-    `${editorPresentationKind() === "dynamic" ? "动态" : "静态"}演示 · AI 生成内容请注意核验`,
-  );
-  if (isStaticActiveStatus(p.status)) {
-    if (trajectoryMode) {
-      ed.timer = setInterval(async () => {
-        if (ed.id !== id) return;
-        try { apply(await jget(trajectoryDeckApi(id, "/progress"))); } catch {}
-      }, 2000);
-    } else {
-      subscribe(id);
-      ed.timer = setInterval(tick, 1000);
+  try {
+    const p = await progressPromise;
+    clearTimeout(timeout);
+    if (!isCurrent()) return;
+    $("#ed-title").textContent = p.title || "演示文稿";
+    apply(p);
+    setTopbar(
+      p.title || "演示文稿",
+      `${editorPresentationKind() === "dynamic" ? "动态" : "静态"}演示 · AI 生成内容请注意核验`,
+    );
+    if (isStaticActiveStatus(p.status)) {
+      if (trajectoryMode) {
+        ed.timer = setInterval(async () => {
+          if (ed.id !== id) return;
+          try { apply(await jget(trajectoryDeckApi(id, "/progress"))); } catch {}
+        }, 2000);
+      } else {
+        subscribe(id);
+        ed.timer = setInterval(tick, 1000);
+      }
+      startLive();
     }
-    startLive();
+    await workspaceTransition;
+    if (isCurrent()) finishComposerLaunchMorph();
+  } catch {
+    if (!isCurrent()) return;
+    await workspaceTransition;
+    if (!isCurrent()) return;
+    renderDeckLoadState(true);
+    finishComposerLaunchMorph();
+  } finally {
+    clearTimeout(timeout);
+    if (isCurrent()) ed.deckLoadController = null;
   }
-  await workspaceTransition;
-  finishComposerLaunchMorph();
 }
 
 /* ---------------- 动态演示：复用同一套编辑器外壳 ---------------- */
@@ -2587,12 +2942,19 @@ async function openDynamic(convId, { subscribeNow = false } = {}) {
     status: "running", fullQuery: "", dynamicDeckUrl: "", dynamicLogs: [], dynamicSeq: new Set(),
     dynamicPhase: "plan", dynamicStamp: Date.now(), dynamicStartedAt: Date.now() / 1000,
     elapsedBase: 0, elapsedAt: Date.now(), planCache: {}, ppCollapsed: true,
-    workspaceView: "process", viewMode: "ppt",
+    workspaceView: "process", viewMode: "ppt", workflow: {}, muralRuntime: {},
+    workflowPane: "graph", workflowPage: 1, workflowNodeOffsets: {}, workflowPanelCollapsed: { files: false, conversation: false }, workflowArtifactRel: "", workflowArtifactFallback: null,
+    workflowOwnerAgent: "", workflowOwnerTask: "", workflowSelectedNodeId: "",
+    workflowConversationMode: "history", workflowTraceAgent: "", workflowTraceSegment: "", workflowTraceSource: "messages", workflowTracePayload: null, workflowTraceLoading: false, workflowTraceRequest: 0, workflowTraceAbortController: null, workflowTraceExpanded: false, workflowTraceLoadedAt: 0,
+    workflowArtifactCache: {}, workflowArtifactLoading: "", workflowArtifactRequest: 0,
+    workflowDocuments: {}, workflowDocumentSignature: "", workflowDocumentLoading: "",
     dynamicModelLabel: "动态模型", dynamicFeedSeen: new Set(), dynamicError: "",
     briefMeta: {}, attachments: [], pageAgents: {}, dynamicFollowups: [], dynamicChatTurns: [],
     agentTimings: {}, overallTiming: null,
     speechRenderKey: "", speechScopePage: null, speechRequest: 0, speechPages: new Map(), hasAnySpeech: false, stopRequested: false,
+    canvasSpec: null,
   });
+  setCanvasSpec(ed.canvasSpec);
   $("#editor").dataset.kind = "dynamic";
   setRailLabels("dynamic");
   $("#plan-panel").hidden = true;
@@ -2671,7 +3033,7 @@ function dynamicLog(text, kind = "text", timestamp = null) {
 function dynamicPhaseForTool(name, args = {}) {
   if (["read_file"].includes(name)) return "plan";
   if (["image_generate", "web_search", "web_fetch"].includes(name)) return "research";
-  if (name === "vision_analyze" || (name === "bash" && /--all/.test(args.command || ""))) return "verify";
+  if (["inspect", "inspect_group", "vision_analyze"].includes(name) || (name === "bash" && /--all/.test(args.command || ""))) return "verify";
   return "render";
 }
 
@@ -2867,8 +3229,20 @@ function renderDynamicConsole() {
 
 function apply(p) {
   if (ed.id == null) return;
+  syncStaticTitle(ed.id, p);
   if (ed.stopRequested) p = { ...p, status: "interrupted", error: "用户已停止" };
+  $("#canvas-empty > .deck-load-state")?.remove();
   ed.status = p.status;
+  ed.artifactStatus = p.artifact_status || "";
+  ed.trainingAdmission = p.training_admission || null;
+  ed.trainingRejectionReasons = p.training_rejection_reasons || [];
+  ed.resumeEligible = p.resume_eligible === true;
+  ed.resumeExitReason = p.resume_exit_reason || null;
+  setCanvasSpec(p.canvas_spec);
+  ed.muralRuntime = p.mural_runtime || ed.muralRuntime || {};
+  ed.attachmentParse = p.attachment_parse || [];
+  // 已加载上下文 / Skill provenance:真实落盘的加载事实(仅安全元数据)。
+  if (p.skill_provenance && typeof p.skill_provenance === "object") ed.skillProvenance = p.skill_provenance;
   // 正式 present.html 或任意单页 HTML 均可进入实时 PPT。生成期由后端
   // 即时拼装临时播放器，finalize 后同一路径无缝切换到正式文件。
   const wasStaticDeckFinal = !!ed.staticDeckFinal;
@@ -2876,6 +3250,14 @@ function apply(p) {
   const htmlPreviewChanged = !!nextHtmlStamp && nextHtmlStamp !== ed.staticHtmlStamp;
   ed.staticDeckReady = !!p.html_ready;
   ed.staticDeckFinal = !!p.html_final;
+  ed.failedIntermediate = !!p.html_failed_intermediate;
+  if (["failed", "rejected", "interrupted", "api_failed", "paused_recoverable"].includes(p.status)) {
+    // A workspace may contain present.html even when generation failed. Keep
+    // rendered PNGs as forensic previews, but never mount that mutable HTML as
+    // though it were a completed deck.
+    ed.staticDeckReady = false;
+    ed.staticDeckFinal = false;
+  }
   const finalPreviewPromoted = ed.staticDeckFinal && !wasStaticDeckFinal;
   ed.pptOutput = p.ppt_output || ed.pptOutput || "static_html";
   if (p.html_entry) ed.staticDeckUrl = trajectoryMode
@@ -2898,6 +3280,7 @@ function apply(p) {
     thinking: p.thinking === true,
     parent_deck_id: p.parent_deck_id, revision_no: p.revision_no,
     revision_supported: p.revision_supported,
+    verified_delivery_download: p.verified_delivery_download === true,
   };
   if (typeof p.revision_instruction === "string" && p.revision_instruction.trim()) {
     ed.staticFollowups = [p.revision_instruction.trim()];
@@ -2976,7 +3359,7 @@ function apply(p) {
   $("#ed-bar").style.width = (p.status === "completed" ? 100 : pct) + "%";
 
   // 画布空态文案:阶段 + 引擎此刻在做什么
-  if (!ed.rendered.size && !$(".workstream-head", $("#canvas-empty"))) {
+  if (!ed.rendered.size && $("#canvas-empty .ce-text") && !$(".workstream-head", $("#canvas-empty"))) {
     const act = actText(p);
     $("#canvas-empty .ce-text").textContent =
       p.status === "not_started" ? "尚未开始生成"
@@ -2988,19 +3371,27 @@ function apply(p) {
   // 选中页的规划 md 可能刚写出来 → 补拉(含 00=deck.md)
   if (ed.sel != null && !ed.planCache[ed.sel]) loadPlan(ed.sel);
 
-  // 默认落在 00 · 过程帧(开始生成的第一眼就是编排器直播)
+  // 静态任务默认进入 Workflow，消息只在右侧栏呈现。
   if (ed.sel == null) select(0, { byUser: false });
 
   // 终态
-  if (["completed", "failed", "rejected", "interrupted"].includes(p.status)) {
+  if (["completed", "failed", "rejected", "interrupted", "paused_recoverable"].includes(p.status)) {
     if (ed.timer) { clearInterval(ed.timer); ed.timer = null; }
     stopLive();
     if (p.status !== "completed") {
       notifyRunFailure(
         p.error,
-        p.status === "interrupted" ? "生成已中断" : (p.status === "rejected" ? "成稿校验未通过" : "静态演示生成失败"),
+        p.status === "paused_recoverable"
+          ? "上游通道中断，安全检查点已保留"
+          : p.status === "interrupted"
+          ? "生成已中断"
+          : (p.status === "rejected" ? "成稿校验未通过" : "静态演示生成失败"),
+        p.error_kind,
       );
-      if (!ed.rendered.size) $("#canvas-empty .ce-text").textContent = "未能生成成稿";
+      if (!ed.rendered.size && $("#canvas-empty .ce-text")) $("#canvas-empty .ce-text").textContent = "未能生成成稿";
+      if (ed.sel > 0 && ed.rendered.has(Number(ed.sel)) && ed.viewMode !== "console") {
+        keepStaticPng(Number(ed.sel));
+      }
       const ring = $(".develop-ring");           // 终态视图可能没有加载环
       if (ring) ring.style.display = "none";
     }
@@ -3025,11 +3416,11 @@ function taskConfigData() {
     ed.briefMeta?.style, ed.briefMeta?.scheme].filter(Boolean).join(" · ");
   const thinking = ed.briefMeta?.thinking === true ? "开启" : "关闭";
   const limits = ed.briefMeta?.runtime_limits || {};
-  const maxTokens = Number(limits.max_tokens) || 65536;
+  const maxTokens = Number(limits.max_tokens) || 40960;
   const configuredMain = ed.kind === "dynamic"
     ? Number(limits.dynamic_max_turns)
     : Number(limits.static_max_turns);
-  const mainTurns = configuredMain > 0 ? configuredMain : 4096;
+  const mainTurns = configuredMain > 0 ? configuredMain : (ed.kind === "dynamic" ? 4096 : 240);
   const childRaw = Number(limits.static_subagent_max_turns);
   let runtime;
   if (ed.kind === "dynamic") {
@@ -3085,10 +3476,12 @@ function syncTaskConfig() {
 
 function renderStatus(p, phase) {
   delete $("#ed-status").dataset.dynamicChromeKey;
-  const cls = p.status === "completed" ? "ph-done" : (["failed", "rejected", "interrupted"].includes(p.status) ? "ph-failed" : "");
-  const act = (!["completed", "failed", "rejected", "interrupted"].includes(p.status) && actText(p)) || "";
-  const badgeLabel = p.status === "interrupted"
-    ? STATUS_LABEL.interrupted
+  const cls = p.status === "completed" ? "ph-done" : (["failed", "rejected", "interrupted", "paused_recoverable"].includes(p.status) ? "ph-failed" : "");
+  const act = (!["completed", "failed", "rejected", "interrupted", "paused_recoverable"].includes(p.status) && actText(p)) || "";
+  const badgeLabel = p.status === "completed" && p.training_admission === "rejected"
+    ? "交付完成 · 训练未准入"
+    : ["interrupted", "paused_recoverable"].includes(p.status)
+    ? STATUS_LABEL[p.status]
     : (PHASE_LABEL[phase] || phase);
   const phaseBadge = ["delegating", "rendering"].includes(phase)
     ? ""
@@ -3401,7 +3794,7 @@ function renderPageHistory(data, n) {
     const changed = Number(item.changes || 0);
     return `<article class="pr-history-card${review ? " review" : ""}">
       <div class="pr-history-meta">
-        <span class="pr-history-stage">${roundLabel} · ${review ? (ed.status === "completed" ? "整册 Review" : "整册 Review · 未完成") : `页面自检 · V${item.version || 1}`}</span>
+        <span class="pr-history-stage">${roundLabel} · ${review ? (() => { const rs = (agentTimingFor("review") || {}).status; return rs === "partial" ? "整册 Review · 有界降级" : rs === "failed" ? "整册 Review · 未完成" : rs === "running" ? "整册 Review · 进行中" : "整册 Review"; })() : `页面自检 · V${item.version || 1}`}</span>
         <time>${escapeHtml(item.time || "")}</time>
       </div>
       ${item.image_url ? `<button type="button" class="pr-history-shot" aria-label="查看第 ${item.version || 1} 版渲染大图"><img src="${escapeHtml(item.image_url)}" alt="第 ${n} 页第 ${item.version || 1} 版渲染"></button>` : ""}
@@ -3524,7 +3917,7 @@ async function loadDynamicPageSpeech(n, { quiet = false } = {}) {
 }
 
 function railApply(p, phase) {
-  const terminal = ["completed", "failed", "rejected", "interrupted", "not_started"].includes(p.status);
+  const terminal = ["completed", "failed", "rejected", "interrupted", "paused_recoverable", "not_started"].includes(p.status);
 
   $("#pr-elapsed").textContent = p.elapsed_s != null ? fmtDur(p.elapsed_s) : "";
   $("#pr-count").innerHTML = ed.total
@@ -3532,6 +3925,7 @@ function railApply(p, phase) {
   const pct = ed.total ? Math.round((ed.rendered.size / ed.total) * 100)
     : (p.status === "completed" ? 100 : 4);
   $("#pr-bar").style.width = (p.status === "completed" ? 100 : pct) + "%";
+  syncMuralRuntimeCard(p);
 
   // 阶段时间线
   const cur = p.status === "completed" ? "done" : PHASE_STEP[phase];
@@ -3566,6 +3960,36 @@ function railApply(p, phase) {
     if (p.status === "completed")
       feedAdd(`<span class="pr-txt pr-ok">✓ 全部完成 · 共 ${ed.rendered.size} 页${p.elapsed_s != null ? " · 用时 " + fmtDur(p.elapsed_s) : ""}</span>`);
   }
+}
+
+function syncMuralRuntimeCard(p) {
+  const card = $("#pr-runtime");
+  const mural = p?.mural_runtime || {};
+  if (!card || !["mural.runtime-summary.v1", "mural.webui-runtime-projection.v1"].includes(mural.schema)) return;
+  const runtime = mural;
+  const states = mural.state_counts || {};
+  const stateText = [
+    states.active ? `${states.active} 运行` : "",
+    states.waiting ? `${states.waiting} 等待` : "",
+    states.blocked ? `${states.blocked} 阻塞` : "",
+    states.terminal ? `${states.terminal} 已闭合` : "",
+  ].filter(Boolean).join(" · ");
+  const concurrency = Number(runtime.effective_concurrency);
+  const detail = [
+    stateText,
+    Number.isFinite(concurrency) && concurrency > 0
+      ? `模型有效并发 ×${concurrency.toFixed(2)}` : "",
+    runtime.model_concurrency_observability === "unavailable"
+      ? `Child 峰值并发 ${runtime.max_child_concurrency ?? "—"}（模型并发未观测）` : "",
+    runtime.provider_queue_observability === "unavailable"
+      ? "服务端排队未提供" : "",
+  ].filter(Boolean).join(" · ");
+  card.dataset.kind = "static";
+  card.querySelector("b").textContent = "MURAL 任务状态";
+  card.querySelector("i").textContent = detail || "等待首个 Owner 任务";
+  card.title = runtime.observed_critical_path_s != null
+    ? `已观测关键路径 ${fmtDur(runtime.observed_critical_path_s)}`
+    : "";
 }
 
 function renderActions(status) {
@@ -3627,21 +4051,31 @@ function renderActions(status) {
   }
   const actions = $("#ed-actions");
   delete actions.dataset.dynamicRenderKey;
-  const terminal = ["completed", "failed", "rejected", "interrupted", "not_started"].includes(status);
-  const failed = status === "failed" || status === "rejected" || status === "interrupted";
-  const renderKey = JSON.stringify([ed.id, status, ed.pptOutput, ed.staticDeckUrl]);
+  const terminal = ["completed", "failed", "rejected", "interrupted", "paused_recoverable", "not_started"].includes(status);
+  const recoverable = status === "paused_recoverable"
+    || (ed.resumeEligible && ["failed", "interrupted"].includes(status));
+  const failed = status === "failed" || status === "rejected" || status === "interrupted" || recoverable;
+  const isV1 = ed.briefMeta?.skill_version === "mural-presenter-v1"
+    && ed.briefMeta?.verified_delivery_download === true;
+  const exporting = pendingDeckExports.has(String(ed.id));
+  const renderKey = JSON.stringify([ed.id, status, ed.resumeEligible, ed.pptOutput, ed.staticDeckUrl, isV1, exporting]);
   if (actions.dataset.staticRenderKey === renderKey) return;
   actions.dataset.staticRenderKey = renderKey;
   const dynamicHtml = ed.pptOutput === "dynamic_html";
   actions.innerHTML =
     (!terminal ? `<button class="btn-cancel" id="cancel-btn">取消</button>` : "") +
-    (failed ? `<button class="btn-retry" id="retry-btn">↻ 重新生成</button>` : "") +
+    (recoverable
+      ? `<button class="btn-retry" id="resume-btn">↻ 从检查点继续</button>`
+      : (failed ? `<button class="btn-retry" id="retry-btn">↻ 重新生成</button>` : "")) +
+    (recoverable
+      ? `<button class="btn-ghost" id="retry-btn">从头重新生成</button>`
+      : "") +
     (status === "completed"
       ? `<button class="btn-ghost" id="overview-btn">预览</button>
          <button class="btn-ghost" id="fullscreen-btn" type="button">播放</button>
          <div class="export-menu-wrap">
            <button class="btn-dl export-trigger" id="export-trigger" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="export-menu">
-             <span>导出</span><span class="export-chevron" aria-hidden="true"></span>
+             <span>${exporting ? "导出中…" : "导出"}</span><span class="export-chevron" aria-hidden="true"></span>
            </button>
            <div class="export-menu" id="export-menu" role="menu" hidden>
              <button class="export-menu-item utility-action" id="share-btn" type="button" role="menuitem">
@@ -3651,18 +4085,32 @@ function renderActions(status) {
                <span class="export-menu-icon" aria-hidden="true">⌘</span><span class="export-menu-copy"><b>复制输出路径</b><small>复制服务器上的产物目录</small></span>
              </button>
              <span class="export-menu-separator" aria-hidden="true"></span>
-             ${dynamicHtml
+             ${isV1 ? [
+               ["html", "HTML", "单文件离线演示"], ["pdf", "PDF", "便于阅读与打印"],
+               ["pptx", "高保真 PPTX", "每页一张完整图片"],
+               ["pptx-editable", "可编辑 PPTX", "原生文字与基础元素；复杂效果保留为局部图片"],
+               ["zip", "便携 ZIP", "演示与必要资源"],
+             ].map(([format, label, note]) => `<button class="export-menu-item" data-export-format="${format}" type="button" role="menuitem" ${exporting ? "disabled" : ""}>
+               <span class="export-menu-icon export-file-icon" aria-hidden="true">↓</span><span class="export-menu-copy"><b>导出 ${label}</b><small>${note} · 按需生成</small></span>
+             </button>`).join("") : (dynamicHtml
                ? ""
                : `<a class="export-menu-item" href="/api/decks/${ed.id}/pptx" role="menuitem">
                     <span class="export-menu-icon export-file-icon" aria-hidden="true">P</span><span class="export-menu-copy"><b>导出 .pptx</b><small>下载 PowerPoint 文件</small></span>
-                  </a>`}
-             <a class="export-menu-item" href="/api/decks/${ed.id}/download" role="menuitem">
+                  </a>`) + `<a class="export-menu-item" href="/api/decks/${ed.id}/download" role="menuitem">
                <span class="export-menu-icon" aria-hidden="true">↓</span><span class="export-menu-copy"><b>下载 .zip</b><small>下载完整工程与资源</small></span>
-             </a>
+             </a>`}
+             ${isV1 ? `<a class="export-menu-item" href="/api/decks/${ed.id}/project-download" role="menuitem">
+               <span class="export-menu-icon" aria-hidden="true">⌘</span><span class="export-menu-copy"><b>下载作者工程包</b><small>页面源码、规划与研究材料；非便携演示包</small></span>
+             </a>` : ""}
+             <span class="export-menu-separator" aria-hidden="true"></span>
+             <button class="export-menu-item utility-action" id="font-resolution-btn" type="button" role="menuitem">
+               <span class="export-menu-icon" aria-hidden="true">Aa</span><span class="export-menu-copy"><b>字体解析</b><small>查看每角色请求 / 实际 / 状态</small></span>
+             </button>
            </div>
          </div>` : "");
   bindUtilityActions();
   bindExportMenu();
+  bindFontResolution();
   bindPresentationFullscreen();
   const ob = $("#overview-btn");
   if (ob) ob.onclick = openOverviewModal;
@@ -3682,14 +4130,75 @@ function renderActions(status) {
   };
   const rb = $("#retry-btn");
   if (rb) rb.onclick = async () => {
+    const retryLabel = recoverable ? "从头重新生成" : "↻ 重新生成";
     rb.disabled = true; rb.textContent = "排队中…";
     try {
       const r = await fetch(`/api/decks/${ed.id}/retry`, { method: "POST" });
       if (!r.ok) throw new Error((await r.json()).detail || "失败");
       await loadDecks(ed.id);
       openDeck(ed.id);                       // 重新进入直播
-    } catch (e) { alert("重新生成失败: " + e.message); rb.disabled = false; rb.textContent = "↻ 重新生成"; }
+    } catch (e) { alert("重新生成失败: " + e.message); rb.disabled = false; rb.textContent = retryLabel; }
   };
+  const resume = $("#resume-btn");
+  if (resume) resume.onclick = async () => {
+    resume.disabled = true; resume.textContent = "恢复中…";
+    try {
+      const r = await fetch(`/api/decks/${ed.id}/resume`, { method: "POST" });
+      if (!r.ok) throw new Error((await r.json()).detail || "失败");
+      await loadDecks(ed.id);
+      openDeck(ed.id);
+    } catch (e) {
+      alert("断点续跑失败: " + e.message);
+      resume.disabled = false;
+      resume.textContent = "↻ 从检查点继续";
+    }
+  };
+}
+
+const pendingDeckExports = new Set();
+
+async function downloadDeckExport(format) {
+  const deckId = String(ed.id);
+  if (pendingDeckExports.has(deckId) || !["html", "pdf", "pptx", "pptx-editable", "zip"].includes(format)) return;
+  pendingDeckExports.add(deckId);
+  renderActions(ed.status);
+  const notice = showStudioNotice(`正在生成 ${format.toUpperCase()}，完成后将自动下载…`, { type: "info", duration: 0 });
+  try {
+    const response = await fetch(`/api/decks/${encodeURIComponent(deckId)}/export/${format}`, { method: "POST" });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.detail || `HTTP ${response.status}`);
+    }
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = format === "pptx-editable" ? `presentation_${deckId}_editable.pptx` : `presentation_${deckId}.${format}`;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    if (format === "pptx-editable") {
+      const report = response.headers.get("X-Mural-Editability-Report");
+      const textCount = response.headers.get("X-Mural-Editable-Text");
+      const fallbackCount = response.headers.get("X-Mural-Raster-Fallbacks");
+      const result = showStudioNotice(`可编辑 PPTX 已生成：${textCount} 个原生文本对象，${fallbackCount} 处复杂效果保留为局部图片。字体未嵌入，接收端需安装报告所列字体。`, { type: "info", duration: 0 });
+      const reportLink = document.createElement("a");
+      reportLink.href = `/api/decks/${encodeURIComponent(deckId)}/file?rel=${report}`;
+      reportLink.textContent = " 查看编辑覆盖报告";
+      reportLink.target = "_blank";
+      reportLink.rel = "noopener";
+      result.querySelector(".studio-notice-copy").append(reportLink);
+    } else {
+      showStudioNotice(`${format.toUpperCase()} 已生成，开始下载`, { type: "info" });
+    }
+  } catch (error) {
+    showStudioNotice(`导出失败：${error.message}`, { type: "error" });
+  } finally {
+    pendingDeckExports.delete(deckId);
+    dismissStudioNotice(notice);
+    if (String(ed.id) === deckId) renderActions(ed.status);
+  }
 }
 
 function closeExportMenu() {
@@ -3714,8 +4223,67 @@ function bindExportMenu() {
   };
   menu.onclick = (event) => {
     event.stopPropagation();
+    const button = event.target.closest("[data-export-format]");
+    if (button && !button.disabled) downloadDeckExport(button.dataset.exportFormat);
     if (event.target.closest(".export-menu-item")) closeExportMenu();
   };
+}
+
+// Per-role font resolution viewer. Reads the deck's manifest v5 resolutions via
+// the backend and renders requested / resolved / status(label) / license with
+// TEXT labels (not colour-only). Self-contained: no dependency on the trace
+// panel (which task C owns).
+const FONT_KIND_TONE = {
+  exact_builtin: "ok", exact_alias: "ok", exact_user_upload: "ok",
+  audited_substitute: "ok", route_default: "note", portable_fallback: "warn",
+  system_fallback: "error", unresolved: "error",
+};
+function bindFontResolution() {
+  const button = $("#font-resolution-btn");
+  if (!button) return;
+  button.onclick = async () => {
+    try {
+      const data = await jget(`/api/decks/${ed.id}/font-resolution`);
+      if (!data.ready || !(data.resolutions || []).length) {
+        showStudioNotice("字体解析尚未生成（需要至少一次打包渲染）", { type: "info", duration: 3600 });
+        return;
+      }
+      showFontResolutionModal(data);
+    } catch (error) {
+      showStudioNotice(`读取字体解析失败：${error.message}`, { type: "error" });
+    }
+  };
+}
+function showFontResolutionModal(data) {
+  document.getElementById("font-resolution-modal")?.remove();
+  const rows = (data.resolutions || []).map((r) => {
+    const tone = FONT_KIND_TONE[r.kind] || "note";
+    const license = r.license === "user-provided" ? "用户授权"
+      : r.license === "OFL-1.1" ? "OFL-1.1" : (r.license || "—");
+    const mapping = r.mapping_id ? ` · ${escapeHtml(r.mapping_id)}` : "";
+    return `<tr>
+      <td>${escapeHtml(r.role || "")}</td>
+      <td>${escapeHtml(r.requested || "—")}</td>
+      <td>${escapeHtml(r.resolved || "—")}</td>
+      <td><span class="font-res-tag font-res-${tone}">${escapeHtml(r.label || r.kind || "")}</span>${mapping}</td>
+      <td>${escapeHtml(license)}</td>
+    </tr>`;
+  }).join("");
+  const cov = data.coverage || {};
+  const summary = `请求 ${cov.request_count ?? "—"} · 精确 ${cov.exact_count ?? 0} · 用户字体 ${cov.user_upload_count ?? 0} · 已审核替代 ${cov.substitute_count ?? 0} · fallback ${cov.fallback_count ?? 0} · 未解析 ${cov.unresolved_count ?? 0}`;
+  const modal = document.createElement("div");
+  modal.id = "font-resolution-modal";
+  modal.className = "studio-modal-backdrop";
+  modal.innerHTML = `<div class="studio-modal font-res-modal" role="dialog" aria-modal="true" aria-label="字体解析">
+    <div class="font-res-head"><strong>字体解析</strong><button type="button" class="font-res-close" aria-label="关闭">×</button></div>
+    <small class="font-res-summary">${escapeHtml(summary)}</small>
+    <table class="font-res-table"><thead><tr><th>角色</th><th>请求</th><th>实际</th><th>状态</th><th>许可</th></tr></thead><tbody>${rows}</tbody></table>
+    <small class="font-res-footnote">未审核 fallback 表示商用/未登记字体名已替换为可再分发字体（目录条目均为 proposed，未做视觉签核）。</small>
+  </div>`;
+  const close = () => modal.remove();
+  modal.addEventListener("click", (event) => { if (event.target === modal) close(); });
+  modal.querySelector(".font-res-close").onclick = close;
+  document.body.appendChild(modal);
 }
 
 function bindPresentationFullscreen() {
@@ -3802,7 +4370,7 @@ async function shareCurrentDeck() {
   const url = currentShareUrl();
   if (navigator.share) {
     try {
-      await navigator.share({ title: $("#ed-title")?.textContent || "SenseNova Present", text: "查看这份 SenseNova Present 演示", url });
+      await navigator.share({ title: $("#ed-title")?.textContent || "MURAL Presenter", text: "查看这份 MURAL Presenter 演示", url });
       setTemporaryButtonText(button, "已分享", "↗ 分享");
       return;
     } catch (error) {
@@ -3889,13 +4457,14 @@ function buildFilmstrip() {
   const fs = $("#filmstrip");
   fs.innerHTML = "";
   ed.phLines = {};                              // 帧重建,占位帧微日志状态清零
-  // 00 · 过程帧:两条产线都在这里展示 AI 制作进度
-  const of = document.createElement("div");
-  of.className = "frame frame-outline"; of.dataset.n = 0;
-  of.innerHTML = `<span class="no">00</span>
-    <div class="ocard"><span class="oc-title">过程</span><span class="oc-sub">PROCESS</span></div>`;
-  of.onclick = () => setWorkspaceView("process");
-  fs.appendChild(of);
+  if (ed.kind === "dynamic") {
+    const of = document.createElement("div");
+    of.className = "frame frame-outline"; of.dataset.n = 0;
+    of.innerHTML = `<span class="no">00</span>
+      <div class="ocard"><span class="oc-title">过程</span><span class="oc-sub">PROCESS</span></div>`;
+    of.onclick = () => setWorkspaceView("workflow");
+    fs.appendChild(of);
+  }
   for (let n = 1; n <= ed.total; n++) {
     const f = document.createElement("div");
     f.className = "frame"; f.dataset.n = n;
@@ -3946,18 +4515,2564 @@ function markSel() {
   if (f) f.scrollIntoView({ block: "nearest", behavior: "smooth" });
 }
 
-// 顶部控制「过程 ⇄ 实时 PPT」工作区；底部控制实时 PPT 内当前页的
+function workflowRunStatus(key) {
+  const timing = ed.agentTimings?.[key] || {};
+  if (timing.execution_state) return timing.execution_state;
+  const status = String(timing.status || "").toLowerCase();
+  const failed = ["failed", "error", "rejected", "api_failed"].some((value) =>
+    status.includes(value) || String(timing.exit_reason || "").toLowerCase().includes(value)
+  );
+  if (failed) return "failed";
+  if (status === "complete") return "complete";
+  if (status === "running") return "running";
+  return Array.isArray(ed.feed?.[key]) && ed.feed[key].length
+    ? (isStaticActiveStatus(ed.status) ? "running" : "complete")
+    : "waiting";
+}
+
+function workflowStatusLabel(status) {
+  return ({ complete: "已完成", running: "正在执行", failed: "执行失败", waiting: "等待输入",
+    queued: "等待调度", resource_wait: "等待模型资源", interrupted: "已中断",
+    unknown: "尚无状态记录", observed: "已有记录", skipped: "已跳过",
+    not_started: "尚未启动", waiting_dependencies: "等待上游依赖",
+    dependency_failed: "依赖失败 · 未启动", start_failed: "启动失败", cancelled: "已取消",
+    no_messages: "暂无可展示消息" })[status] || "等待输入";
+}
+
+function workflowSlideOwners() {
+  const runs = Array.isArray(ed.workflow?.runs) ? ed.workflow.runs : [];
+  const keys = new Set([
+    ...Object.values(ed.pageAgents || {}),
+    ...Object.keys(ed.feed || {}).filter((key) => orchestrationAgentMeta(key).role === "slide"),
+    ...runs.filter((run) => run.role === "slide").map((run) => run.key),
+  ].filter(Boolean));
+  return [...keys].map((key) => {
+    const ownerRuns = runs.filter((run) => run.key === key && run.role === "slide");
+    const pages = new Set(agentPages(key).map(Number));
+    ownerRuns.forEach((run) => (run.pages || []).forEach((page) => pages.add(Number(page))));
+    const orderedPages = [...pages].filter((page) => page > 0).sort((a, b) => a - b);
+    const repairs = ownerRuns.filter((run) => run.owner_action === "reuse_owner").length;
+    const groupId = ownerRuns.find((run) => run.group_id)?.group_id
+      || String(key).replace(/^slide(?:_|-)group(?:_|-)/i, "");
+    const grouped = /^slide(?:_|-)group(?:_|-)/i.test(String(key));
+    return {
+      key, pages: orderedPages, repairs, grouped, groupId,
+      status: workflowRunStatus(key),
+      ownerId: ownerRuns.find((run) => run.owner_id)?.owner_id || "",
+    };
+  }).sort((a, b) => (a.pages[0] || 999) - (b.pages[0] || 999));
+}
+
+function workflowNodeMarkup(node, { embedded = false } = {}) {
+  const offset = ed.workflowNodeOffsets?.[node.id] || {};
+  const dx = Number(offset.x) || 0;
+  const dy = Number(offset.y) || 0;
+  const x = node.x + dx;
+  const y = node.y + dy;
+  const pages = (node.pages || []).map((page) => `<button type="button" data-workflow-page="${page}" title="查看第 ${page} 页">P${pad2(page)}</button>`).join("");
+  const thumbs = node.role === "slide"
+    ? (node.pages || []).filter((page) => ed.rendered.has(page)).slice(0, 4)
+      .map((page) => `<img src="${fileUrl(page)}" alt="P${pad2(page)}" loading="lazy">`).join("")
+    : "";
+  const repair = node.repairs ? `<b>修订回流 ×${node.repairs}</b>` : "";
+  const traceSelected = ed.workflowSelectedNodeId ? ed.workflowSelectedNodeId === node.id
+    : node.agentKey && node.agentKey === ed.workflowTraceAgent && (!node.segment || node.segment === ed.workflowTraceSegment);
+  const detail = node.detail || "";
+  const agentAttrs = node.agentKey || node.taskId
+    ? ` data-agent-key="${escapeHtml(node.agentKey || "")}" data-workflow-task-id="${escapeHtml(node.taskId || "")}" data-workflow-segment="${escapeHtml(node.segment || "")}" role="button" tabindex="0" aria-label="选中 ${escapeHtml(node.title)}，右上角可查看迭代"`
+    : "";
+  return `<article class="workflow-node ${node.taskId ? "workflow-task-node " : ""}${escapeHtml(node.status)}${node.repairs ? " repaired" : ""}${traceSelected ? " trace-selected" : ""}"
+      data-node-id="${escapeHtml(node.id)}" data-role="${escapeHtml(node.role)}"
+      ${agentAttrs}
+      data-base-x="${node.x}" data-base-y="${node.y}"
+      ${embedded ? 'data-embedded-agent="true"' : `style="left:${x}px;top:${y}px;animation-delay:${node.delay || 0}ms"`}>
+    <span class="workflow-anchor workflow-anchor-left" aria-hidden="true"></span>
+    <span class="workflow-anchor workflow-anchor-right" aria-hidden="true"></span>
+    <span class="workflow-anchor workflow-anchor-top" aria-hidden="true"></span>
+    <span class="workflow-anchor workflow-anchor-bottom" aria-hidden="true"></span>
+    ${node.agentKey || node.taskId ? `<button type="button" class="workflow-node-drilldown" data-workflow-drilldown="${escapeHtml(node.agentKey || "")}" aria-label="查看 ${escapeHtml(node.title)} 的迭代轨迹" title="查看画面、评审与修改过程">查看迭代</button>` : ""}
+    <div class="workflow-node-kicker"><span><i></i>${escapeHtml(node.kicker)}</span><em>${escapeHtml(node.code || "")}</em></div>
+    <strong title="${escapeHtml(node.title)}">${escapeHtml(node.title)}</strong>
+    ${node.summary ? `<p class="workflow-task-goal" title="${escapeHtml(node.summary)}">${escapeHtml(node.summary)}</p>` : ""}
+    ${node.status === "running" && node.activity ? "" : `<p title="${escapeHtml(detail)}">${escapeHtml(detail)}</p>`}
+    ${node.activity ? `<div class="workflow-node-activity"><span>${node.status === "running" ? "当前动作" : "最近记录"}</span><b title="${escapeHtml(node.activity.title)}">${escapeHtml(node.activity.title)}</b>${node.activity.detail ? `<small title="${escapeHtml(node.activity.detail)}">${escapeHtml(node.activity.detail)}</small>` : ""}</div>` : ""}
+    ${node.progress ? `<div class="workflow-node-progress">${escapeHtml(node.progress)}</div>` : ""}
+    ${node.identity ? `<small class="workflow-task-identity" title="${escapeHtml(node.identity)}">${escapeHtml(node.identity)}</small>` : ""}
+    ${pages ? `<div class="workflow-page-chips">${pages}</div>` : ""}
+    ${thumbs ? `<div class="workflow-node-thumbs">${thumbs}</div>` : ""}
+    <div class="workflow-node-foot"><i></i><span>${workflowStatusLabel(node.status)}</span>${repair}</div>
+  </article>`;
+}
+
+function workflowArtifactUrl(file) {
+  const rel = String(file?.rel || "").split("/").map(encodeURIComponent).join("/");
+  if (!rel || !ed.id) return "#";
+  const rawImage = rel.match(/^_trace\/raw\/blobs\/([a-f0-9]{64})$/);
+  const path = rawImage ? `/trace-images/${rawImage[1]}` : `/files/${rel}`;
+  return trajectoryMode
+    ? trajectoryDeckApi(ed.id, path)
+    : `/api/decks/${encodeURIComponent(ed.id)}${path}`;
+}
+
+function workflowArtifactFiles() {
+  const groups = ed.workflow?.artifacts?.groups || [];
+  return groups.flatMap((group) => (group.files || []).map((file) => ({
+    ...file,
+    group: group.label || group.id || "Workspace",
+  })));
+}
+
+function workflowArtifactRecord(rel, fallback = null) {
+  const normalized = String(rel || "").replace(/^\.\//, "");
+  const matched = workflowArtifactFiles().find((file) => file.rel === normalized);
+  if (matched) return matched;
+  if (!normalized) return null;
+  const name = String(fallback?.name || normalized.split("/").at(-1) || "artifact");
+  const extension = name.includes(".") ? name.split(".").at(-1).toLowerCase() : "";
+  const kind = fallback?.kind || (/^(?:png|jpe?g|webp|gif|svg)$/i.test(extension) ? "image"
+    : /^(?:md|markdown)$/i.test(extension) ? "markdown"
+      : extension === "html" ? "html" : extension === "css" ? "style" : extension === "json" ? "data" : "file");
+  return { rel: normalized, name, kind, size: Number(fallback?.size) || 0, updated_at: fallback?.updated_at || "", group: fallback?.group || "Workspace" };
+}
+
+function workflowArtifactLinkMarkup(rel, fallback = null) {
+  const file = workflowArtifactRecord(rel, fallback);
+  if (!file) return "";
+  return `<a class="workflow-artifact-link kind-${escapeHtml(file.kind || "file")}" href="${workflowArtifactUrl(file)}"
+      data-workflow-artifact-rel="${escapeHtml(file.rel)}" data-workflow-artifact-name="${escapeHtml(file.name || "artifact")}" data-workflow-artifact-kind="${escapeHtml(file.kind || "file")}">
+    <i aria-hidden="true"></i><span><b>${escapeHtml(file.name || "artifact")}</b><small>${escapeHtml(file.rel)}</small></span><em>查看</em>
+  </a>`;
+}
+
+function workflowArtifactRelsFromEvents(events, meta = null) {
+  const files = workflowArtifactFiles();
+  const rels = [];
+  const add = (rel) => { if (rel && !rels.includes(rel)) rels.push(rel); };
+  (events || []).forEach((event) => {
+    if (event?.k !== "tool" || event.tool !== "write_file") return;
+    const text = String(event.hint || event.s || "");
+    files.forEach((file) => { if (text.includes(file.rel)) add(file.rel); });
+    const direct = text.trim().replace(/^['"`]|['"`]$/g, "");
+    if (/^(?:knowledge\.md|deck\.md|base\.css|speech\.md|present\.html|result\.json|(?:assets|slides|renders)\/[^\s]+)$/i.test(direct)) add(direct);
+  });
+  if (meta?.role === "slide") {
+    const pages = meta.pages?.length ? meta.pages : (meta.page ? [meta.page] : []);
+    pages.forEach((page) => {
+      const number = pad2(page);
+      [`slides/slide_${number}.html`, `renders/slide_${number}.png`].forEach((rel) => {
+        if (files.some((file) => file.rel === rel)) add(rel);
+      });
+    });
+  }
+  return rels;
+}
+
+function workflowFileSize(value) {
+  const size = Math.max(0, Number(value) || 0);
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`;
+  return `${(size / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function renderWorkflowArtifacts() {
+  const tree = $("#workflow-file-tree");
+  const count = $("#workflow-file-count");
+  const state = $("#workflow-file-state");
+  if (!tree) return;
+  const artifacts = ed.workflow?.artifacts || {};
+  const groups = Array.isArray(artifacts.groups) ? artifacts.groups : [];
+  const fileCount = Number(artifacts.file_count) || groups.reduce((sum, group) => sum + (group.files?.length || 0), 0);
+  const locked = artifacts.locked !== false;
+  const signature = JSON.stringify([groups, locked]);
+  if (tree.dataset.renderKey !== signature) {
+    tree.dataset.renderKey = signature;
+    tree.innerHTML = groups.length ? groups.map((group) => `<details class="workflow-file-group" open>
+      <summary><span><i></i>${escapeHtml(group.label || group.id || "Files")}</span><em>${group.files?.length || 0}</em></summary>
+      <div>${(group.files || []).map((file) => `<a class="workflow-file-item kind-${escapeHtml(file.kind || "file")}" href="${workflowArtifactUrl(file)}"
+          data-workflow-artifact-rel="${escapeHtml(file.rel || "")}" data-workflow-artifact-name="${escapeHtml(file.name || "artifact")}" data-workflow-artifact-kind="${escapeHtml(file.kind || "file")}" title="${escapeHtml(file.rel || file.name || "")}">
+        <i aria-hidden="true"></i><span><b>${escapeHtml(file.name || "file")}</b><small>${escapeHtml(workflowFileSize(file.size))}</small></span>
+      </a>`).join("")}</div>
+    </details>`).join("") : '<div class="workflow-panel-empty">文件落盘后会出现在这里。</div>';
+  }
+  tree.querySelectorAll("[data-workflow-artifact-rel]").forEach((item) => {
+    item.classList.toggle("on", item.dataset.workflowArtifactRel === ed.workflowArtifactRel);
+  });
+  if (count) count.textContent = String(fileCount);
+  if (state) {
+    state.classList.toggle("ready", !locked);
+    state.innerHTML = locked
+      ? "<i></i><span>生成中只读 · 文件持续落盘</span>"
+      : "<i></i><span>成稿已闭合 · 可预览文件或在右侧修改</span>";
+  }
+}
+
+function workflowArtifactTextKind(file) {
+  return ["markdown", "style", "data"].includes(String(file?.kind || ""))
+    || /\.(?:md|markdown|txt|css|json|ya?ml|csv)$/i.test(String(file?.rel || ""));
+}
+
+function renderWorkflowArtifactText(file, text) {
+  const stage = $("#workflow-artifact-stage");
+  if (!stage || ed.workflowArtifactRel !== file.rel) return;
+  const markdown = file.kind === "markdown" || /\.(?:md|markdown)$/i.test(file.rel);
+  stage.className = `workflow-artifact-stage ${markdown ? "markdown" : "code"}`;
+  stage.innerHTML = markdown
+    ? `<article class="workflow-artifact-document agent-markdown">${agentMarkdownHtml(text)}</article>`
+    : `<pre class="workflow-artifact-code"><code>${escapeHtml(text)}</code></pre>`;
+}
+
+async function renderWorkflowArtifactPane() {
+  const pane = $("#workflow-artifact-pane");
+  const stage = $("#workflow-artifact-stage");
+  const title = $("#workflow-artifact-title");
+  const path = $("#workflow-artifact-path");
+  const meta = $("#workflow-artifact-meta");
+  const open = $("#workflow-artifact-open");
+  if (!pane || !stage) return;
+  const file = workflowArtifactRecord(ed.workflowArtifactRel, ed.workflowArtifactFallback);
+  if (!file) {
+    stage.className = "workflow-artifact-stage";
+    stage.innerHTML = '<div class="workflow-panel-empty">从左侧文件树或右侧会话选择一个产物。</div>';
+    if (title) title.textContent = "产物详情";
+    if (path) path.textContent = "";
+    if (meta) meta.innerHTML = "";
+    if (open) open.hidden = true;
+    return;
+  }
+  const url = workflowArtifactUrl(file);
+  if (title) title.textContent = file.name || "产物详情";
+  if (path) path.textContent = file.rel;
+  if (meta) meta.innerHTML = `<span>${escapeHtml(file.group || "Workspace")}</span><span>${escapeHtml(String(file.kind || "file").toUpperCase())}</span><span>${escapeHtml(workflowFileSize(file.size))}</span>${file.updated_at ? `<time>${escapeHtml(conversationTime(file.updated_at, { withDay: true })?.text || file.updated_at)}</time>` : ""}`;
+  if (open) { open.hidden = false; open.href = url; }
+  if (file.kind === "image" || /\.(?:png|jpe?g|webp|gif|svg)$/i.test(file.rel)) {
+    stage.className = "workflow-artifact-stage image";
+    stage.innerHTML = `<img src="${url}" alt="${escapeHtml(file.name || "产物预览")}">`;
+    return;
+  }
+  if (file.kind === "html" || /\.html?$/i.test(file.rel)) {
+    stage.className = "workflow-artifact-stage html";
+    stage.innerHTML = `<iframe src="${url}" title="${escapeHtml(file.name || "HTML 产物预览")}"></iframe>`;
+    return;
+  }
+  if (!workflowArtifactTextKind(file)) {
+    stage.className = "workflow-artifact-stage unsupported";
+    stage.innerHTML = `<div class="workflow-artifact-download"><i></i><strong>${escapeHtml(file.name || "产物文件")}</strong><p>该格式暂不支持内嵌预览，可打开原文件查看。</p><a href="${url}" target="_blank" rel="noopener">打开原文件 ↗</a></div>`;
+    return;
+  }
+  const cacheKey = `${ed.id}:${file.rel}:${file.updated_at || file.size || 0}`;
+  const cached = ed.workflowArtifactCache?.[cacheKey];
+  if (typeof cached === "string") {
+    renderWorkflowArtifactText(file, cached);
+    return;
+  }
+  if (ed.workflowArtifactLoading === cacheKey) return;
+  ed.workflowArtifactLoading = cacheKey;
+  const request = ++ed.workflowArtifactRequest;
+  stage.className = "workflow-artifact-stage loading";
+  stage.innerHTML = '<div class="workflow-panel-empty">正在读取产物内容…</div>';
+  try {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error("artifact unavailable");
+    const text = await response.text();
+    ed.workflowArtifactCache[cacheKey] = text;
+    if (request === ed.workflowArtifactRequest) renderWorkflowArtifactText(file, text);
+  } catch {
+    if (request === ed.workflowArtifactRequest) {
+      stage.className = "workflow-artifact-stage unsupported";
+      stage.innerHTML = '<div class="workflow-panel-empty">这个产物暂时无法读取，可以尝试打开原文件。</div>';
+    }
+  } finally {
+    if (ed.workflowArtifactLoading === cacheKey) ed.workflowArtifactLoading = "";
+  }
+}
+
+function selectWorkflowArtifact(rel, fallback = null) {
+  const file = workflowArtifactRecord(rel, fallback);
+  if (!file) return;
+  ed.workflowArtifactRel = file.rel;
+  ed.workflowArtifactFallback = file;
+  renderWorkflowArtifacts();
+  setWorkflowPane("artifact");
+  renderWorkflowArtifactPane();
+}
+
+function syncWorkflowArtifactSelection() {
+  $$("#workflow-file-tree [data-workflow-artifact-rel], #workflow-message-list [data-workflow-artifact-rel]").forEach((item) => {
+    item.classList.toggle("on", item.dataset.workflowArtifactRel === ed.workflowArtifactRel);
+  });
+}
+
+function workflowAgentTraceUrl(agentKey) {
+  const base = trajectoryMode
+    ? trajectoryDeckApi(ed.id, `/agent-trace/${encodeURIComponent(agentKey)}`)
+    : `/api/decks/${encodeURIComponent(ed.id)}/agent-trace/${encodeURIComponent(agentKey)}`;
+  const params = new URLSearchParams();
+  if (ed.workflowTraceSegment && ed.workflowTraceSegmentPinned) params.set("segment", ed.workflowTraceSegment);
+  params.set("source", ed.workflowTraceSource || "messages");
+  if (ed.workflowOwnerAgent === agentKey) params.set("include_workflow", "true");
+  return `${base}?${params}`;
+}
+
+function openWorkflowOwnerGraph(agentKey, { segment = "", taskId = "" } = {}) {
+  cancelWorkflowAgentTraceRequest();
+  const scroll = $("#workflow-scroll");
+  if (!ed.workflowOwnerAgent && !ed.workflowOwnerTask) ed.workflowOverviewScroll = {top: scroll?.scrollTop || 0, left: scroll?.scrollLeft || 0};
+  ed.workflowOwnerAgent = agentKey || "";
+  ed.workflowOwnerTask = taskId;
+  ed.workflowOwnerPage = null;
+  ed.workflowOwnerRound = "";
+  ed.workflowOwnerAllTools = !String(agentKey).startsWith("slide_");
+  ed.workflowTraceLoadedAt = 0;
+  ed.workflowTracePayload = null;
+  if (!agentKey) setWorkflowConversationMode("history", {clearAgent: true});
+  renderWorkflowOwnerGraph();
+  if (agentKey) openWorkflowAgentTrace(agentKey, {segment});
+  if (scroll) { scroll.scrollTop = 0; scroll.scrollLeft = 0; }
+}
+
+function closeWorkflowOwnerGraph() {
+  const agentKey = ed.workflowOwnerAgent;
+  const taskId = ed.workflowOwnerTask;
+  ed.workflowOwnerAgent = "";
+  ed.workflowOwnerTask = "";
+  renderWorkflowOwnerGraph();
+  renderWorkflowCanvas();
+  const scroll = $("#workflow-scroll");
+  if (scroll) {
+    scroll.scrollTop = ed.workflowOverviewScroll?.top || 0;
+    scroll.scrollLeft = ed.workflowOverviewScroll?.left || 0;
+  }
+  document.querySelector(taskId ? `.workflow-node[data-workflow-task-id="${CSS.escape(taskId)}"]`
+    : `.workflow-node[data-agent-key="${CSS.escape(agentKey || "")}"]`)?.focus({preventScroll: true});
+}
+
+function workflowOwnerNodeMarkup(node, { compact = false } = {}) {
+  const labels = {completed: "已完成", running: "进行中", failed: "失败", stale: "已过期", skipped: "已跳过"};
+  const kinds = {edit: "修改", critic: "视觉评审", message: "Owner 消息", lifecycle: "执行状态", tool: "工具"};
+  const title = node.kind === "critic" ? (node.status === "skipped" ? (node.title || "草稿检查") : "独立视觉 Critic") : node.kind === "edit" ? "源码修改" : node.title;
+  const status = node.kind === "critic"
+    ? ({completed: "反馈已返回", running: "等待公开反馈", failed: "评审执行未完成", stale: "像素已过期", skipped: "未调用外部 Critic"})[node.status] || "执行状态未记录"
+    : labels[node.status] || node.status;
+  const displayInfo = [...new Set([node.feedback, node.detail, node.observation, node.error, node.error_code, node.completion_note, node.next_required_action]
+    .filter(Boolean).map(value => String(value).trim()))]
+    .filter(Boolean).join("\n\n");
+  const excerpt = displayInfo.slice(0, 180);
+  const remaining = displayInfo.slice(180);
+  const clock = String(node.timestamp || "").replace(/^.*T/, "").replace(/\.\d+Z$/, "Z");
+  const meta = [clock, node.duration_ms != null ? `${(node.duration_ms / 1000).toFixed(1)}s` : "", node.critic_model,
+    node.cache_hit ? "复用反馈 · 无新请求" : "", `#${node.sequence}`].filter(Boolean).join(" · ");
+  return `<article class="workflow-owner-node kind-${escapeHtml(node.kind)} status-${escapeHtml(node.status)}${compact ? " compact" : ""}" data-owner-node="${escapeHtml(node.id)}">
+    <div class="workflow-owner-node-top"><span class="workflow-owner-kind">${escapeHtml(kinds[node.kind] || "画面")}</span><span class="workflow-owner-status">${escapeHtml(status)}</span></div>
+    <strong>${escapeHtml(title)}</strong><small>${escapeHtml(meta)}</small>
+    ${excerpt ? `<p class="workflow-owner-excerpt">${escapeHtml(excerpt)}</p>` : ""}
+    <details data-node-id="${escapeHtml(node.id)}"><summary>${remaining ? "展开剩余内容与执行信息" : "执行信息"}</summary>${remaining ? `<pre>${escapeHtml(remaining)}</pre>` : ""}<small>${node.kind === "critic" ? "inspect " : ""}执行段 ${escapeHtml(node.segment_id || "未记录")} · 回合 ${Number(node.turn) || 0}${node.inspection_id ? ` · 检查 ${escapeHtml(node.inspection_id)}` : ""}${node.png_sha256 ? ` · PNG ${escapeHtml(node.png_sha256)}` : ""}${node.rubric_version ? ` · Rubric ${escapeHtml(node.rubric_version)}` : ""}</small>${node.source_refs && Object.keys(node.source_refs).length ? `<pre>${escapeHtml(JSON.stringify(node.source_refs))}</pre>` : ""}</details>
+    <footer>${node.render_id ? `<button type="button" data-owner-render="${escapeHtml(node.render_id)}">对应画面 ↗</button>` : ""}<button type="button" data-owner-trace="${escapeHtml(node.segment_id)}" data-owner-tool="${escapeHtml(node.tool_use_id || "")}">${node.kind === "critic" ? "查看 inspect 回执" : "查看 Trace"} ↗</button></footer>
+  </article>`;
+}
+
+function workflowOwnerReadState(payload, graph, nodes) {
+  if (payload?.load_error) return {kind: "error", title: "执行轨迹读取失败", message: payload.content, retry: true};
+  if (payload?.refresh_error && !graph) return {kind: "error", title: "执行轨迹更新失败", message: payload.refresh_error, retry: true};
+  if (!payload) return {kind: "loading", title: ed.workflowTraceLoading ? "正在加载执行轨迹" : "准备读取执行轨迹", message: "读取事件与对应图片版本，不会把当前图片替代历史版本。"};
+  if (!Object.hasOwn(payload, "workflow")) return {kind: "unsupported", title: "服务尚未更新", message: "已读到 Agent Trace，但运行中的 WebUI 接口尚未返回下钻数据。请完成 WebUI 发布并重启服务后重试；这不代表 Agent 没有执行事件。", retry: true};
+  if (!graph || !Array.isArray(graph.nodes)) return {kind: "error", title: "下钻数据格式异常", message: "接口未返回有效的事件列表，无法展示迭代过程。", retry: true};
+  if (nodes.length) return null;
+  if (graph.nodes.length) return {kind: "filtered", title: "当前筛选没有记录", message: "试试其他页面，或勾选“其他工具”查看全部动作。"};
+  const kind = payload.empty_state?.kind || "empty";
+  const titles = {not_started: "Agent 尚未启动", waiting_dependencies: "正在等待上游依赖", dependency_failed: "依赖失败，Agent 未启动", start_failed: "Agent 启动失败", cancelled: "任务已取消"};
+  return {kind, title: titles[kind] || "尚无执行事件", message: payload.empty_state?.message || "本次运行还没有记录可展示的执行事件；后续落盘后会自动更新。"};
+}
+
+function workflowOwnerPageNodes(graph, page) {
+  const nodes = Array.isArray(graph?.nodes) ? graph.nodes : [];
+  if (page == null) return nodes;
+  const renders = new Map(nodes.filter(node => node.kind === "render").map(node => [node.id, node]));
+  return nodes.flatMap(node => {
+    let pages = [...new Set([...(node.pages || []), ...(node.images || []).map(img => img.page)]
+      .map(Number).filter(p => Number.isInteger(p) && p > 0))];
+    if (node.kind === "critic") {
+      const images = (renders.get(node.render_id)?.images || []).filter(img => img.sha256 === node.png_sha256);
+      if (images.length) pages = [...new Set(images.map(img => Number(img.page)).filter(p => Number.isInteger(p) && p > 0))];
+    }
+    // 组级消息不按相邻渲染猜页码；多页渲染只投影当前页，Critic 按实际像素定位。
+    if (page === 0) return (node.kind === "render" ? !pages.length : pages.length !== 1) ? [node] : [];
+    if (node.kind === "render") return pages.includes(page)
+      ? [{...node, images: (node.images || []).filter(img => Number(img.page) === page)}] : [];
+    return pages.length === 1 && pages[0] === page ? [node] : [];
+  });
+}
+
+function renderWorkflowOwnerGraph() {
+  const panel = $("#workflow-owner-graph");
+  if (!panel) return;
+  const active = !!(ed.workflowOwnerAgent || ed.workflowOwnerTask);
+  panel.hidden = !active;
+  const stage = $("#workflow-stage");
+  if (stage) stage.hidden = active;
+  const overview = $("#workflow-overview");
+  if (overview) overview.hidden = active;
+  syncWorkflowLayoutReset();
+  if (!active) return;
+  if (!ed.workflowOwnerAgent) {
+    const task = workflowTaskGraph(ed.muralRuntime?.tasks || [], ed.agentTimings || {}, ed.feed || {}, ed.status)
+      .nodes.find(node => node.taskId === ed.workflowOwnerTask);
+    if (task?.agentKey) {
+      ed.workflowOwnerAgent = task.agentKey;
+      openWorkflowAgentTrace(task.agentKey, {segment: task.segment});
+    } else {
+      $("#workflow-owner-title").textContent = task?.title || "任务执行过程";
+      $("#workflow-owner-note").textContent = task ? workflowStatusLabel(task.status) : "暂未获取任务记录";
+      $("#workflow-owner-pages").innerHTML = "";
+      $("#workflow-owner-pages").hidden = true;
+      const host = $("#workflow-owner-nodes");
+      delete host.dataset.signature;
+      host.innerHTML = `<div class="workflow-owner-empty" role="status"><h3>${escapeHtml(task ? workflowStatusLabel(task.status) : "暂未获取任务记录")}</h3><p>${escapeHtml(task?.detail || "等待下一次任务状态更新。")}</p><p>尚未获得此任务的 Owner 轨迹入口；入口建立后会自动加载，不代用其他 Agent 的轨迹。</p></div>`;
+      return;
+    }
+  }
+  const payload = ed.workflowTraceAgent === ed.workflowOwnerAgent ? ed.workflowTracePayload : null;
+  const graph = payload?.workflow;
+  const role = ({slide: "Slide Owner", image: "Image Owner", research: "Research Owner", material: "Material Owner", orchestrator: "Orchestrator"})[payload?.agent?.role] || payload?.agent?.role || "Agent";
+  $("#workflow-owner-title").textContent = `${role} · ${(graph?.pages || []).map(p => `P${p}`).join(" / ") || "执行轨迹"}`;
+  $("#workflow-owner-title").title = payload?.agent?.label || ed.workflowOwnerAgent;
+  const pages = (graph?.pages || []).map(Number).filter(p => Number.isInteger(p) && p > 0).sort((a, b) => a - b);
+  const paged = payload?.agent?.role === "slide" && pages.length > 0;
+  if (paged && ed.workflowOwnerPage !== 0 && !pages.includes(ed.workflowOwnerPage)) ed.workflowOwnerPage = pages[0];
+  const selectedPage = paged ? ed.workflowOwnerPage : null;
+  const pageLabel = paged ? selectedPage ? `P${selectedPage}` : "组级记录" : "";
+  const pageNav = $("#workflow-owner-pages");
+  const pageButtons = paged ? [...pages, 0].map(p => `<button type="button" data-owner-page="${p}" aria-pressed="${selectedPage === p}"${selectedPage === p ? ' class="on"' : ""}>${p ? `P${p}` : "组级记录"}</button>`).join("") : "";
+  if (pageNav.innerHTML !== pageButtons) pageNav.innerHTML = pageButtons;
+  pageNav.hidden = !paged;
+  $("#workflow-owner-all-tools").checked = !!ed.workflowOwnerAllTools;
+  const nodes = workflowOwnerPageNodes(graph, selectedPage)
+    .filter(node => ed.workflowOwnerAllTools || node.kind !== "tool" || node.status === "failed");
+  const readState = workflowOwnerReadState(payload, graph, nodes);
+  const renders = nodes.filter(node => node.kind === "render");
+  const reviews = nodes.filter(node => node.kind === "critic");
+  const edits = nodes.filter(node => node.kind === "edit");
+  $("#workflow-owner-note").textContent = [pageLabel, readState ? readState.title : `${renders.length} 次画面记录 · ${reviews.length} 份外部反馈记录 · ${edits.length} 次源码修改`].filter(Boolean).join(" · ");
+  const host = $("#workflow-owner-nodes");
+  const signature = JSON.stringify([selectedPage, nodes, readState, payload?.refresh_error, ed.workflowOwnerRound]);
+  if (host.dataset.signature === signature) return;
+  host.dataset.signature = signature;
+  const opened = new Set([...host.querySelectorAll("details[open]")].map(item => item.dataset.nodeId));
+  if (readState) {
+    host.innerHTML = `<div class="workflow-owner-empty state-${escapeHtml(readState.kind)}" role="status"><span class="workflow-owner-empty-icon" aria-hidden="true">${readState.kind === "loading" ? "◌" : "◇"}</span><h3>${escapeHtml(readState.title)}</h3><p>${escapeHtml(readState.message || "")}</p><div>${readState.retry ? '<button type="button" data-owner-retry>重新读取</button>' : ""}${payload ? '<button type="button" data-owner-trace="" data-owner-tool="">查看已有 Trace ↗</button>' : ""}</div></div>`;
+    return;
+  }
+  const warning = payload?.refresh_error ? `<div class="workflow-owner-refresh-error" role="status">更新失败，保留已加载的记录。${escapeHtml(payload.refresh_error)} <button type="button" data-owner-retry>重试</button></div>` : "";
+  if (!renders.length) {
+    host.innerHTML = warning + `${paged && selectedPage === 0 ? '<p class="workflow-owner-caption">跨页操作、组级消息和未标明页码的记录集中展示于此，不归入任何单页版本。</p>' : ""}<div class="workflow-owner-timeline">${nodes.map(node => workflowOwnerNodeMarkup(node, {compact: true})).join("")}</div>`;
+  } else {
+    const index = Math.max(0, renders.findIndex(node => node.id === ed.workflowOwnerRound));
+    const current = renders[index], next = renders[index + 1];
+    const relatedReviews = reviews.filter(node => node.render_id === current.id);
+    const during = nodes.filter(node => node.sequence > current.sequence && (!next || node.sequence < next.sequence) && node.kind !== "critic");
+    const changes = during.filter(node => node.kind === "edit");
+    const before = nodes.filter(node => node.sequence < current.sequence && node.kind !== "critic" && (index === 0 || node.sequence > renders[index - 1].sequence));
+    const rail = renders.map((node, i) => {
+      const img = node.images?.[0];
+      const review = reviews.filter(review => review.render_id === node.id).at(-1);
+      const reviewLabel = ({completed: "外部反馈已返回", running: "等待外部反馈", failed: "外部评审未完成", stale: "评审像素已过期", skipped: "草稿检查 · 未调用外部 Critic"})[review?.status];
+      const label = `${pageLabel ? `${pageLabel} · ` : ""}第 ${i + 1} 次画面记录`;
+      return `<button type="button" class="workflow-owner-round${i === index ? " on" : ""}" data-owner-round="${escapeHtml(node.id)}" aria-pressed="${i === index}" aria-label="查看${label}"><span><b>${escapeHtml(pageLabel || String(i + 1).padStart(2, "0"))}</b><em>${img ? `V${img.version}` : node.status === "running" ? "进行中" : "未留存"}</em></span>${img?.rel ? `<img loading="lazy" src="${workflowArtifactUrl({rel: img.rel})}" alt="${label}缩略图">` : '<i class="workflow-owner-round-placeholder">◇</i>'}<small>${escapeHtml(reviewLabel || (node.status === "failed" ? "执行失败" : "画面记录"))}</small></button>`;
+    }).join("");
+    const images = (current.images || []).map(img => `<figure>${img.rel ? `<a href="${workflowArtifactUrl({rel: img.rel})}" target="_blank" rel="noopener"><img src="${workflowArtifactUrl({rel: img.rel})}" alt="P${Number(img.page) || "?"} · 画面 V${Number(img.version)}"></a>` : '<div class="workflow-owner-missing">该像素版本尚未留存或 hash 不匹配<br>不会以当前截图替代</div>'}<figcaption>P${Number(img.page) || "?"} · V${Number(img.version)}<code title="${escapeHtml(img.sha256)}">${escapeHtml(String(img.sha256).slice(0, 12))}</code></figcaption></figure>`).join("");
+    host.innerHTML = warning + `<nav class="workflow-owner-rounds" aria-label="画面迭代版本">${rail}</nav><div class="workflow-owner-stage"><section class="workflow-owner-canvas">
+      <div class="workflow-owner-section-title"><span><b>01</b> ${pageLabel ? `${pageLabel} · ` : ""}画面 ${String(index + 1).padStart(2, "0")}${current.images?.[0] ? ` · V${current.images[0].version}` : ""}</span><div><button type="button" data-owner-round="${escapeHtml(renders[index - 1]?.id || "")}" ${index === 0 ? "disabled" : ""} aria-label="上一个画面">←</button><button type="button" data-owner-round="${escapeHtml(next?.id || "")}" ${!next ? "disabled" : ""} aria-label="下一个画面">→</button></div></div>
+      <div class="workflow-owner-frame workflow-owner-node kind-render status-${escapeHtml(current.status)}" data-owner-node="${escapeHtml(current.id)}">${images || `<div class="workflow-owner-missing">${current.status === "running" ? "渲染 / 看图进行中，等待回执…" : "本条记录未包含可展示的截图"}</div>`}</div>
+      ${current.pixel_unchanged ? '<p class="workflow-owner-warning">像素未改变</p>' : ""}${current.inspection_cached ? '<p class="workflow-owner-caption">复用已有检查回执</p>' : ""}
+      ${before.length ? `<details class="workflow-owner-more" data-node-id="before-${escapeHtml(current.id)}"><summary>生成前的操作 <span>${before.length}</span></summary>${before.map(node => workflowOwnerNodeMarkup(node, {compact: true})).join("")}</details>` : ""}
+    </section><section class="workflow-owner-checks"><div class="workflow-owner-section-title"><span><b>02</b> 检查请求与结果</span><small>同版像素 · 两条独立检查链路</small></div>
+      <div class="workflow-owner-check-columns"><section class="workflow-owner-self-check"><h3>Owner 原生看图</h3>
+        <p class="workflow-owner-caption">inspect 将当前截图与外部反馈交回同一个 Owner 的下一轮，由它核实并决定后续动作；工具成功不代表视觉通过。没有真实后续消息时不生成自评。</p>
+        ${workflowOwnerNodeMarkup({...current, id: `${current.id}-receipt`, kind: "tool", title: current.title.includes("Owner 看图") ? "inspect 请求与截图回执" : "渲染请求与工具回执"}, {compact: true})}
+      </section><section class="workflow-owner-review"><h3>外部 Critic 检查</h3>
+        <p class="workflow-owner-caption">final/blocking_recheck 会触发独立会话检查同版截图；draft 或素材筛查只记录检查范围，不代表终稿通过或素材已用上。</p>
+        ${relatedReviews.length ? relatedReviews.map(node => workflowOwnerNodeMarkup(node)).join("") : '<div class="workflow-owner-quiet">此版本尚无外部 Critic 记录，不推断通过、失败或是否启用。</div>'}
+      </section></div>
+    </section><section class="workflow-owner-changes"><div class="workflow-owner-section-title"><span><b>03</b> 后续流程</span><small>${changes.length} 次修改 · 按实际事件顺序</small></div>
+      <p class="workflow-owner-caption">展示本${selectedPage ? "页" : "次"}画面请求之后、下一次${selectedPage ? "本页" : ""}画面请求之前的动作；顺序不表示这些修改都由 Critic 触发。${paged && selectedPage ? "跨页操作与未标明页码的消息请查看组级记录。" : ""}</p>
+      <div class="workflow-owner-timeline">${during.map(node => workflowOwnerNodeMarkup(node, {compact: true})).join("") || '<div class="workflow-owner-quiet">此区间尚无后续动作记录。</div>'}</div>
+      ${next ? `<button type="button" class="workflow-owner-next" data-owner-round="${escapeHtml(next.id)}">查看下一个画面 <span>→</span></button>` : '<p class="workflow-owner-caption">已到最后一条画面记录</p>'}
+    </section></div><p class="workflow-owner-footnote">${escapeHtml(graph.note || "按实际事件顺序展示；评审仅对应其检查的像素版本。")}</p>`;
+  }
+  host.querySelectorAll("details[data-node-id]").forEach(item => { if (opened.has(item.dataset.nodeId)) item.open = true; });
+}
+
+function bindWorkflowOwnerGraph() {
+  const panel = $("#workflow-owner-graph");
+  if (!panel || panel.dataset.bound) return;
+  panel.dataset.bound = "1";
+  $("#workflow-owner-back").addEventListener("click", closeWorkflowOwnerGraph);
+  $("#workflow-owner-all-tools").addEventListener("change", event => {
+    ed.workflowOwnerAllTools = event.target.checked; renderWorkflowOwnerGraph();
+  });
+  panel.addEventListener("click", event => {
+    const page = event.target.closest("[data-owner-page]");
+    if (page) { ed.workflowOwnerPage = Number(page.dataset.ownerPage); ed.workflowOwnerRound = ""; renderWorkflowOwnerGraph(); return; }
+    if (event.target.closest("[data-owner-retry]")) { loadWorkflowAgentTrace({force: true}); return; }
+    const round = event.target.closest("[data-owner-round]");
+    if (round && !round.disabled) { ed.workflowOwnerRound = round.dataset.ownerRound; renderWorkflowOwnerGraph(); return; }
+    const render = event.target.closest("[data-owner-render]");
+    if (render) {
+      const graph = ed.workflowTracePayload?.workflow;
+      const target = graph?.nodes?.find(node => node.id === render.dataset.ownerRender);
+      if (target && ed.workflowTracePayload?.agent?.role === "slide"
+        && !workflowOwnerPageNodes(graph, ed.workflowOwnerPage).some(node => node.id === target.id)) {
+        ed.workflowOwnerPage = target.pages?.[0] || target.images?.[0]?.page || 0;
+      }
+      ed.workflowOwnerRound = render.dataset.ownerRender; renderWorkflowOwnerGraph();
+      panel.querySelector(`[data-owner-node="${CSS.escape(render.dataset.ownerRender)}"]`)?.scrollIntoView({block: "center", behavior: "smooth"});
+    }
+    const trace = event.target.closest("[data-owner-trace]");
+    if (trace) {
+      const agentKey = ed.workflowOwnerAgent;
+      ed.workflowTraceSource = "messages";
+      openWorkflowAgentTrace(agentKey, {segment: trace.dataset.ownerTrace}).then(() => {
+        if (ed.workflowTraceAgent !== agentKey || !trace.dataset.ownerTool) return;
+        const call = $("#workflow-trace-messages")?.querySelector(`[data-tool-call-id="${CSS.escape(trace.dataset.ownerTool)}"]`);
+        if (call) { call.open = true; call.scrollIntoView({block: "center", behavior: "smooth"}); }
+      });
+    }
+  });
+}
+
+function workflowTraceByteLabel(value) {
+  const bytes = Number(value) || 0;
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(bytes < 10240 ? 1 : 0)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function workflowTraceSegmentLabel(segment, index) {
+  const action = String(segment?.owner_action || "").toLowerCase();
+  const prefix = action === "reuse_owner" ? "同一 Agent 续接" : index === 0 ? "初次执行" : "执行段";
+  const id = segment?.segment_id;
+  return id === null || id === undefined || id === "" ? prefix : `${prefix} · Segment ${id}`;
+}
+
+function workflowTraceClip(value, limit = 1800) {
+  const text = String(value || "").replace(/\r\n?/g, "\n").trim();
+  return text.length > limit ? `${text.slice(0, limit).trimEnd()}\n\n… 内容较长，已在可读视图中截断。` : text;
+}
+
+function workflowTraceMessageRecords() {
+  const raw = String(ed.workflowTracePayload?.content || "").trim();
+  if (!raw) return { records: [], error: "" };
+  try {
+    const parsed = JSON.parse(raw);
+    const records = Array.isArray(parsed)
+      ? parsed
+      : Array.isArray(parsed?.messages)
+        ? parsed.messages
+        : Array.isArray(parsed?.items)
+          ? parsed.items
+          : [];
+    return records.length
+      ? { records, error: "" }
+      : { records: [], error: "这个文件中没有可显示的消息记录。" };
+  } catch {
+    return { records: [], error: raw.startsWith("Agent Trace 读取失败") ? raw : "消息文件不是可读的标准消息列表。" };
+  }
+}
+
+function workflowTraceMessageTime(index) {
+  const value = ed.workflowTracePayload?.message_times?.[index];
+  const time = conversationTime(value);
+  const full = conversationTime(value, { withDay: true });
+  return time && full
+    ? `<time datetime="${escapeHtml(time.iso)}" title="${escapeHtml(full.text)}">${escapeHtml(time.text)}</time>`
+    : "";
+}
+
+function workflowTraceHighlightMatches(container, query) {
+  const normalized = String(query || "").trim().toLocaleLowerCase();
+  if (!container || !normalized) {
+    if (container) {
+      container.dataset.searchCount = "0";
+      container.dataset.searchIndex = "-1";
+    }
+    return 0;
+  }
+  let count = 0;
+  container.querySelectorAll(".workflow-trace-message").forEach((message) => {
+    const walker = document.createTreeWalker(message, NodeFilter.SHOW_TEXT, {
+      acceptNode(node) {
+        if (!node.nodeValue || !node.nodeValue.toLocaleLowerCase().includes(normalized)) return NodeFilter.FILTER_REJECT;
+        if (node.parentElement?.closest("mark, script, style")) return NodeFilter.FILTER_REJECT;
+        return NodeFilter.FILTER_ACCEPT;
+      },
+    });
+    const nodes = [];
+    while (walker.nextNode()) nodes.push(walker.currentNode);
+    nodes.forEach((node) => {
+      const text = node.nodeValue;
+      const lower = text.toLocaleLowerCase();
+      const fragment = document.createDocumentFragment();
+      let cursor = 0;
+      let hit = lower.indexOf(normalized, cursor);
+      while (hit !== -1) {
+        if (hit > cursor) fragment.append(document.createTextNode(text.slice(cursor, hit)));
+        const mark = document.createElement("mark");
+        mark.className = "workflow-trace-search-hit";
+        mark.dataset.searchMatch = String(count++);
+        mark.textContent = text.slice(hit, hit + normalized.length);
+        fragment.append(mark);
+        cursor = hit + normalized.length;
+        hit = lower.indexOf(normalized, cursor);
+      }
+      if (cursor < text.length) fragment.append(document.createTextNode(text.slice(cursor)));
+      node.replaceWith(fragment);
+    });
+  });
+  container.dataset.searchCount = String(count);
+  container.dataset.searchIndex = count ? "0" : "-1";
+  return count;
+}
+
+function focusWorkflowTraceSearchMatch(index, { scroll = true } = {}) {
+  const list = $("#workflow-trace-messages");
+  const matches = list ? Array.from(list.querySelectorAll("mark[data-search-match]")) : [];
+  if (!matches.length) return;
+  const normalized = ((Number(index) || 0) % matches.length + matches.length) % matches.length;
+  matches.forEach((mark, position) => mark.classList.toggle("active", position === normalized));
+  list.dataset.searchIndex = String(normalized);
+  const selected = matches[normalized];
+  selected.closest("details")?.setAttribute("open", "");
+  if (scroll) selected.scrollIntoView({ block: "center", behavior: "smooth" });
+}
+
+function workflowTraceContentBlocks(message) {
+  const content = message?.content;
+  if (Array.isArray(content)) return content;
+  if (typeof content === "string" && content.trim()) return [{ type: "text", text: content }];
+  return [];
+}
+
+function workflowTraceResultParts(value) {
+  const texts = [];
+  let images = 0;
+  const visit = (item) => {
+    if (typeof item === "string") {
+      if (item.trim()) texts.push(item.trim());
+      return;
+    }
+    if (Array.isArray(item)) {
+      item.forEach(visit);
+      return;
+    }
+    if (!item || typeof item !== "object") return;
+    const type = String(item.type || "").toLowerCase();
+    if (type === "image" || item.image_url || item.source?.type === "base64") {
+      images += 1;
+      return;
+    }
+    if (typeof item.text === "string") texts.push(item.text.trim());
+    else if (item.content !== undefined) visit(item.content);
+  };
+  visit(value);
+  const text = texts.filter(Boolean).join("\n\n");
+  // patch / inspect / render 返回结构化对象；可读轨迹必须保留这类结果。
+  const structured = !text && value && typeof value === "object"
+    ? workflowTraceSafeJson(value) : "";
+  return { text, structured, images };
+}
+
+function workflowTraceSafeJson(value, limit = Infinity) {
+  if (typeof value === "string") {
+    const raw = value.trim();
+    if (!raw) return "";
+    if (!raw.startsWith("{") && !raw.startsWith("[")) return workflowTraceClip(value, limit);
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") value = parsed;
+      else return workflowTraceClip(value, limit);
+    } catch {
+      return workflowTraceClip(value, limit);
+    }
+  }
+  let text = "";
+  try {
+    text = JSON.stringify(value, null, 2);
+  } catch {
+    text = String(value || "");
+  }
+  return workflowTraceClip(text, limit);
+}
+
+function workflowTraceToolSummary(input) {
+  if (!input || typeof input !== "object") return "查看调用参数";
+  const keys = ["path", "command", "image", "query", "url", "target", "task_name", "rel"];
+  for (const key of keys) {
+    const value = input[key];
+    if (typeof value === "string" && value.trim()) return workflowTraceClip(value.split("\n")[0], 110);
+  }
+  const names = Object.keys(input);
+  return names.length ? names.slice(0, 4).join(" · ") : "无参数";
+}
+
+function workflowTraceMessageKind(message) {
+  const blocks = workflowTraceContentBlocks(message);
+  if (String(message?.role || "").toLowerCase() === "assistant") return "agent";
+  if (String(message?.role || "").toLowerCase() === "system") return "system";
+  if (blocks.some((block) => block?.type === "tool_result")) return "tool";
+  const text = blocks.map((block) => block?.text || "").join(" ").trim();
+  return /^\[Harness\b/i.test(text) ? "system" : "user";
+}
+
+function workflowTraceMessageLabel(kind) {
+  return ({ agent: "Agent", user: "任务输入", tool: "工具返回", system: "Harness" })[kind] || "消息";
+}
+
+function workflowTraceMessageMeta(blocks) {
+  const labels = [];
+  const toolCalls = blocks.filter((block) => block?.type === "tool_use").length;
+  const toolResults = blocks.filter((block) => block?.type === "tool_result").length;
+  if (blocks.some((block) => block?.type === "text")) labels.push("正文");
+  if (blocks.some((block) => block?.type === "thinking" && block?.summary)) labels.push("分析摘要");
+  if (blocks.some((block) => block?.type === "context_compaction")) labels.push("上下文压缩");
+  if (toolCalls) labels.push(`${toolCalls} 个工具调用`);
+  if (toolResults) labels.push(`${toolResults} 个结果`);
+  return labels.join(" · ") || "上下文消息";
+}
+
+function workflowToolOutputState(toolId) {
+  const cache = ed.workflowToolOutputs ||= {};
+  return cache[`${ed.id}:${toolId}`] ||= {cursor: 0, rows: [], open: false, loading: false, complete: false};
+}
+
+function workflowToolOutputBody(state) {
+  const rows = state.rows.map((row) => {
+    const record = row.record;
+    const prefix = `[${row.timestamp || ""} · 命令 ${row.command_index || 1} · ${row.stream}]`;
+    return `${prefix}\n${row.text || (record ? JSON.stringify(record) : "")}`;
+  }).join("\n");
+  const truncated = state.rows.some((row) => row.record?.truncated);
+  return `<small>${state.error ? escapeHtml(state.error) : state.loading ? "正在读取诊断…" : state.complete ? state.ok === false ? "工具执行失败" : "工具事务已结束" : "工具执行中 · 增量读取"}${truncated ? " · 输出已截断，见诊断元数据" : ""}${state.incomplete_tail ? " · 末尾记录未完整写入，已保留此前日志" : ""}</small><pre>${escapeHtml(rows || "尚无诊断输出")}</pre>${state.has_more ? '<button type="button" data-tool-output-more>继续读取</button>' : ""}`;
+}
+
+function workflowToolOutputMarkup(toolId) {
+  if (trajectoryMode) return "";
+  const state = workflowToolOutputState(toolId);
+  return `<details class="workflow-tool-output" data-tool-output="${escapeHtml(toolId)}"${state.open ? " open" : ""}><summary data-tool-output-toggle>运行日志与逐项诊断 · stdout / stderr</summary><div class="workflow-tool-output-body">${workflowToolOutputBody(state)}</div></details>`;
+}
+
+async function loadWorkflowToolOutput(toolId, {force = false} = {}) {
+  const state = workflowToolOutputState(toolId), deckId = ed.id;
+  if (state.loading || !state.open) return;
+  if (!force && Date.now() - (state.loadedAt || 0) < 2000) return;
+  state.loading = true;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10000);
+  try {
+    const response = await fetch(`/api/decks/${encodeURIComponent(deckId)}/tool-output/${encodeURIComponent(toolId)}?cursor=${state.cursor}`, {cache: "no-store", signal: controller.signal});
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.detail || "诊断读取失败");
+    if (ed.id !== deckId) return;
+    state.rows.push(...payload.rows);
+    state.cursor = payload.next_cursor;
+    state.complete = payload.complete;
+    state.ok = payload.ok;
+    state.has_more = payload.has_more;
+    state.incomplete_tail = payload.incomplete_tail;
+    state.error = "";
+  } catch (error) {
+    state.error = `诊断读取失败：${error.message}（已读日志仍保留）`;
+  } finally {
+    clearTimeout(timer);
+    state.loading = false;
+    state.loadedAt = Date.now();
+    if (ed.id === deckId) document.querySelectorAll(`[data-tool-output="${CSS.escape(toolId)}"] .workflow-tool-output-body`).forEach((body) => {
+      body.innerHTML = workflowToolOutputBody(state);
+    });
+  }
+}
+
+function refreshWorkflowToolOutputs() {
+  document.querySelectorAll("[data-tool-output][open]").forEach((panel) => {
+    const state = workflowToolOutputState(panel.dataset.toolOutput);
+    if (!state.complete && !state.has_more) loadWorkflowToolOutput(panel.dataset.toolOutput);
+  });
+}
+
+function workflowTraceFailureMarkup() {
+  const payload = ed.workflowTracePayload;
+  const failure = payload?.segments?.find((segment) => segment.id === payload.selected_segment)?.failure;
+  if (!failure) return "";
+  const trigger = ({exact_repeat: "同一调用重复失败", coarse_repeat: "同类工具连续失败", no_progress: "重复操作无进展"})[failure.trigger];
+  const title = trigger ? `${trigger} · ${failure.trigger_count}/${failure.threshold} 次，触发熔断` : failure.error_type || "执行失败";
+  return `<details class="workflow-trace-failure"><summary>${escapeHtml(title)}</summary><pre>${escapeHtml(JSON.stringify(failure, null, 2))}</pre>${(failure.related_tool_use_ids || []).map((id, i) => `<button type="button" data-related-tool="${escapeHtml(id)}">定位调用 ${i + 1}</button>`).join("")}</details>`;
+}
+
+function workflowTraceBlockMarkup(block, toolNames) {
+  if (!block || typeof block !== "object") return "";
+  const type = String(block.type || "text");
+  const preview = block.partial
+    ? `<small class="workflow-trace-preview">${escapeHtml(livePreviewLabel({ partial: true, phase: block.interrupted ? "interrupted" : "" }))}</small>` : "";
+  if (type === "text") {
+    const text = String(block.text || "");
+    return text ? `${preview}<div class="workflow-trace-message-text agent-markdown">${agentMarkdownHtml(text)}</div>` : "";
+  }
+  if (type === "thinking") {
+    const summary = String(block.summary || "");
+    if (!summary) return "";
+    const label = livePreviewLabel({partial: block.partial, phase: block.interrupted ? "interrupted" : ""}, {thinking: true});
+    return `<details class="workflow-trace-thinking orch-thinking-fold"><summary title="仅展示模型返回的思考摘要；已完成指本段摘要已返回，不代表整个任务结束。">${escapeHtml(label)}</summary><div class="agent-markdown">${agentMarkdownHtml(summary)}</div></details>`;
+  }
+  if (type === "context_compaction") {
+    const phase = String(block.phase || "completed");
+    const title = phase === "started" ? "开始压缩上下文" : phase === "failed" ? "上下文压缩未完成" : "上下文压缩完成";
+    const before = Number(block.tokens_before || block.estimated_tokens || 0);
+    const after = Number(block.tokens_after || 0);
+    const budget = Number(block.input_budget || 0);
+    const detail = phase === "started"
+      ? [block.model || "模型", block.actual_max_tokens ? `输出上限 ${Number(block.actual_max_tokens).toLocaleString()} tokens` : ""].filter(Boolean).join(" · ")
+      : phase === "failed"
+        ? [block.error_type, block.error_summary, block.recoverable ? "可恢复，检查点已保留" : ""].filter(Boolean).join(" · ")
+        : [before ? `压缩前 ${before.toLocaleString()}` : "", after ? `压缩后 ${after.toLocaleString()}` : "",
+          budget ? `输入预算 ${budget.toLocaleString()}` : ""].filter(Boolean).join(" · ");
+    return `<div class="workflow-trace-compaction phase-${escapeHtml(phase)}"><span aria-hidden="true">${phase === "failed" ? "!" : phase === "started" ? "…" : "✓"}</span><div><b>${escapeHtml(title)}</b><small>${escapeHtml(detail || "运行时上下文维护 · 非任务正文")}</small></div></div>`;
+  }
+  if (type === "tool_use") {
+    const name = String(block.name || "tool");
+    return `<details class="workflow-trace-tool-call" data-tool-call-id="${escapeHtml(block.id || "")}"><summary><i aria-hidden="true">↗</i><span><b>${escapeHtml(name)}</b><small>${escapeHtml(workflowTraceToolSummary(block.input))}</small></span><em>调用</em></summary><pre>${escapeHtml(workflowTraceSafeJson(block.input))}</pre></details>${block.has_diagnostics ? workflowToolOutputMarkup(String(block.id)) : ""}`;
+  }
+  if (type === "tool_result") {
+    const result = workflowTraceResultParts(block.content);
+    const name = toolNames.get(String(block.tool_use_id || "")) || "tool result";
+    const diagnostic = block.content?.diagnostics;
+    const failure = diagnostic?.records?.find((record) => record.status === "failed");
+    const commandSummary = diagnostic ? `退出 ${block.content.returncode ?? "未启动"} · ${diagnostic.termination} · ${diagnostic.duration_ms}ms${failure ? ` · ${failure.asset_id || failure.operation}: ${failure.error_kind} ${failure.http_status || ""}` : ""}` : "";
+    const readable = result.text || result.structured;
+    const preview = commandSummary || workflowTraceClip(readable, 180).split("\n")[0] || (result.images ? `${result.images} 张图像已加入上下文` : "工具已返回结果");
+    const detail = result.structured || result.text;
+    return `<details class="workflow-trace-tool-result"><summary><i aria-hidden="true">↳</i><span><b>${escapeHtml(name)}</b><small>${escapeHtml(preview)}</small></span><em>${block.is_error ? "失败" : "结果"}</em></summary>${detail ? `<pre>${escapeHtml(detail)}</pre>` : ""}${result.images ? `<div class="workflow-trace-media-chip">${result.images} 张图像已加入原生多模态上下文</div>` : ""}</details>`;
+  }
+  if (type === "image") return '<div class="workflow-trace-media-chip">图像已加入原生多模态上下文</div>';
+  return `<details class="workflow-trace-unknown"><summary>${escapeHtml(type)}</summary><pre>${escapeHtml(workflowTraceSafeJson(block))}</pre></details>`;
+}
+
+function workflowTraceReadableText(records) {
+  const toolNames = new Map();
+  records.forEach((message) => workflowTraceContentBlocks(message).forEach((block) => {
+    if (block?.type === "tool_use" && block.id) toolNames.set(String(block.id), String(block.name || "tool"));
+  }));
+  return records.map((message, index) => {
+    const kind = workflowTraceMessageKind(message);
+    const lines = [`#${index + 1} ${workflowTraceMessageLabel(kind)}`];
+    workflowTraceContentBlocks(message).forEach((block) => {
+      if (block?.type === "text" && block.text) lines.push(String(block.text));
+      else if (block?.type === "thinking" && block.summary) lines.push(`[分析摘要]\n${block.summary}`);
+      else if (block?.type === "context_compaction") lines.push(`[上下文压缩 · ${block.phase || "completed"}]\n${workflowTraceSafeJson(block)}`);
+      else if (block?.type === "tool_use") lines.push(`[调用 ${block.name || "tool"}]\n${workflowTraceSafeJson(block.input)}`);
+      else if (block?.type === "tool_result") {
+        const result = workflowTraceResultParts(block.content);
+        lines.push(`[${toolNames.get(String(block.tool_use_id || "")) || "工具"} 返回]\n${result.text || result.structured || `${result.images} 张图像`}`);
+      }
+    });
+    return lines.join("\n\n");
+  }).join("\n\n---\n\n");
+}
+
+function workflowTraceConversationRows(records) {
+  const calls = new Set(), results = new Map(), toolNames = new Map();
+  records.forEach(message => workflowTraceContentBlocks(message).forEach(block => {
+    if (block.type === "tool_use" && block.id) {
+      calls.add(block.id);
+      toolNames.set(block.id, block.name);
+    }
+    if (block.type === "tool_result" && block.tool_use_id) results.set(block.tool_use_id, block);
+  }));
+  const payload = ed.workflowTracePayload || {};
+  const selected = payload.segments?.find(segment => segment.id === payload.selected_segment);
+  const segmentId = selected?.segment_id || payload.selected_segment;
+  const feed = (ed.feed?.[ed.workflowTraceAgent] || []).filter(event => !segmentId || event.segment_id === segmentId);
+  const receipts = new Map(feed.filter(event => event.k === "tool_result").map(event => [event.tool_use_id, event]));
+  const terminal = [...feed].reverse().find(event => ["agent_completed", "agent_failed"].includes(event.event_type));
+  const active = isStaticActiveStatus(ed.status) && !terminal && !selected?.finished_at
+    && !["completed", "failed", "succeeded", "interrupted"].includes(selected?.status);
+  return records.map((message, index) => {
+    const parts = workflowTraceContentBlocks(message).map((block, blockIndex) => {
+      if (block.type === "tool_result" && calls.has(block.tool_use_id)) return "";
+      if (block.type === "tool_use") {
+        const receipt = results.get(block.id), event = receipts.get(block.id);
+        const result = receipt ? {ok: !receipt.is_error, result: receipt.content,
+          duration_ms: receipt.duration_ms ?? event?.duration_ms, error_code: receipt.error_code || event?.error_code} : null;
+        const transaction = {id: block.id || `${index}-${blockIndex}`, tool: block.name,
+          agent: payload.agent?.key || ed.workflowTraceAgent, use: {args: block.input}, result};
+        const path = result?.ok && ["write_file", "patch"].includes(block.name) ? block.input?.path : "";
+        const artifact = path ? workflowArtifactLinkMarkup(path) : "";
+        const images = receipt ? workflowTraceResultParts(receipt.content).images : 0;
+        return `<div class="orch-entry-copy orch-tool-message" data-tool-call-id="${escapeHtml(transaction.id)}">${liveToolTransactionMarkup(transaction, {compact: true, active})}
+          ${block.name === "delegate_submit" ? workflowDelegationMarkup(transaction) : ""}
+          ${artifact ? `<div class="orchestration-artifact-links">${artifact}</div>` : ""}
+          ${images ? `<div class="workflow-trace-media-chip">${images} 张图像已加入原生多模态上下文</div>` : ""}
+          ${block.has_diagnostics ? workflowToolOutputMarkup(transaction.id) : ""}</div>`;
+      }
+      if (message.role === "user" && block.type === "text") {
+        let context;
+        try { context = JSON.parse(block.text); } catch { /* 普通任务文本保持直接可读。 */ }
+        if (context && typeof context === "object" && !Array.isArray(context)) {
+          return `<details class="workflow-trace-context orch-thinking-fold" data-detail-key="context-${index}-${blockIndex}"><summary>任务上下文 · 展开查看</summary><pre>${escapeHtml(workflowTraceSafeJson(context))}</pre></details>`;
+        }
+      }
+      return workflowTraceBlockMarkup(block, toolNames);
+    }).filter(Boolean);
+    return {index, role: message.role, html: parts.join("")};
+  }).filter(row => row.html);
+}
+
+function renderWorkflowTraceMessages() {
+  const list = $("#workflow-trace-messages");
+  const input = $("#workflow-trace-search");
+  if (!list) return;
+  if (ed.workflowTraceLoading && !ed.workflowTracePayload) {
+    delete list.dataset.renderKey;
+    list.classList.add("loading");
+    list.innerHTML = '<div class="workflow-trace-message-empty"><i></i><span>正在整理 Agent 消息…</span></div>';
+    return;
+  }
+  list.classList.remove("loading");
+  const empty = ed.workflowTracePayload?.empty_state;
+  if (empty) {
+    delete list.dataset.renderKey;
+    const causes = ed.workflowTracePayload?.task_state?.dependency_causes || [];
+    list.innerHTML = workflowTraceFailureMarkup() + `<div class="workflow-trace-message-empty task-state"><strong>${escapeHtml(workflowStatusLabel(empty.kind))}</strong><span>${escapeHtml(empty.message)}</span>${causes.map((cause) => cause.agent_key && cause.segment_id ? `<button type="button" data-dependency-agent="${escapeHtml(cause.agent_key)}" data-dependency-segment="${escapeHtml(cause.segment_id)}">查看 ${escapeHtml(cause.label)} 的失败执行段</button>` : `<small>${escapeHtml(cause.task_id)}</small>`).join("")}<small>调度状态说明，不是 Agent 消息。</small></div>`;
+    return;
+  }
+  const raw = String(ed.workflowTracePayload?.content || "");
+  if (!raw) {
+    delete list.dataset.renderKey;
+    list.innerHTML = `<div class="workflow-trace-message-empty"><span>${ed.workflowTraceAgent ? "当前执行段尚未写入消息。" : "点击协作图中的 Agent 卡片查看消息。"}</span></div>`;
+    return;
+  }
+  const { records, error } = workflowTraceMessageRecords();
+  if (error) {
+    delete list.dataset.renderKey;
+    list.innerHTML = `<div class="workflow-trace-message-empty error"><span>${escapeHtml(error)}</span></div>`;
+    return;
+  }
+  const query = String(input?.value || "").trim();
+  const hasDelegation = records.some(message => workflowTraceContentBlocks(message)
+    .some(block => block.type === "tool_use" && block.name === "delegate_submit"));
+  const key = JSON.stringify([
+    ed.workflowTraceAgent,
+    ed.status,
+    ed.feed?.[ed.workflowTraceAgent]?.at(-1)?.seq,
+    ed.workflowTracePayload?.updated_at,
+    ed.workflowTracePayload?.selected_segment,
+    raw.length,
+    raw.slice(-80),
+    workflowTraceFailureMarkup(),
+    hasDelegation ? workflowDelegationStateKey() : "",
+    query,
+  ]);
+  if (list.dataset.renderKey === key) return;
+  list.dataset.renderKey = key;
+  const scope = JSON.stringify([ed.workflowTraceAgent, ed.workflowTracePayload?.selected_segment]);
+  if (list.dataset.conversationScope !== scope || !list.querySelector(".workflow-trace-conversation")) {
+    list.dataset.conversationScope = scope;
+    list.innerHTML = '<div class="workflow-trace-notice"></div><div class="workflow-trace-message-count"><span></span><small data-trace-search-summary>按执行顺序排列</small></div><div class="workflow-trace-conversation"></div>';
+  }
+  const notice = list.querySelector(".workflow-trace-notice"), failure = workflowTraceFailureMarkup();
+  if (notice.innerHTML !== failure) notice.innerHTML = failure;
+  list.querySelector(".workflow-trace-message-count > span").textContent = `${records.length} 条原始消息 · 工具请求与回执合并显示`;
+  const lane = list.querySelector(".workflow-trace-conversation");
+  const existing = new Map([...lane.children].map(card => [Number(card.dataset.messageIndex), card]));
+  let minute = "";
+  workflowTraceConversationRows(records).forEach((row, position) => {
+    const card = existing.get(row.index) || document.createElement("article");
+    const value = ed.workflowTracePayload?.message_times?.[row.index];
+    const exact = conversationTime(value, {withDay: true});
+    const time = conversationTime(value, {withDay: true, bucketMinutes: 5});
+    const heading = time && time.groupKey !== minute ? `<time class="orch-time-group" datetime="${escapeHtml(time.iso)}" title="${escapeHtml(exact?.text || time.text)}">${escapeHtml(time.text)}</time>` : "";
+    if (time) minute = time.groupKey;
+    const content = heading + row.html;
+    card.className = `workflow-trace-message conversation-message role-${row.role}`;
+    card.dataset.messageIndex = row.index;
+    if (card._conversationHtml !== content || query || list.dataset.lastQuery) {
+      const open = [...card.querySelectorAll("details")].map((detail, index) => detail.open ? index : -1);
+      card.innerHTML = content;
+      card.querySelectorAll("details").forEach((detail, index) => { if (open.includes(index)) detail.open = true; });
+      card._conversationHtml = content;
+    }
+    existing.delete(row.index);
+    if (lane.children[position] !== card) lane.insertBefore(card, lane.children[position] || null);
+  });
+  existing.forEach(card => card.remove());
+  list.dataset.lastQuery = query;
+  const matches = workflowTraceHighlightMatches(list, query);
+  const summary = list.querySelector("[data-trace-search-summary]");
+  if (summary) summary.textContent = query ? matches ? `${matches} 处匹配 · Enter 跳转` : "未找到匹配内容" : "按执行顺序排列";
+  if (matches) focusWorkflowTraceSearchMatch(0);
+}
+
+function renderWorkflowTraceContent() {
+  const source = ed.workflowTracePayload?.source || ed.workflowTraceSource || "messages";
+  const readable = source === "messages";
+  if (readable) renderWorkflowTraceMessages();
+  else renderWorkflowTraceJson();
+}
+
+function renderWorkflowProviderAttempts() {
+  const host = $("#workflow-provider-attempts");
+  if (!host) return;
+  host.hidden = ed.workflowTracePayload?.source !== "provider_attempts" || trajectoryMode;
+  if (host.hidden) return;
+  let events;
+  try { events = JSON.parse(ed.workflowTracePayload.content); } catch { events = []; }
+  const attempts = [...new Set(events.map(row => row.payload?.attempt_id).filter(Boolean))];
+  const cache = ed.workflowProviderTrace ||= {};
+  host.replaceChildren();
+  for (const attempt of attempts) {
+    for (const source of ["request", "response", "stream"]) {
+      const key = `${ed.id}:${attempt}:${source}`;
+      const state = cache[key] ||= {cursor: 0, content: "", open: false};
+      const details = document.createElement("details");
+      const summary = document.createElement("summary");
+      const pre = document.createElement("pre");
+      const more = document.createElement("button");
+      summary.textContent = `${attempt} · ${source}（签名仅显示元数据）`;
+      pre.textContent = state.content || state.error || "点击展开后读取";
+      more.type = "button";
+      more.textContent = source === "stream" ? "读取新增记录" : "继续读取";
+      more.hidden = source !== "stream" && state.has_more === false;
+      details.open = state.open;
+      details.append(summary, pre, more);
+      host.append(details);
+      async function load() {
+        if (state.loading) return;
+        state.loading = true;
+        more.disabled = true;
+        const deckId = ed.id;
+        try {
+          const response = await fetch(`/api/decks/${deckId}/provider-trace/${encodeURIComponent(attempt)}/${source}?cursor=${state.cursor}&limit=65536`);
+          if (!response.ok) throw new Error(response.status === 404 ? "尚未记录；可稍后重试" : `读取失败 (${response.status})`);
+          const value = await response.json();
+          state.content += value.content;
+          state.cursor = value.next_cursor;
+          state.has_more = value.has_more;
+          state.error = "";
+        } catch (error) { state.error = error.message; }
+        finally { state.loading = false; }
+        if (ed.id === deckId) renderWorkflowProviderAttempts();
+      }
+      details.ontoggle = () => {
+        const changed = state.open !== details.open;
+        state.open = details.open;
+        if (changed && state.open && !state.content) load();
+      };
+      more.onclick = load;
+    }
+  }
+}
+
+function renderWorkflowTraceJson() {
+  const pre = $("#workflow-trace-json");
+  const input = $("#workflow-trace-search");
+  if (!pre) return;
+  if (ed.workflowTraceLoading && !ed.workflowTracePayload) {
+    pre.classList.add("loading");
+    pre.textContent = "正在读取 Agent Trace…";
+    return;
+  }
+  pre.classList.remove("loading");
+  const raw = ed.workflowTracePayload?.empty_state?.message || String(ed.workflowTracePayload?.content || "");
+  if (!raw) {
+    pre.textContent = ed.workflowTraceAgent ? "当前执行段尚未写入这个 Trace 文件。" : "选择 Agent 后，可查看工具、配置、用量和交接等结构化信息。";
+    return;
+  }
+  const query = String(input?.value || "").trim();
+  const key = JSON.stringify([
+    ed.workflowTracePayload?.updated_at,
+    ed.workflowTracePayload?.source,
+    ed.workflowTracePayload?.selected_segment,
+    raw.length,
+    raw.slice(-80),
+    query,
+  ]);
+  if (pre.dataset.renderKey === key) return;
+  pre.dataset.renderKey = key;
+  if (!query) {
+    pre.textContent = raw;
+    return;
+  }
+  const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const pattern = new RegExp(`(${escapedQuery})`, "gi");
+  pre.innerHTML = raw.split(pattern).map((part, index) =>
+    index % 2 ? `<mark>${escapeHtml(part)}</mark>` : escapeHtml(part)
+  ).join("");
+  pre.querySelector("mark")?.scrollIntoView({ block: "center" });
+}
+
+function renderWorkflowAgentTrace() {
+  renderWorkflowImageOutputs();
+  const payload = ed.workflowTracePayload;
+  const completeTrace = payload?.selected_segment === "__all__";
+  const selected = completeTrace ? payload?.segments?.at(-1) || null
+    : payload?.segments?.find((segment) => segment.id === payload.selected_segment) || null;
+  const source = payload?.source || ed.workflowTraceSource || "messages";
+  const readable = source === "messages";
+  const pendingTask = payload?.task_state?.trace_available === false;
+  const followLatest = !!payload?.task_state || payload?.projected_from === "live-events.jsonl";
+  const title = $("#workflow-trace-title");
+  const role = $("#workflow-trace-role");
+  const meta = $("#workflow-trace-meta");
+  const segmentSelect = $("#workflow-trace-segment");
+  const agentSelect = $("#workflow-trace-agent");
+  const filename = $("#workflow-trace-filename");
+  const updated = $("#workflow-trace-updated");
+  const messageList = $("#workflow-trace-messages");
+  const rawJson = $("#workflow-trace-json");
+  const search = $("#workflow-trace-search");
+  const copy = $("#workflow-trace-copy");
+  const footerNote = $("#workflow-trace-footer-note");
+  if (title) title.textContent = payload?.agent?.label || ed.workflowTraceAgent || "选择一个 Agent";
+  if (agentSelect && payload?.agents) {
+    const key = JSON.stringify(payload.agents);
+    if (agentSelect.dataset.renderKey !== key) {
+      agentSelect.dataset.renderKey = key;
+      agentSelect.innerHTML = payload.agents.map(agent => `<option value="${escapeHtml(agent.key)}">${escapeHtml(
+        `${agent.role}${agent.page ? ` · P${agent.page}` : ""} · ${agent.label}`)}</option>`).join("");
+    }
+    agentSelect.value = payload.agent?.key || ed.workflowTraceAgent;
+  }
+  if (role) role.textContent = String(payload?.agent?.role || "AGENT").toUpperCase() + (readable ? " 轨迹" : " TRACE");
+  if (meta) {
+    const details = [completeTrace ? `${payload?.segments?.length || 0} 个执行段 · 完整轨迹` : "",
+      selected?.model, selected?.thinking_effort, selected?.owner_action === "reuse_owner" ? "复用 Owner" : ""].filter(Boolean);
+    meta.textContent = payload?.empty_state ? workflowStatusLabel(payload.empty_state.kind) : details.join(" · ") || "执行消息与工具记录";
+  }
+  if (segmentSelect && payload?.segments) {
+    const key = JSON.stringify([followLatest, pendingTask, payload.segments.map((segment) => [segment.id, segment.segment_id, segment.owner_action])]);
+    if (segmentSelect.dataset.renderKey !== key) {
+      segmentSelect.dataset.renderKey = key;
+      segmentSelect.innerHTML = `<option value="__all__">完整轨迹（跨压缩 / 续接段）</option>`
+        + (followLatest ? `<option value="">${pendingTask ? "当前任务（未启动）" : "跟随最新执行段"}</option>` : "") + payload.segments.map((segment, index) =>
+        `<option value="${escapeHtml(segment.id)}">${escapeHtml(workflowTraceSegmentLabel(segment, index))}</option>`
+      ).join("");
+    }
+    segmentSelect.value = ed.workflowTraceSegmentPinned ? ed.workflowTraceSegment
+      : completeTrace ? "__all__" : followLatest ? "" : payload.selected_segment || "";
+  }
+  const available = new Set((selected?.sources || []).map((item) => item.id));
+  $$("#workflow-trace-sources [data-trace-source]").forEach((button) => {
+    const buttonSource = button.dataset.traceSource;
+    button.classList.toggle("on", buttonSource === source);
+    button.disabled = !!payload && !available.has(buttonSource);
+  });
+  if (messageList) messageList.hidden = !readable;
+  if (rawJson) rawJson.hidden = readable;
+  if (search) search.placeholder = readable ? "查找并定位…" : "查找结构化信息…";
+  if (copy) copy.textContent = readable ? "复制消息" : "复制信息";
+  if (copy) copy.disabled = !!payload?.empty_state;
+  if (search) search.disabled = !!payload?.empty_state;
+  if (footerNote) footerNote.textContent = payload?.empty_state
+    ? "历史执行段仍可从上方选择；新任务启动后显示真实消息。" : readable
+    ? completeTrace ? "该 Agent 的跨段完整消息 · 压缩与工具详情按序显示" : "可读信息 · 推理与工具详情按需展开"
+    : completeTrace ? "该 Agent 的全部已记录事件 · 敏感凭证自动脱敏" : "结构化信息 · 敏感凭证自动脱敏";
+  if (filename) filename.textContent = payload?.filename
+    ? `${payload.filename} · ${workflowTraceByteLabel(payload.size)}` : payload?.empty_state ? "尚无 Agent Trace" : "Trace";
+  if (updated) updated.textContent = payload?.updated_at
+    ? (conversationTime(payload.updated_at, { withDay: true })?.text || "") : "";
+  renderWorkflowTraceContent();
+  renderWorkflowProviderAttempts();
+}
+
+function workflowDefaultTraceAgentKey() {
+  const nodes = Array.from(document.querySelectorAll(".workflow-node[data-agent-key]"));
+  const orchestrator = nodes.find((node) => node.dataset.role === "orchestrator");
+  return orchestrator?.dataset.agentKey || nodes[0]?.dataset.agentKey || (ed.id ? "orch" : "");
+}
+
+function syncWorkflowConversationMode() {
+  const aside = $(".workflow-conversation");
+  const hasTrace = !!ed.workflowTraceAgent || !!workflowDefaultTraceAgentKey();
+  const mode = ed.workflowConversationMode === "trace" && hasTrace ? "trace" : "history";
+  ed.workflowConversationMode = mode;
+  aside?.classList.toggle("trace-mode", mode === "trace");
+  $("#workflow-agent-trace")?.toggleAttribute("hidden", mode !== "trace");
+  const title = $("#workflow-conversation-title");
+  const kicker = $("#workflow-conversation-kicker");
+  if (title) title.textContent = mode === "trace" ? "Agent 完整轨迹" : "历史与消息";
+  if (kicker) kicker.textContent = mode === "trace" ? "AGENT EXECUTION" : "HISTORY & MESSAGES";
+  const tabs = $("#workflow-conversation-tabs");
+  if (tabs) tabs.dataset.active = mode;
+  tabs?.querySelectorAll("[data-workflow-conversation-mode]").forEach((button) => {
+    const active = button.dataset.workflowConversationMode === mode;
+    button.classList.toggle("on", active);
+    button.setAttribute("aria-pressed", String(active));
+    if (button.dataset.workflowConversationMode === "trace") button.disabled = !hasTrace;
+  });
+  const shell = $(".workflow-studio-shell");
+  shell?.classList.toggle("trace-expanded", mode === "trace" && !!ed.workflowTraceExpanded);
+  $$(".workflow-node[data-agent-key]").forEach((node) => {
+    node.classList.toggle("trace-selected", ed.workflowSelectedNodeId
+      ? node.dataset.nodeId === ed.workflowSelectedNodeId
+      : mode === "trace" && node.dataset.agentKey === ed.workflowTraceAgent
+        && (!node.dataset.workflowSegment || node.dataset.workflowSegment === ed.workflowTraceSegment));
+  });
+}
+
+function setWorkflowConversationMode(mode, { clearAgent = false } = {}) {
+  if (clearAgent) {
+    cancelWorkflowAgentTraceRequest();
+    ed.workflowTraceAgent = "";
+    ed.workflowTraceSegment = "";
+    ed.workflowTraceSegmentPinned = false;
+    ed.workflowTracePayload = null;
+  }
+  if (mode === "trace" && !ed.workflowTraceAgent) {
+    ed.workflowTraceAgent = workflowDefaultTraceAgentKey();
+    ed.workflowTraceSegment = "__all__";
+    ed.workflowTraceSegmentPinned = true;
+    ed.workflowTraceSource = "messages";
+    ed.workflowTracePayload = null;
+    ed.workflowTraceLoadedAt = 0;
+  }
+  ed.workflowConversationMode = mode === "trace" && ed.workflowTraceAgent ? "trace" : "history";
+  syncWorkflowConversationMode();
+  if (ed.workflowConversationMode === "history") {
+    renderWorkflowConversation();
+  } else {
+    renderWorkflowAgentTrace();
+    loadWorkflowAgentTrace({ force: !!ed.workflowTracePayload?.load_error });
+  }
+}
+
+function cancelWorkflowAgentTraceRequest() {
+  ed.workflowTraceAbortController?.abort();
+  ed.workflowTraceAbortController = null;
+  ed.workflowTraceLoading = false;
+  ed.workflowTraceRequest = (Number(ed.workflowTraceRequest) || 0) + 1;
+}
+
+async function loadWorkflowAgentTrace({ force = false } = {}) {
+  if (!ed.id || !ed.workflowTraceAgent) return;
+  refreshWorkflowToolOutputs();
+  if (ed.workflowTraceLoading && !force) return;
+  const active = isStaticActiveStatus(ed.status);
+  if (!force && ed.workflowTracePayload && (!active || Date.now() - (ed.workflowTraceLoadedAt || 0) < WORKFLOW_TRACE_REFRESH_MS)) return;
+  if (force && ed.workflowTraceLoading) cancelWorkflowAgentTraceRequest();
+  const deckId = ed.id;
+  const agentKey = ed.workflowTraceAgent;
+  const request = ++ed.workflowTraceRequest;
+  const previousPayload = ed.workflowTracePayload;
+  const controller = new AbortController();
+  let timedOut = false;
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, WORKFLOW_TRACE_REQUEST_TIMEOUT_MS);
+  ed.workflowTraceAbortController = controller;
+  ed.workflowTraceLoading = true;
+  renderWorkflowAgentTrace();
+  if (ed.workflowOwnerAgent) renderWorkflowOwnerGraph();
+  try {
+    const response = await fetch(workflowAgentTraceUrl(agentKey), {
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.detail || "Agent Trace 读取失败");
+    if (ed.id !== deckId || ed.workflowTraceAgent !== agentKey || request !== ed.workflowTraceRequest) return;
+    ed.workflowTracePayload = payload;
+    if (payload.selected_segment || !ed.workflowTraceSegmentPinned) {
+      ed.workflowTraceSegment = payload.selected_segment || "";
+    }
+    ed.workflowTraceSource = payload.source || ed.workflowTraceSource || "messages";
+    ed.workflowTraceLoadedAt = Date.now();
+  } catch (error) {
+    if (ed.id === deckId && ed.workflowTraceAgent === agentKey && request === ed.workflowTraceRequest) {
+      if (controller.signal.aborted && !timedOut) return;
+      const message = timedOut
+        ? "Agent Trace 读取超时，请重新点击该 Agent 重试。"
+        : `Agent Trace 读取失败：${error.message}`;
+      ed.workflowTracePayload = previousPayload && !previousPayload.load_error ? {...previousPayload, refresh_error: message} : {
+        content: message,
+        source: ed.workflowTraceSource,
+        segments: [],
+        load_error: true,
+      };
+      ed.workflowTraceLoadedAt = Date.now();
+    }
+  } finally {
+    clearTimeout(timeout);
+    if (request === ed.workflowTraceRequest) {
+      ed.workflowTraceAbortController = null;
+      ed.workflowTraceLoading = false;
+      renderWorkflowAgentTrace();
+      refreshWorkflowToolOutputs();
+      if (ed.workflowOwnerAgent) renderWorkflowOwnerGraph();
+    }
+  }
+}
+
+function openWorkflowAgentTrace(agentKey, { segment = "", taskId = "" } = {}) {
+  const normalized = String(agentKey || "").trim();
+  if (!normalized) return;
+  const nodes = [...document.querySelectorAll(".workflow-node[data-agent-key]")].filter(node => node.dataset.agentKey === normalized);
+  const selected = (segment && nodes.find(node => node.dataset.workflowSegment === segment))
+    || (taskId && nodes.find(node => node.dataset.workflowTaskId === taskId))
+    || (!segment && nodes.find(node => node.dataset.nodeId === ed.workflowSelectedNodeId))
+    || nodes.find(node => !segment || !node.dataset.workflowSegment);
+  ed.workflowSelectedNodeId = selected?.dataset.nodeId || (taskId && ed.muralRuntime?.tasks?.some(task => task.task_id === taskId) ? `task:${taskId}` : "");
+  if (ed.workflowOwnerAgent && ed.workflowOwnerAgent !== normalized) {
+    ed.workflowOwnerAgent = normalized;
+    ed.workflowOwnerTask = "";
+    ed.workflowOwnerPage = null;
+  }
+  const changed = ed.workflowTraceAgent !== normalized;
+  const sourceChanged = ed.workflowTraceSource !== "messages";
+  if (changed) {
+    cancelWorkflowAgentTraceRequest();
+    ed.workflowTraceAgent = normalized;
+    ed.workflowTraceSegment = "__all__";
+    ed.workflowTraceSegmentPinned = true;
+    ed.workflowTraceSource = "messages";
+    ed.workflowTracePayload = null;
+    ed.workflowTraceLoadedAt = 0;
+    const search = $("#workflow-trace-search");
+    if (search) search.value = "";
+  }
+  ed.workflowConversationMode = "trace";
+  if (sourceChanged) {
+    ed.workflowTraceSource = "messages";
+    ed.workflowTracePayload = null;
+  }
+  if (segment) {
+    ed.workflowTraceSegment = segment;
+    ed.workflowTraceSegmentPinned = true;
+    ed.workflowTracePayload = null;
+  }
+  const state = ed.workflowPanelCollapsed ||= { files: false, conversation: false };
+  const wasCollapsed = !!state.conversation;
+  state.conversation = false;
+  syncWorkflowPanelLayout({ remeasure: wasCollapsed });
+  syncWorkflowConversationMode();
+  if (selected && ed.workflowPane === "graph") selected.scrollIntoView({block: "nearest", inline: "center", behavior: "smooth"});
+  renderWorkflowAgentTrace();
+  return loadWorkflowAgentTrace({ force: changed || sourceChanged || !!segment || !!ed.workflowTracePayload?.load_error });
+}
+
+function bindWorkflowTraceControls() {
+  const openDelegated = (event) => {
+    if (event.type === "keydown" && !["Enter", " "].includes(event.key)) return false;
+    const card = event.target.closest('[data-embedded-agent="true"]');
+    if (!card || window.getSelection()?.toString()) return false;
+    const interactive = event.target.closest("a, summary, details, input, textarea, select");
+    if (interactive) return false;
+    if (ed.workspaceView && ed.workspaceView !== "workflow") setWorkspaceView("workflow");
+    const page = event.target.closest("[data-workflow-page]");
+    if (page) {
+      if (event.type === "click") {
+        ed.workflowPage = Number(page.dataset.workflowPage);
+        setWorkflowPane("page");
+        renderWorkflowPagePane();
+      }
+      return true;
+    }
+    if (event.target.closest("button") && event.type === "keydown") return true;
+    event.preventDefault();
+    ed.workflowSelectedNodeId = card.dataset.ownerNodeId || card.dataset.nodeId;
+    setWorkflowPane("graph");
+    openWorkflowOwnerGraph(card.dataset.agentKey || "", {taskId: card.dataset.workflowTaskId || ""});
+    return true;
+  };
+  const preview = $("#agent-progress-console");
+  if (preview && preview.dataset.ownerNavigationBound !== "1") {
+    preview.dataset.ownerNavigationBound = "1";
+    preview.addEventListener("click", openDelegated);
+    preview.addEventListener("keydown", openDelegated);
+  }
+  const history = $("#workflow-message-list");
+  if (history && history.dataset.agentNavigationBound !== "1") {
+    history.dataset.agentNavigationBound = "1";
+    const navigate = (event) => {
+      if (event.type === "keydown" && !["Enter", " "].includes(event.key)) return;
+      if (openDelegated(event)) return;
+      if (event.target.closest("a, button, summary, details, input, textarea, select, [contenteditable]")) return;
+      if (window.getSelection()?.toString()) return;
+      const card = event.target.closest("[data-message-agent]");
+      if (!card) return;
+      event.preventDefault();
+      openWorkflowAgentTrace(card.dataset.messageAgent, {segment: card.dataset.messageSegment, taskId: card.dataset.messageTask});
+    };
+    history.addEventListener("click", navigate);
+    history.addEventListener("keydown", navigate);
+  }
+  const messages = $("#workflow-trace-messages");
+  if (messages && messages.dataset.diagnosticsBound !== "1") {
+    messages.dataset.diagnosticsBound = "1";
+    messages.addEventListener("click", openDelegated);
+    messages.addEventListener("keydown", openDelegated);
+    messages.addEventListener("click", (event) => {
+      const dependency = event.target.closest("[data-dependency-agent]");
+      if (dependency) openWorkflowAgentTrace(dependency.dataset.dependencyAgent, {segment: dependency.dataset.dependencySegment});
+      const related = event.target.closest("[data-related-tool]");
+      if (related) {
+        const call = document.querySelector(`[data-tool-call-id="${CSS.escape(related.dataset.relatedTool)}"]`);
+        if (call) { (call.matches("details") ? call : call.querySelector("details"))?.setAttribute("open", ""); call.scrollIntoView({block: "center", behavior: "smooth"}); }
+      }
+      const button = event.target.closest("[data-tool-output-toggle], [data-tool-output-more]");
+      if (!button) return;
+      event.preventDefault();
+      const panel = button.closest("[data-tool-output]"), state = workflowToolOutputState(panel.dataset.toolOutput);
+      if (button.hasAttribute("data-tool-output-toggle")) state.open = !state.open;
+      panel.open = state.open;
+      if (state.open) loadWorkflowToolOutput(panel.dataset.toolOutput, {force: true});
+    });
+  }
+  const tabs = $("#workflow-conversation-tabs");
+  if (tabs && tabs.dataset.bound !== "1") {
+    tabs.dataset.bound = "1";
+    tabs.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-workflow-conversation-mode]");
+      if (!button || button.disabled) return;
+      setWorkflowConversationMode(button.dataset.workflowConversationMode);
+    });
+  }
+  const back = $("#workflow-trace-back");
+  if (back && back.dataset.bound !== "1") {
+    back.dataset.bound = "1";
+    back.addEventListener("click", () => setWorkflowConversationMode("history"));
+  }
+  const agent = $("#workflow-trace-agent");
+  if (agent && agent.dataset.bound !== "1") {
+    agent.dataset.bound = "1";
+    agent.addEventListener("change", () => openWorkflowAgentTrace(agent.value));
+  }
+  const segment = $("#workflow-trace-segment");
+  if (segment && segment.dataset.bound !== "1") {
+    segment.dataset.bound = "1";
+    segment.addEventListener("change", () => {
+      ed.workflowTraceSegment = segment.value;
+      ed.workflowTraceSegmentPinned = !!segment.value;
+      ed.workflowTracePayload = null;
+      loadWorkflowAgentTrace({ force: true });
+    });
+  }
+  const sources = $("#workflow-trace-sources");
+  if (sources && sources.dataset.bound !== "1") {
+    sources.dataset.bound = "1";
+    sources.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-trace-source]");
+      if (!button || button.disabled || button.dataset.traceSource === ed.workflowTraceSource) return;
+      ed.workflowTraceSource = button.dataset.traceSource;
+      ed.workflowTracePayload = null;
+      const search = $("#workflow-trace-search");
+      if (search) search.value = "";
+      loadWorkflowAgentTrace({ force: true });
+    });
+  }
+  const search = $("#workflow-trace-search");
+  if (search && search.dataset.bound !== "1") {
+    search.dataset.bound = "1";
+    search.addEventListener("input", () => {
+      if (search.workflowTraceFrame) cancelAnimationFrame(search.workflowTraceFrame);
+      search.workflowTraceFrame = requestAnimationFrame(renderWorkflowTraceContent);
+    });
+    search.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter") return;
+      const list = $("#workflow-trace-messages");
+      const count = Number(list?.dataset.searchCount || 0);
+      if (!count) return;
+      event.preventDefault();
+      const current = Number(list?.dataset.searchIndex || 0);
+      focusWorkflowTraceSearchMatch(current + (event.shiftKey ? -1 : 1));
+    });
+  }
+  const copy = $("#workflow-trace-copy");
+  if (copy && copy.dataset.bound !== "1") {
+    copy.dataset.bound = "1";
+    copy.addEventListener("click", async () => {
+      const readable = (ed.workflowTracePayload?.source || ed.workflowTraceSource) === "messages";
+      const content = readable
+        ? workflowTraceReadableText(workflowTraceMessageRecords().records)
+        : String(ed.workflowTracePayload?.content || "");
+      if (!content) return;
+      try {
+        await navigator.clipboard.writeText(content);
+        const old = copy.textContent;
+        copy.textContent = "已复制";
+        setTimeout(() => { copy.textContent = old; }, 1200);
+      } catch {
+        showStudioNotice("无法复制 Trace，请手动选择文本。", { type: "error", duration: 3200 });
+      }
+    });
+  }
+  const expand = $("#workflow-trace-expand");
+  if (expand && expand.dataset.bound !== "1") {
+    expand.dataset.bound = "1";
+    expand.addEventListener("click", () => {
+      ed.workflowTraceExpanded = !ed.workflowTraceExpanded;
+      expand.classList.toggle("on", ed.workflowTraceExpanded);
+      expand.title = ed.workflowTraceExpanded ? "收起 Trace 面板" : "展开 Trace 面板";
+      syncWorkflowConversationMode();
+      syncWorkflowPanelLayout({ remeasure: true });
+    });
+  }
+}
+
+function setScrollBottomImmediately(scroller) {
+  if (!scroller) return;
+  const inlineBehavior = scroller.style.scrollBehavior;
+  scroller.style.scrollBehavior = "auto";
+  scroller.scrollTop = scroller.scrollHeight;
+  requestAnimationFrame(() => {
+    if (scroller.style.scrollBehavior === "auto") scroller.style.scrollBehavior = inlineBehavior;
+  });
+}
+
+function renderWorkflowConversation() {
+  const list = $("#workflow-message-list");
+  if (!list) return;
+  bindWorkflowTraceControls();
+  syncWorkflowConversationMode();
+  if (ed.workflowConversationMode === "trace") {
+    renderWorkflowAgentTrace();
+    loadWorkflowAgentTrace();
+    return;
+  }
+  const kind = editorPresentationKind();
+  const running = kind === "dynamic" ? ed.status === "running" : isStaticActiveStatus(ed.status);
+  const signature = outlineConversationStructureKey(kind);
+  if (list.dataset.renderKey !== signature || !$("#workflow-agent-progress-console")) {
+    const nearBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 70;
+    list.dataset.renderKey = signature;
+    list.innerHTML = `<div class="outline-chat-lane workflow-conversation-lane" id="workflow-conversation-lane">
+      ${outlineConversationLaneMarkup(kind, running, {
+        idPrefix: "workflow",
+        progressId: "workflow-agent-progress-console",
+      })}
+    </div>`;
+    if (nearBottom) requestAnimationFrame(() => setScrollBottomImmediately(list));
+  }
+  renderOrchestrationProgress($("#workflow-agent-progress-console"), ed.feed || {}, {
+    running,
+    specialistArtifacts: ed.specialistArtifacts || {},
+    scrollContainer: list,
+    artifactMode: "links",
+  });
+  syncTaskConfig();
+  syncWorkflowArtifactSelection();
+  if (kind === "static") syncStaticHistoricalTurnFeeds();
+  syncWorkflowComposer();
+}
+
+function syncWorkflowComposer() {
+  const form = $("#workflow-chat-form");
+  const input = $("#workflow-chat-input");
+  const button = $("#workflow-chat-send");
+  const helper = $("#workflow-chat-helper");
+  if (!form || !input || !button || !helper) return;
+  const copy = taskComposerCopy(ed.kind, ed.status);
+  input.placeholder = copy.placeholder;
+  input.disabled = copy.disabled || form.classList.contains("is-sending");
+  button.disabled = input.disabled || !input.value.trim();
+  helper.textContent = form.classList.contains("is-sending") ? "正在发送修改要求…" : copy.helper;
+  form.classList.toggle("is-locked", copy.disabled);
+}
+
+function bindWorkflowComposer() {
+  const form = $("#workflow-chat-form");
+  const input = $("#workflow-chat-input");
+  if (!form || !input || form.dataset.bound === "1") return;
+  form.dataset.bound = "1";
+  input.addEventListener("input", () => {
+    input.style.height = "auto";
+    input.style.height = `${Math.min(118, input.scrollHeight)}px`;
+    syncWorkflowComposer();
+  });
+  input.addEventListener("keydown", (event) => {
+    if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+      event.preventDefault();
+      if (!$("#workflow-chat-send")?.disabled) form.requestSubmit();
+    }
+  });
+  form.addEventListener("submit", sendWorkflowFollowup);
+  syncWorkflowComposer();
+}
+
+async function sendWorkflowFollowup(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const input = $("#workflow-chat-input");
+  const message = input?.value.trim();
+  if (!message || taskComposerCopy(ed.kind, ed.status).disabled || !requireAuthentication()) return;
+  form.classList.add("is-sending");
+  syncWorkflowComposer();
+  try {
+    const response = await fetch(`/api/decks/${ed.id}/continue`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.detail || payload.error || "修改要求发送失败");
+    input.value = "";
+    input.style.height = "auto";
+    const revisionId = Number(payload.deck_id);
+    await loadDecks(revisionId);
+    await openDeck(revisionId);
+    setWorkspaceView("workflow");
+  } catch (error) {
+    showStudioNotice(`发送失败：${error.message}`, { type: "error", duration: 7000 });
+  } finally {
+    form.classList.remove("is-sending");
+    syncWorkflowComposer();
+  }
+}
+
+function renderWorkflowSidePanels() {
+  renderWorkflowArtifacts();
+  renderWorkflowConversation();
+  bindWorkflowComposer();
+  bindWorkflowCenterControls();
+  syncWorkflowPanelLayout();
+  syncWorkflowCenterPane();
+}
+
+function workflowDocumentSpecs() {
+  const files = (ed.workflow?.artifacts?.groups || [])
+    .filter((group) => ["knowledge", "plan"].includes(group.id))
+    .flatMap((group) => group.files || []);
+  return [["knowledge", "knowledge.md"],
+    ["plan", "deck.md"], ["design", "design-brief.md"]]
+    .map(([key, name]) => [key, files.find((file) => file.rel.split("/").pop() === name)])
+    .filter(([, file]) => file);
+}
+
+function workflowDocumentArtifactSignature() {
+  return JSON.stringify(workflowDocumentSpecs().map(([key, file]) =>
+    [key, file.rel, file.updated_at, file.size]));
+}
+
+async function loadWorkflowDocuments(signature) {
+  if (!ed.id || ed.workflowDocumentLoading === signature) return;
+  const deckId = ed.id;
+  ed.workflowDocumentLoading = signature;
+  const specs = workflowDocumentSpecs();
+  const entries = await Promise.all(specs.map(async ([key, file]) => {
+    try {
+      const response = await fetch(`${workflowArtifactUrl(file)}?t=${Date.now()}`, { cache: "no-store" });
+      if (!response.ok) return [key, ""];
+      return [key, await response.text()];
+    } catch {
+      return [key, ""];
+    }
+  }));
+  if (ed.id !== deckId) return;
+  ed.workflowDocuments = Object.fromEntries(entries);
+  ed.workflowDocumentSignature = signature;
+  ed.workflowDocumentLoading = "";
+  renderWorkflowTaskPane();
+}
+
+function renderWorkflowTaskPane() {
+  const host = $("#workflow-task-document");
+  if (!host) return;
+  const artifactSignature = workflowDocumentArtifactSignature();
+  if (ed.workflowDocumentSignature !== artifactSignature) {
+    if (host.dataset.loadingSignature !== artifactSignature) {
+      host.dataset.loadingSignature = artifactSignature;
+      host.innerHTML = '<div class="workflow-panel-empty">正在读取任务文本与已落盘规划…</div>';
+    }
+    loadWorkflowDocuments(artifactSignature);
+    return;
+  }
+  const query = String(ed.fullQuery || outlineBriefData().query || "").trim();
+  const documents = ed.workflowDocuments || {};
+  const documentFiles = Object.fromEntries(workflowDocumentSpecs());
+  const sections = [
+    ["knowledge", "研究与材料事实依据", "KNOWLEDGE"],
+    ["plan", "整册内容规划", "DECK PLAN"],
+    ["design", "设计语言与视觉约定", "DESIGN BRIEF"],
+  ].filter(([key]) => String(documents[key] || "").trim());
+  const signature = JSON.stringify([query, sections.map(([key]) => [key, documents[key]])]);
+  if (host.dataset.renderKey === signature) return;
+  host.dataset.renderKey = signature;
+  host.innerHTML = `<article class="workflow-task-query">
+      <span>ORIGINAL BRIEF</span><h3>完整任务要求</h3><div>${escapeHtml(query || "正在读取任务要求…").replace(/\n/g, "<br>")}</div>
+    </article>
+    ${sections.map(([key, title, kicker]) => `<article class="workflow-task-section">
+      <header><span>${kicker}</span><h3>${title}</h3><a href="${workflowArtifactUrl(documentFiles[key])}" target="_blank" rel="noopener">打开原文件 ↗</a></header>
+      <div class="workflow-task-markdown">${agentMarkdownHtml(documents[key])}</div>
+    </article>`).join("")}`;
+}
+
+function workflowReadyPages() {
+  return [...ed.rendered].map(Number).filter((page) => page > 0).sort((a, b) => a - b);
+}
+
+function renderWorkflowPagePane() {
+  const stage = $("#workflow-page-stage");
+  const strip = $("#workflow-page-strip");
+  const position = $("#workflow-page-position");
+  const title = $("#workflow-page-title");
+  const previous = $("#workflow-page-prev");
+  const next = $("#workflow-page-next");
+  if (!stage || !strip) return;
+  const ready = workflowReadyPages();
+  let page = Number(ed.workflowPage) || ready[0] || 1;
+  if (ready.length && !ready.includes(page)) page = ready[0];
+  ed.workflowPage = page;
+  const making = muralMakingView();
+  const preview = ready.includes(page);
+  const signature = preview ? fileUrl(page) : JSON.stringify(making);
+  if (stage.dataset.renderKey !== signature) {
+    stage.dataset.renderKey = signature;
+    stage.innerHTML = preview
+      ? `<img src="${fileUrl(page)}" alt="第 ${page} 页渲染预览">`
+      : muralMakingMarkup(making, true, {checklist: false});
+  }
+  const stripSignature = JSON.stringify([page, ready, ed.total, ed.staticStamp, ed.rtimes]);
+  if (strip.dataset.renderKey !== stripSignature) {
+    strip.dataset.renderKey = stripSignature;
+    strip.innerHTML = Array.from({ length: Math.max(ed.total || 0, ready.at(-1) || 0) }, (_, index) => index + 1).map((number) => {
+      const rendered = ready.includes(number);
+      return `<button type="button" data-workflow-page="${number}" class="${number === page ? "on" : ""}${rendered ? " ready" : ""}"${rendered ? "" : " disabled"}>
+        ${rendered ? `<img src="${fileUrl(number)}" alt="">` : ""}<span>${pad2(number)}</span>
+      </button>`;
+    }).join("");
+  }
+  const index = ready.indexOf(page);
+  if (title) title.textContent = ready.includes(page) ? `第 ${pad2(page)} 页` : "页面预览";
+  if (position) position.textContent = `${ready.includes(page) ? index + 1 : 0} / ${ready.length || "–"}`;
+  if (previous) previous.disabled = index <= 0;
+  if (next) next.disabled = index < 0 || index >= ready.length - 1;
+}
+
+function setWorkflowPage(page) {
+  const value = Number(page);
+  if (!workflowReadyPages().includes(value)) return;
+  ed.workflowPage = value;
+  renderWorkflowPagePane();
+}
+
+function syncWorkflowCenterPane() {
+  const pane = ["graph", "task", "page", "artifact"].includes(ed.workflowPane)
+    ? ed.workflowPane : "page";
+  ed.workflowPane = pane;
+  const switcher = $("#workflow-pane-switch");
+  if (switcher) switcher.dataset.active = pane;
+  switcher?.querySelectorAll("button").forEach((button) => {
+    const active = button.dataset.workflowPane === pane;
+    button.classList.toggle("on", active);
+    button.setAttribute("aria-selected", String(active));
+  });
+  $$('[data-workflow-pane-panel]').forEach((panel) => { panel.hidden = panel.dataset.workflowPanePanel !== pane; });
+  const hint = $("#workflow-pane-hint");
+  if (hint) hint.textContent = ({ graph: "点击卡片选中 · 右上角「查看迭代」进入下钻", task: "完整需求、研究与规划文本", page: "同一工作台查看实际页面", artifact: "当前选中的任务产物" })[pane];
+  if (pane === "task") renderWorkflowTaskPane();
+  if (pane === "page") renderWorkflowPagePane();
+  if (pane === "artifact") renderWorkflowArtifactPane();
+  syncWorkflowLayoutReset();
+}
+
+function setWorkflowPane(pane) {
+  const next = ["graph", "task", "page", "artifact"].includes(pane) ? pane : "page";
+  if (ed.workflowPane === next) return;
+  ed.workflowPane = next;
+  syncWorkflowCenterPane();
+  if (next === "graph") {
+    const stage = $("#workflow-stage");
+    if (stage) delete stage.dataset.workflowSignature;
+    renderWorkflowCanvas();
+  }
+}
+
+function workflowSplitRatio(value) {
+  const ratio = Number(value);
+  return Math.max(.25, Math.min(.65, value == null || value === "" || !Number.isFinite(ratio) ? .4 : ratio));
+}
+
+function setWorkflowSplit(value, { remember = true } = {}) {
+  const ratio = workflowSplitRatio(value);
+  const shell = $(".workflow-studio-shell"), splitter = $("#workflow-splitter");
+  shell?.style.setProperty("--workflow-center-fr", `${1 - ratio}fr`);
+  shell?.style.setProperty("--workflow-message-fr", `${ratio}fr`);
+  splitter?.setAttribute("aria-valuenow", String(Math.round(ratio * 100)));
+  splitter?.setAttribute("aria-valuetext", `右侧消息宽度偏好 ${Math.round(ratio * 100)}%，窄屏自动适配`);
+  if (remember) {
+    ed.workflowSplitRatio = ratio;
+    ed.workflowTraceExpanded = false;
+    shell?.classList.remove("trace-expanded");
+    const expand = $("#workflow-trace-expand");
+    expand?.classList.remove("on");
+    if (expand) expand.title = "展开 Trace 面板";
+    localStorage.setItem("studio_workflow_split_ratio", String(ratio));
+  }
+}
+
+function bindWorkflowSplitter() {
+  const splitter = $("#workflow-splitter"), shell = $(".workflow-studio-shell");
+  if (!splitter || !shell || splitter.dataset.bound === "1") return;
+  splitter.dataset.bound = "1";
+  let drag = null;
+  splitter.addEventListener("pointerdown", event => {
+    if (event.button !== 0) return;
+    const center = $(".workflow-canvas-panel").getBoundingClientRect();
+    const messages = $(".workflow-conversation").getBoundingClientRect();
+    drag = { pointer: event.pointerId, start: event.clientX, width: messages.width,
+      total: center.width + messages.width };
+    splitter.setPointerCapture(event.pointerId);
+    shell.classList.add("resizing");
+    event.preventDefault();
+  });
+  splitter.addEventListener("pointermove", event => {
+    if (!drag || event.pointerId !== drag.pointer) return;
+    setWorkflowSplit((drag.width + drag.start - event.clientX) / drag.total);
+  });
+  const finish = () => {
+    if (!drag) return;
+    const pointer = drag.pointer;
+    drag = null;
+    if (splitter.hasPointerCapture(pointer)) splitter.releasePointerCapture(pointer);
+    shell.classList.remove("resizing");
+    syncWorkflowPanelLayout({ remeasure: true });
+  };
+  ["pointerup", "pointercancel", "lostpointercapture"].forEach(type => splitter.addEventListener(type, finish));
+  splitter.addEventListener("dblclick", () => { setWorkflowSplit(.4); syncWorkflowPanelLayout({ remeasure: true }); });
+  splitter.addEventListener("keydown", event => {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    const value = Number(splitter.getAttribute("aria-valuenow")) / 100;
+    setWorkflowSplit(event.key === "Home" ? .25 : event.key === "End" ? .65
+      : value + (event.key === "ArrowLeft" ? .02 : -.02));
+    syncWorkflowPanelLayout({ remeasure: true });
+  });
+}
+
+function syncWorkflowPanelLayout({ remeasure = false } = {}) {
+  const shell = $(".workflow-studio-shell");
+  if (!shell) return;
+  const state = ed.workflowPanelCollapsed ||= { files: false, conversation: false };
+  shell.classList.toggle("files-collapsed", !!state.files);
+  shell.classList.toggle("conversation-collapsed", !!state.conversation);
+  setWorkflowSplit(ed.workflowConversationMode === "trace" && ed.workflowTraceExpanded ? .6 : ed.workflowSplitRatio, { remember: false });
+  const controls = [
+    [$("#workflow-files-toggle"), "files", "任务与产物"],
+    [$("#workflow-conversation-toggle"), "conversation", "历史与消息"],
+  ];
+  controls.forEach(([button, key, label]) => {
+    if (!button) return;
+    const collapsed = !!state[key];
+    button.setAttribute("aria-expanded", String(!collapsed));
+    button.setAttribute("aria-label", `${collapsed ? "展开" : "折叠"}${label}`);
+    button.title = `${collapsed ? "展开" : "折叠"}${label}`;
+  });
+  if (!remeasure || ed.workspaceView !== "workflow") return;
+  const refresh = () => {
+    const stage = $("#workflow-stage");
+    if (stage) delete stage.dataset.workflowSignature;
+    renderWorkflowCanvas();
+  };
+  requestAnimationFrame(refresh);
+  setTimeout(refresh, 280);
+}
+
+function bindWorkflowCenterControls() {
+  bindWorkflowOwnerGraph();
+  bindWorkflowSplitter();
+  const switcher = $("#workflow-pane-switch");
+  if (switcher && switcher.dataset.bound !== "1") {
+    switcher.dataset.bound = "1";
+    switcher.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-workflow-pane]");
+      if (button) setWorkflowPane(button.dataset.workflowPane);
+    });
+  }
+  const stage = $("#workflow-stage");
+  if (stage && stage.dataset.pageBound !== "1") {
+    stage.dataset.pageBound = "1";
+    stage.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-workflow-page]");
+      if (button) {
+        ed.workflowPage = Number(button.dataset.workflowPage);
+        setWorkflowPane("page");
+        renderWorkflowPagePane();
+        return;
+      }
+      if (stage._workflowSuppressNodeClick) return;
+      const drilldown = event.target.closest("[data-workflow-drilldown]");
+      if (drilldown) {
+        const card = drilldown.closest(".workflow-node");
+        ed.workflowSelectedNodeId = card?.dataset.nodeId || "";
+        openWorkflowOwnerGraph(drilldown.dataset.workflowDrilldown,
+          {segment: card?.dataset.workflowSegment || "", taskId: card?.dataset.workflowTaskId || ""});
+        return;
+      }
+      const node = event.target.closest(".workflow-node[data-agent-key]");
+      if (node) {
+        ed.workflowSelectedNodeId = node.dataset.nodeId;
+        if (node.dataset.agentKey) openWorkflowAgentTrace(node.dataset.agentKey, {segment: node.dataset.workflowSegment || ""});
+        else setWorkflowConversationMode("history", {clearAgent: true});
+        return;
+      }
+      if (!event.target.closest(".workflow-node") && (ed.workflowTraceAgent || ed.workflowSelectedNodeId)) {
+        ed.workflowSelectedNodeId = "";
+        setWorkflowConversationMode("history");
+      }
+    });
+    stage.addEventListener("keydown", (event) => {
+      if (event.target.closest("button, a, input, textarea, select")) return;
+      const node = event.target.closest(".workflow-node[data-agent-key]");
+      if (!node || !["Enter", " "].includes(event.key)) return;
+      event.preventDefault();
+      node.click();
+    });
+  }
+  bindWorkflowNodeDragging(stage);
+  const layoutReset = $("#workflow-layout-reset");
+  if (layoutReset && layoutReset.dataset.bound !== "1") {
+    layoutReset.dataset.bound = "1";
+    layoutReset.addEventListener("click", () => {
+      ed.workflowNodeOffsets = {};
+      delete stage?.dataset.workflowSignature;
+      renderWorkflowCanvas();
+      syncWorkflowLayoutReset();
+    });
+  }
+  [
+    [$("#workflow-files-toggle"), "files"],
+    [$("#workflow-conversation-toggle"), "conversation"],
+  ].forEach(([button, key]) => {
+    if (!button || button.dataset.bound === "1") return;
+    button.dataset.bound = "1";
+    button.addEventListener("click", () => {
+      const state = ed.workflowPanelCollapsed ||= { files: false, conversation: false };
+      state[key] = !state[key];
+      syncWorkflowPanelLayout({ remeasure: true });
+    });
+  });
+  const strip = $("#workflow-page-strip");
+  if (strip && strip.dataset.bound !== "1") {
+    strip.dataset.bound = "1";
+    strip.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-workflow-page]");
+      if (button && !button.disabled) setWorkflowPage(button.dataset.workflowPage);
+    });
+  }
+  const previous = $("#workflow-page-prev");
+  if (previous && previous.dataset.bound !== "1") {
+    previous.dataset.bound = "1";
+    previous.addEventListener("click", () => {
+      const ready = workflowReadyPages();
+      setWorkflowPage(ready[Math.max(0, ready.indexOf(Number(ed.workflowPage)) - 1)]);
+    });
+  }
+  const next = $("#workflow-page-next");
+  if (next && next.dataset.bound !== "1") {
+    next.dataset.bound = "1";
+    next.addEventListener("click", () => {
+      const ready = workflowReadyPages();
+      setWorkflowPage(ready[Math.min(ready.length - 1, ready.indexOf(Number(ed.workflowPage)) + 1)]);
+    });
+  }
+  const open = $("#workflow-page-open");
+  if (open && open.dataset.bound !== "1") {
+    open.dataset.bound = "1";
+    open.addEventListener("click", () => {
+      const page = Number(ed.workflowPage) || 1;
+      setWorkspaceView("ppt");
+      select(page, { byUser: true });
+    });
+  }
+  const bindArtifactSelection = (root) => {
+    if (!root || root.dataset.artifactBound === "1") return;
+    root.dataset.artifactBound = "1";
+    root.addEventListener("click", (event) => {
+      const link = event.target.closest("[data-workflow-artifact-rel]");
+      if (!link) return;
+      event.preventDefault();
+      selectWorkflowArtifact(link.dataset.workflowArtifactRel, {
+        name: link.dataset.workflowArtifactName,
+        kind: link.dataset.workflowArtifactKind,
+      });
+    });
+  };
+  bindArtifactSelection($("#workflow-file-tree"));
+  bindArtifactSelection($("#workflow-message-list"));
+  bindArtifactSelection($("#workflow-trace-messages"));
+}
+
+let workflowEdgeDrawFrame = 0;
+
+function scheduleWorkflowEdgeDraw(stage) {
+  if (!stage || workflowEdgeDrawFrame) return;
+  workflowEdgeDrawFrame = requestAnimationFrame(() => {
+    workflowEdgeDrawFrame = 0;
+    if (stage.isConnected) workflowDrawEdges(stage, stage._workflowEdges || []);
+  });
+}
+
+function syncWorkflowLayoutReset() {
+  const reset = $("#workflow-layout-reset");
+  if (!reset) return;
+  const changed = Object.keys(ed.workflowNodeOffsets || {}).length > 0;
+  reset.hidden = ed.workflowPane !== "graph" || !!(ed.workflowOwnerAgent || ed.workflowOwnerTask);
+  reset.disabled = !changed;
+  reset.classList.toggle("active", changed);
+}
+
+function bindWorkflowNodeDragging(stage) {
+  if (!stage || stage.dataset.dragBound === "1") return;
+  stage.dataset.dragBound = "1";
+  let drag = null;
+  stage.addEventListener("pointerdown", (event) => {
+    const node = event.target.closest(".workflow-node");
+    if (!node || event.button !== 0 || event.target.closest("button, a, input, textarea, select")) return;
+    event.preventDefault();
+    drag = {
+      node,
+      pointerId: event.pointerId,
+      pointerX: event.clientX,
+      pointerY: event.clientY,
+      left: node.offsetLeft,
+      top: node.offsetTop,
+      baseX: Number(node.dataset.baseX) || 0,
+      baseY: Number(node.dataset.baseY) || 0,
+      moved: false,
+    };
+    node.classList.add("dragging");
+    node.setPointerCapture?.(event.pointerId);
+  });
+  stage.addEventListener("pointermove", (event) => {
+    if (!drag || event.pointerId !== drag.pointerId) return;
+    if (Math.hypot(event.clientX - drag.pointerX, event.clientY - drag.pointerY) > 4) drag.moved = true;
+    const left = Math.max(12, Math.min(stage.clientWidth - drag.node.offsetWidth - 12, drag.left + event.clientX - drag.pointerX));
+    const top = Math.max(48, Math.min(stage.clientHeight - drag.node.offsetHeight - 18, drag.top + event.clientY - drag.pointerY));
+    drag.node.style.left = `${Math.round(left)}px`;
+    drag.node.style.top = `${Math.round(top)}px`;
+    ed.workflowNodeOffsets ||= {};
+    ed.workflowNodeOffsets[drag.node.dataset.nodeId] = {
+      x: Math.round(left - drag.baseX),
+      y: Math.round(top - drag.baseY),
+    };
+    syncWorkflowLayoutReset();
+    scheduleWorkflowEdgeDraw(stage);
+  });
+  const finish = (event) => {
+    if (!drag || event.pointerId !== drag.pointerId) return;
+    const moved = drag.moved;
+    drag.node.classList.remove("dragging");
+    drag.node.releasePointerCapture?.(event.pointerId);
+    drag = null;
+    if (moved) {
+      stage._workflowSuppressNodeClick = true;
+      requestAnimationFrame(() => { stage._workflowSuppressNodeClick = false; });
+    }
+    scheduleWorkflowEdgeDraw(stage);
+  };
+  stage.addEventListener("pointerup", finish);
+  stage.addEventListener("pointercancel", finish);
+}
+
+function workflowDrawEdges(stage, edges) {
+  const width = stage.offsetWidth;
+  const height = stage.offsetHeight;
+  let svg = stage.querySelector(".workflow-edge-layer");
+  if (!svg) {
+    svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("class", "workflow-edge-layer");
+    svg.innerHTML = `<defs>
+    <marker id="workflow-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0 8 4 0 8Z" fill="#8064df" opacity=".72"/></marker>
+    <marker id="workflow-arrow-repair" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0 8 4 0 8Z" fill="#ed745d" opacity=".86"/></marker>
+  </defs>`;
+    stage.prepend(svg);
+  }
+  svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+  const previous = new Map([...svg.querySelectorAll(".workflow-edge")].map(path => [path.dataset.edgeKey, path]));
+  const nodes = new Map([...stage.querySelectorAll(".workflow-node")].map((node) => [node.dataset.nodeId, node]));
+  const portClasses = ["uses-port-left", "uses-port-right", "uses-port-top", "uses-port-bottom"];
+  nodes.forEach((node) => node.classList.remove(...portClasses));
+  const point = (node, port) => {
+    const left = node.offsetLeft;
+    const top = node.offsetTop;
+    const width = node.offsetWidth;
+    const height = node.offsetHeight;
+    if (port === "left") return { x: left, y: top + height / 2 };
+    if (port === "right") return { x: left + width, y: top + height / 2 };
+    if (port === "top") return { x: left + width / 2, y: top };
+    return { x: left + width / 2, y: top + height };
+  };
+  const portsFor = (from, to, edge) => {
+    if (edge.fromPort && edge.toPort) return [edge.fromPort, edge.toPort];
+    const ax = from.offsetLeft + from.offsetWidth / 2;
+    const ay = from.offsetTop + from.offsetHeight / 2;
+    const bx = to.offsetLeft + to.offsetWidth / 2;
+    const by = to.offsetTop + to.offsetHeight / 2;
+    if (edge.axis === "vertical" || Math.abs(by - ay) >= Math.abs(bx - ax) * .62) {
+      return by >= ay ? ["bottom", "top"] : ["top", "bottom"];
+    }
+    return bx >= ax ? ["right", "left"] : ["left", "right"];
+  };
+  edges.forEach((edge, index) => {
+    const from = nodes.get(edge.from), to = nodes.get(edge.to);
+    if (!from || !to) return;
+    const [fromPort, toPort] = portsFor(from, to, edge);
+    from.classList.add(`uses-port-${fromPort}`);
+    to.classList.add(`uses-port-${toPort}`);
+    const source = point(from, fromPort);
+    const target = point(to, toPort);
+    const sx = source.x, sy = source.y, tx = target.x, ty = target.y;
+    let path;
+    if (edge.kind === "repair") {
+      const lane = fromPort === "right"
+        ? Math.min(width - 14, Math.max(sx, tx) + 54 + index * 6)
+        : Math.max(14, Math.min(sx, tx) - 54 - index * 6);
+      path = `M${sx},${sy} C${lane},${sy} ${lane},${ty} ${tx},${ty}`;
+    } else if (fromPort === "top" || fromPort === "bottom") {
+      const direction = fromPort === "bottom" ? 1 : -1;
+      const bend = Math.max(36, Math.abs(ty - sy) * .46);
+      path = `M${sx},${sy} C${sx},${sy + bend * direction} ${tx},${ty - bend * direction} ${tx},${ty}`;
+    } else {
+      const direction = fromPort === "right" ? 1 : -1;
+      const bend = Math.max(42, Math.abs(tx - sx) * .46);
+      path = `M${sx},${sy} C${sx + bend * direction},${sy} ${tx - bend * direction},${ty} ${tx},${ty}`;
+    }
+    const key = JSON.stringify([edge.from, edge.to, edge.kind || "", fromPort, toPort]);
+    let base = previous.get(key), flow = base?.nextElementSibling;
+    previous.delete(key);
+    if (!base) {
+      base = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      base.setAttribute("class", "workflow-edge");
+      base.dataset.edgeKey = key;
+      base.dataset.from = edge.from;
+      base.dataset.to = edge.to;
+      const relation = document.createElementNS("http://www.w3.org/2000/svg", "title");
+      relation.textContent = "流程示意：职责顺序，不表示实时依赖或消息传输";
+      base.appendChild(relation);
+      flow = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      flow.style.animationDelay = `${(index % 7) * -170}ms`;
+      svg.append(base, flow);
+    }
+    base.setAttribute("d", path);
+    const active = to.classList.contains("running");
+    const targetComplete = to.classList.contains("complete");
+    flow.setAttribute("class", `workflow-edge-flow${edge.kind === "repair" ? " repair" : targetComplete ? " complete" : ""}${active ? " active" : ""}`);
+    flow.setAttribute("d", path);
+    flow.setAttribute("marker-end", edge.kind === "repair" ? "url(#workflow-arrow-repair)" : "url(#workflow-arrow)");
+  });
+  previous.forEach(base => { base.nextElementSibling.remove(); base.remove(); });
+}
+
+function workflowExecutionStatus(status, events = []) {
+  const value = ({succeeded: "complete", completed: "complete", pending: "not_started",
+    waiting_dependency: "waiting_dependencies", blocked: "waiting"})[status] || status || "unknown";
+  if (value !== "running") return value;
+  const last = [...events].reverse().find(event => ["resource_wait_started", "resource_wait_completed",
+    "resource_wait_failed", "provider_started", "agent_started"].includes(event.event_type));
+  return last?.event_type === "resource_wait_started" ? "resource_wait"
+    : last?.event_type === "resource_wait_failed" ? "failed" : value;
+}
+
+function workflowCurrentActivity(events) {
+  const latest = [...events].reverse().find(event => runtimeEventState(event)
+    || ["tool", "tool_result", "text", "analysis"].includes(event.k));
+  if (!latest) return null;
+  const runtime = runtimeEventState(latest);
+  if (runtime) return {title: runtime[0], detail: runtime[1]};
+  if (latest.k === "tool" || latest.k === "tool_result") return {
+    title: `${latest.k === "tool" ? "执行工具" : latest.ok === false ? "工具失败" : "工具已返回"} · ${latest.tool || "未记录名称"}`,
+    detail: String(latest.hint || latest.error_code || ""),
+  };
+  return {title: latest.k === "analysis" ? "可展示分析摘要" : "Owner 消息", detail: String(latest.s || "")};
+}
+
+function workflowTaskGraph(tasks, timings = {}, feed = {}, deckStatus = "") {
+  const byId = new Map(tasks.filter(task => task.task_id).map(task => [task.task_id, task]));
+  const roleNames = {research: "资料研究", image: "图片素材", slide: "页面制作"};
+  const pageLabel = task => {
+    const pages = [...new Set(task.pages || [])].sort((a, b) => a - b);
+    return pages.length ? `P${pages.join(" / P")}` : "";
+  };
+  const title = task => `${pageLabel(task)} ${roleNames[task.role] || task.role || "任务"}`.trim();
+  const rawNodes = [...byId.values()].map((task, taskIndex) => {
+    const key = task.agent_key
+      || Object.entries(timings).find(([, timing]) => timing.task_id === task.task_id)?.[0]
+      || Object.entries(feed).find(([, events]) => events.some(event => event.task_id === task.task_id
+        && event.role === task.role && ["agent_started", "agent_completed", "agent_failed"].includes(event.event_type)))?.[0]
+      || "";
+    const timing = timings[key] || {};
+    const current = timing.task_id === task.task_id;
+    const started = [...(feed[key] || [])].reverse().find(event =>
+      event.event_type === "agent_started" && event.task_id === task.task_id);
+    const segment = started?.segment_id || task.result?.segment_ids?.at(-1) || "";
+    const dependencies = task.dependencies || [];
+    const failed = dependencies.filter(id => ["failed", "cancelled", "skipped"].includes(byId.get(id)?.status));
+    let status = workflowExecutionStatus(task.status);
+    if (current && timing.execution_state) status = timing.execution_state;
+    if (["failed", "skipped"].includes(task.status) && failed.length && !segment) status = "dependency_failed";
+    const pending = dependencies.filter(id => !["succeeded", "completed"].includes(byId.get(id)?.status));
+    if (["not_started", "queued"].includes(status) && pending.length) status = "waiting_dependencies";
+    const events = (feed[key] || []).filter(event => event.task_id
+      ? event.task_id === task.task_id : segment && event.segment_id === segment);
+    status = workflowExecutionStatus(status, events);
+    const ended = ["completed", "failed", "rejected", "interrupted", "paused_recoverable", "cancelled"].includes(deckStatus);
+    const unclosed = ended && ["running", "resource_wait", "queued", "waiting_dependencies", "not_started"].includes(status);
+    if (unclosed) status = "unknown";
+    const detail = unclosed ? "本次运行已结束，任务记录尚未闭合；请查看 Trace。"
+      : failed.length && status === "dependency_failed" ? `上游 ${failed.map(id => `${title(byId.get(id))} (${id})`).join("、")} 失败或取消；本任务未启动。`
+      : status === "resource_wait" ? "正在等待本地模型资源，尚未发送本轮请求。"
+      : status === "waiting_dependencies" ? `等待：${pending.map(id => byId.has(id) ? title(byId.get(id)) : id).join("、")}`
+      : current && timing.status_detail ? timing.status_detail
+      : String(task.error || (dependencies.length ? "前置依赖已满足。" : "无前置依赖，可独立调度。"));
+    const siblings = task.owner_id ? [...byId.values()].filter(row => row.owner_id === task.owner_id) : [task];
+    const turn = Math.max(0, ...events.map(event => Number(event.turn) || 0));
+    const receipts = new Set(events.filter(event => event.k === "tool_result" && event.tool_use_id).map(event => event.tool_use_id)).size;
+    return {id: `task:${task.task_id}`, taskId: task.task_id, taskIds: [task.task_id],
+      taskIndex, ownerId: task.owner_id || "", ownerAction: task.owner_action || "", role: task.role,
+      agentKey: key, segment, status,
+      activity: workflowCurrentActivity(events),
+      progress: [turn ? `第 ${turn} 回合` : "", receipts ? `${receipts} 次工具回执` : ""].filter(Boolean).join(" · "),
+      title: title(task), summary: String(task.goal || ""), identity: [task.task_id, task.owner_id].filter(Boolean).join(" · "),
+      code: siblings.length > 1 ? `同一 Owner · 批次 ${siblings.indexOf(task) + 1}/${siblings.length}` : `尝试 ${task.attempt || 1}`,
+      kicker: `${task.role || "Task"}${task.repair ? " · 修订" : ""}`,
+      detail, pages: task.pages || []};
+  });
+  const grouped = new Map();
+  rawNodes.forEach(node => {
+    const key = node.role === "slide" && node.ownerId ? `slide-owner:${node.ownerId}` : node.id;
+    const rows = grouped.get(key) || [];
+    rows.push(node);
+    grouped.set(key, rows);
+  });
+  const urgency = ["running", "resource_wait", "dependency_failed", "failed", "start_failed",
+    "waiting_dependencies", "queued", "interrupted", "cancelled", "skipped", "observed",
+    "not_started", "waiting"];
+  const taskToNodeId = new Map();
+  const nodes = [...grouped.entries()].map(([groupKey, rows]) => {
+    rows.sort((a, b) => a.taskIndex - b.taskIndex);
+    if (rows.length === 1) {
+      taskToNodeId.set(rows[0].taskId, rows[0].id);
+      return rows[0];
+    }
+    const status = urgency.find(key => rows.some(row => row.status === key))
+      || (rows.every(row => row.status === "complete") ? "complete" : rows.at(-1).status || "unknown");
+    const current = rows.find(row => timings[row.agentKey]?.task_id === row.taskId);
+    const active = rows.find(row => row.status === status);
+    const latest = current || active || rows.at(-1);
+    const pages = [...new Set(rows.flatMap(row => row.pages || []))].sort((a, b) => a - b);
+    const taskIds = rows.flatMap(row => row.taskIds || [row.taskId]).filter(Boolean);
+    const repairs = rows.filter(row => String(row.ownerAction || "").toLowerCase() === "reuse_owner"
+      || /repair/i.test(String(row.taskId || ""))).length || Math.max(0, rows.length - 1);
+    const node = {
+      ...latest,
+      id: groupKey,
+      taskIds,
+      pages,
+      repairs,
+      status,
+      title: `${pages.length ? `P${pages.join(" / P")}` : ""} ${roleNames.slide}`.trim(),
+      code: `同一 Owner · ${rows.length} 批次`,
+      kicker: repairs ? "slide · 修订回流" : "slide",
+      identity: [latest.taskId, latest.ownerId].filter(Boolean).join(" · "),
+      detail: [`已合并显示 ${rows.length} 个同一 Owner 执行段，当前批次：${latest.taskId}。`, latest.detail]
+        .filter(Boolean).join(" "),
+      summary: rows.map(row => row.summary).find(Boolean) || latest.summary,
+    };
+    taskIds.forEach(id => taskToNodeId.set(id, node.id));
+    return node;
+  });
+  const edges = [...byId.values()].flatMap(task => (task.dependencies || [])
+    .filter(id => byId.has(id)).map(id => ({from: taskToNodeId.get(id) || `task:${id}`,
+      to: taskToNodeId.get(task.task_id) || `task:${task.task_id}`})))
+    .filter(edge => edge.from !== edge.to);
+  const seenEdges = new Set();
+  return {nodes, edges: edges.filter(edge => {
+    const key = `${edge.from}\u0000${edge.to}`;
+    if (seenEdges.has(key)) return false;
+    seenEdges.add(key);
+    return true;
+  })};
+}
+
+function workflowOverview(graph, state = ed) {
+  const events = state.feed?.orch || [];
+  const timing = state.agentTimings?.orch || {};
+  const selfAuthored = Object.entries(state.pageAgents || {}).filter(([, owner]) => owner === "orch")
+    .map(([page]) => Number(page)).filter(page => page > 0).sort((a, b) => a - b);
+  const lifecycle = [...events].reverse().find(event => ["agent_started", "agent_completed", "agent_failed"].includes(event.event_type));
+  let status = workflowExecutionStatus(lifecycle?.status || ({agent_started: "running", agent_completed: "complete", agent_failed: "failed"})[lifecycle?.event_type]
+    || timing.execution_state || timing.status, events);
+  const ended = ["completed", "failed", "rejected", "interrupted", "paused_recoverable", "cancelled"].includes(state.status);
+  if (ended && ["running", "resource_wait"].includes(status)) status = "interrupted";
+  const coordinator = {id: "orch", agentKey: "orch", role: "orchestrator", status,
+    title: selfAuthored.length ? "主 Agent 制作 · 整册统筹" : "Orchestrator · 整册统筹",
+    kicker: "主 Agent", code: "ORCH", pages: selfAuthored,
+    activity: workflowCurrentActivity(events),
+    progress: [selfAuthored.length ? `自制 ${selfAuthored.length} 页` : "",
+      graph.nodes.length ? `委派任务完成 ${graph.nodes.filter(node => node.status === "complete").length} / ${graph.nodes.length}`
+        : selfAuthored.length ? "无子任务" : "尚无委派任务"].filter(Boolean).join(" · "),
+    detail: status === "unknown" ? "尚无启动记录，不代表模型正在执行。"
+      : status === "interrupted" ? "本次运行已结束，尚无 Orchestrator 完成记录。"
+      : timing.status_detail || "理解任务、组织委派与整册验收"};
+  const summarize = (id, label, nodes) => {
+    const counts = new Map();
+    nodes.forEach(node => counts.set(node.status, (counts.get(node.status) || 0) + 1));
+    return {id, label, status: ["running", "resource_wait", "dependency_failed", "failed", "start_failed", "waiting_dependencies", "queued", "interrupted", "cancelled", "skipped", "observed", "not_started", "waiting"]
+      .find(key => counts.has(key)) || (nodes.length && nodes.every(node => node.status === "complete") ? "complete" : "unknown"),
+    detail: nodes.length ? [...counts].map(([key, count]) => `${count} 项${workflowStatusLabel(key)}`).join(" · ") : "尚无委派记录"};
+  };
+  const phases = [summarize("research", "研究与规划", graph.nodes.filter(node => node.role === "research")),
+    summarize("image", "素材准备", graph.nodes.filter(node => node.role === "image")),
+    summarize("slide", "页面制作", graph.nodes.filter(node => node.role === "slide"))];
+  if (selfAuthored.length) {
+    const pagePhase = phases[2];
+    const delivered = state.status === "completed" && state.artifactStatus === "complete";
+    if (["unknown", "complete"].includes(pagePhase.status)) pagePhase.status = delivered ? "complete" : "observed";
+    pagePhase.detail = [graph.nodes.some(node => node.role === "slide") ? pagePhase.detail : "",
+      `主 Agent 制作：P${selfAuthored.join("、P")}；${delivered ? "交付校验已通过" : "已记录页面责任，不代表检查完成"}`].filter(Boolean).join("；");
+  }
+  const files = (state.workflow?.artifacts?.groups || []).flatMap(group => group.files || []);
+  if (files.some(file => file.rel === "deck.md")) {
+    phases[0].detail += "；已有分页规划文件";
+    if (phases[0].status === "unknown") phases[0].status = "observed";
+  }
+  if ((state.attachments || []).length || (state.attachmentParse || []).length) {
+    phases.unshift(summarize("attachments", "附件解析", (state.attachmentParse || []).map(row => ({
+      status: ({processing: "running", completed: "complete", partial: "observed"})[row.status] || row.status}))));
+    phases[0].detail += "；不代表 Research 已阅读";
+  }
+  const transactions = liveToolTransactions(events);
+  const verify = transactions.find(row => row.tool === "verification_submit");
+  const latestReview = [...events].reverse().find(event => event.event_type === "deck_completion_checked"
+    || event.tool === "verification_submit");
+  const completion = latestReview?.event_type === "deck_completion_checked" ? latestReview : null;
+  const visual = liveToolTransactions(events.filter(event => ["inspect", "vision_analyze"].includes(event.tool)))
+    .find(row => row.tool === "inspect" ? row.use?.args?.page !== undefined : ["deck", "page"].includes(row.use?.args?.scope));
+  const reviewing = !completion && verify?.use && !verify.result;
+  const ready = completion ? completion.status === "ready"
+    : verify?.result?.ok === true && verify.use?.args?.status === "ready";
+  const openTasks = graph.nodes.some(node => node.status !== "complete");
+  const completionPending = completion && !(state.status === "completed" && state.artifactStatus === "complete");
+  phases.push({id: "review", label: "整册检查", status: reviewing ? ended ? "interrupted" : "running"
+    : ready ? openTasks || completionPending ? "observed" : "complete" : completion || verify ? "waiting"
+      : visual ? visual.result ? "observed" : ended ? "interrupted" : "running" : "unknown",
+    detail: reviewing ? ended ? "运行已结束，验收工具未返回" : "正在执行整册验收工具"
+      : ready ? openTasks ? "已有通过记录；仍有未闭合任务"
+        : completion ? `Harness 自动制作完成校验已通过；${completionPending ? "当前制作尚未收尾" : "不代表离线内容 QC 或 clean 准入"}`
+        : "最近整册验收工具已通过"
+      : completion ? "Harness 自动完成校验未通过；具体缺口见后台回执"
+      : verify ? "最近验收未通过或仍需修订"
+      : visual ? `Orchestrator ${visual.tool === "inspect" && Array.isArray(visual.use.args.page) && visual.use.args.page.length > 1 ? "多页联系表" : visual.use.args.scope === "deck" ? "整册" : "页面"}视觉复核：${visual.result ? visual.result.ok ? "图片已返回，判断见自身消息" : "看图工具失败" : "等待看图回执"}；尚无整册验收回执`
+      : "尚无整册验收回执"});
+  const delivered = state.status === "completed" && state.artifactStatus === "complete";
+  phases.push({id: "delivery", label: "交付产物", status: delivered ? "complete" : "unknown",
+    detail: delivered ? "交付校验已通过；导出格式按需生成" : "尚无有效交付完成回执"});
+  const submitted = new Set((state.muralRuntime?.deck_timeline || [])
+    .filter(row => row.type === "task_submitted").map(row => row.task_id));
+  transactions.filter(row => row.tool === "delegate_submit" && row.result?.ok === true)
+    .forEach(row => (row.use?.args?.tasks || []).forEach(task => submitted.add(task.task_id)));
+  return {coordinator, phases, delegated: graph.nodes
+    .filter(node => [...new Set([node.taskId, ...(node.taskIds || [])])].some(id => submitted.has(id)))
+    .map(node => node.id),
+    query: state.fullQuery || state.briefMeta?.user_query || "尚未收到用户任务",
+    active: phases.filter(phase => phase.status === "running").map(phase => phase.label),
+    blocked: graph.nodes.filter(node => ["dependency_failed", "waiting_dependencies", "resource_wait", "failed", "start_failed"].includes(node.status))};
+}
+
+function renderWorkflowOverview(view) {
+  const host = $("#workflow-overview");
+  if (!host) return;
+  const signature = JSON.stringify([view.query, view.active, view.phases, view.blocked.map(node => [node.title, node.status])]);
+  if (host.dataset.signature === signature) return;
+  host.dataset.signature = signature;
+  const expanded = host.querySelector("details[open]") != null;
+  host.innerHTML = `<details class="workflow-query"${expanded ? " open" : ""}><summary><span>用户任务</span><b>${escapeHtml(view.query)}</b></summary><p>${escapeHtml(view.query)}</p></details>
+    <div class="workflow-overview-heading"><strong>${view.active.length ? `正在推进：${escapeHtml(view.active.join("、"))}` : "整册进展"}</strong><span>Orchestrator 统筹 · 各项可并行</span></div>
+    <div class="workflow-phases">${view.phases.map(phase => `<div class="workflow-phase ${phase.status}" data-workflow-phase="${phase.id}"><b><i></i>${phase.label}</b><span>${escapeHtml(phase.detail)}</span></div>`).join("")}</div>
+    ${view.blocked.length ? `<p class="workflow-blockers">需关注：${view.blocked.slice(0, 3).map(node => `${escapeHtml(node.title)} · ${workflowStatusLabel(node.status)}`).join("；")}${view.blocked.length > 3 ? `；另 ${view.blocked.length - 3} 项` : ""}</p>` : ""}
+    <div class="workflow-relations"><span><i class="dependency"></i>分层流程示意，不表示实际等待依赖</span><span><i class="active"></i>高亮表示目标正在执行</span><span>点击卡片选中 · 右上角「查看迭代」下钻</span></div>`;
+}
+
+function workflowFlowLayout(tasks, view, viewportWidth, state = ed) {
+  const files = (state.workflow?.artifacts?.groups || []).flatMap(group => group.files || []);
+  const planned = files.some(file => file.rel === "deck.md");
+  const briefs = files.filter(file => /^briefs\/slide_\d+\.md$/.test(file.rel)).length;
+  const rendered = state.rendered?.size || 0;
+  const phase = id => view.phases.find(item => item.id === id);
+  const groups = [
+    {label: "用户任务", nodes: [{id: "query", role: "query", status: state.fullQuery ? "observed" : "unknown",
+      title: "用户任务", kicker: "Input", code: "BRIEF", detail: view.query}]},
+    {label: "整册统筹", nodes: [view.coordinator]},
+    {label: "研究与知识", nodes: tasks.filter(node => !["image", "slide"].includes(node.role))},
+    {label: "共享规划", nodes: [{id: "blueprint", role: "blueprint", status: planned ? "observed" : "unknown",
+      title: "整册与分页规划", kicker: "Shared plan", code: "PLAN",
+      detail: planned ? `deck.md 已落盘 · ${briefs} 份分页计划；不代表内容验收。` : "尚未记录整册规划文件。"}]},
+    {label: "图片与素材", nodes: tasks.filter(node => node.role === "image")},
+    {label: "页面制作 · Slide Owners", nodes: tasks.filter(node => node.role === "slide")
+      .sort((a, b) => Math.min(...a.pages, Infinity) - Math.min(...b.pages, Infinity))},
+    {label: "整册汇总", nodes: [{id: "assemble", role: "assemble", status: rendered ? "observed" : "unknown",
+      title: "汇总与渲染", kicker: "Closure", code: "MERGE",
+      detail: `${rendered} / ${state.total || "–"} 页 PNG 已落盘；不代替最终验收。`}]},
+    {label: "整册检查", nodes: [{id: "review", role: "review", status: phase("review").status,
+      title: "检查与修订", kicker: "Whole deck", code: "VERIFY", detail: phase("review").detail}]},
+    {label: "最终交付", nodes: [{id: "delivery", role: "delivery", status: phase("delivery").status,
+      title: "交付", kicker: "Output", code: "FINAL", detail: phase("delivery").detail}]},
+  ].filter(group => group.nodes.length);
+  const cardWidth = node => node.taskId ? 232
+    : ({query: 180, orch: 280, blueprint: 194, assemble: 188, review: 192, delivery: 174})[node.id];
+  const bandWidth = nodes => nodes.reduce((sum, node) => sum + cardWidth(node), 0) + (nodes.length - 1) * 26;
+  const width = Math.max(320, viewportWidth, ...groups.map(group => bandWidth(group.nodes) + 64));
+  const rows = groups.map(group => {
+    let x = (width - bandWidth(group.nodes)) / 2;
+    return {...group, nodes: group.nodes.map(node => {
+      const positioned = {...node, x, y: 0};
+      x += cardWidth(node) + 26;
+      return positioned;
+    })};
+  });
+  const edges = rows.slice(1).flatMap((row, index) => rows[index].nodes.flatMap(from =>
+    row.nodes.map(to => ({from: from.id, to: to.id, axis: "vertical"}))));
+  return {width, rows, edges};
+}
+
+function reconcileWorkflowNodes(stage, nodes) {
+  const previous = new Map([...stage.querySelectorAll(".workflow-node")].map(card => [card.dataset.nodeId, card]));
+  const cards = new Map();
+  const template = document.createElement("template");
+  for (const node of nodes) {
+    const markup = workflowNodeMarkup(node);
+    let card = previous.get(node.id);
+    previous.delete(node.id);
+    if (card?._workflowMarkup !== markup) {
+      template.innerHTML = markup;
+      const next = template.content.firstElementChild;
+      if (!card) {
+        card = next;
+        stage.appendChild(card);
+      } else {
+        // 保留卡片、未变化的子区块及图片节点，轮询不重启其动画或加载。
+        const ports = [...card.classList].filter(name => name.startsWith("uses-port-") || name === "dragging");
+        next.classList.add(...ports);
+        for (const attr of [...card.attributes]) {
+          if (attr.name !== "style" && !next.hasAttribute(attr.name)) card.removeAttribute(attr.name);
+        }
+        for (const attr of next.attributes) {
+          if (attr.name !== "style" && card.getAttribute(attr.name) !== attr.value) card.setAttribute(attr.name, attr.value);
+        }
+        const key = child => `${child.tagName}:${child.className}`;
+        const children = new Map([...card.children].map(child => [key(child), child]));
+        [...next.children].forEach((child, index) => {
+          const old = children.get(key(child));
+          children.delete(key(child));
+          if (old?.outerHTML === child.outerHTML) child = old;
+          else if (old) old.replaceWith(child);
+          if (card.children[index] !== child) card.insertBefore(child, card.children[index] || null);
+        });
+        children.forEach(child => child.remove());
+        card.style.left = next.style.left;
+      }
+      card._workflowMarkup = markup;
+    }
+    card.style.height = "";
+    cards.set(node.id, card);
+  }
+  previous.forEach(card => card.remove());
+  return cards;
+}
+
+function renderWorkflowCanvas() {
+  const stage = $("#workflow-stage");
+  const liveState = $("#workflow-live-state");
+  if (!stage || ed.kind !== "static") return;
+  renderWorkflowSidePanels();
+  if (ed.workflowPane !== "graph") return;
+  renderWorkflowOwnerGraph();
+  if (ed.workflowOwnerAgent || ed.workflowOwnerTask) {
+    if (ed.workflowOwnerAgent && ed.workflowConversationMode !== "trace") loadWorkflowAgentTrace();
+    return;
+  }
+  const scroll = $("#workflow-scroll");
+  const viewportWidth = Math.round(scroll?.clientWidth || 0);
+  const viewportHeight = Math.round(scroll?.clientHeight || 0);
+  const tasks = Array.isArray(ed.muralRuntime?.tasks) ? ed.muralRuntime.tasks : [];
+  const graph = workflowTaskGraph(tasks, ed.agentTimings || {}, ed.feed || {}, ed.status);
+  const overview = workflowOverview(graph);
+  renderWorkflowOverview(overview);
+  const layout = workflowFlowLayout(graph.nodes, overview, viewportWidth);
+  const signature = JSON.stringify([layout, ed.status, [...ed.rendered], viewportWidth, viewportHeight,
+    ed.workflowNodeOffsets, ed.workflowSelectedNodeId, ed.workflowTraceAgent, ed.workflowTraceSegment]);
+  if (stage.dataset.workflowSignature === signature) return;
+  stage.dataset.workflowSignature = signature;
+  const {width, rows} = layout;
+  const resetScroll = stage.dataset.layout !== "flow" || stage.dataset.centeredDeck !== String(ed.id);
+  stage.dataset.layout = "flow";
+  stage.style.width = `${width}px`;
+  stage.querySelector(":scope > .workflow-empty")?.remove();
+  stage.querySelector(":scope > .workflow-panel-empty")?.remove();
+  const cards = reconcileWorkflowNodes(stage, rows.flatMap(row => row.nodes));
+  const labels = new Map([...stage.querySelectorAll(".workflow-stage-label-row")].map(label => [label.textContent, label]));
+  let y = 16;
+  rows.forEach(row => {
+    if (row.label) {
+      let label = labels.get(row.label);
+      labels.delete(row.label);
+      if (!label) {
+        label = document.createElement("span");
+        label.className = "workflow-stage-label workflow-stage-label-row";
+        label.textContent = row.label;
+        stage.appendChild(label);
+      }
+      label.style.left = `${Math.max(20, (width - viewportWidth) / 2 + 20)}px`;
+      label.style.top = `${y}px`;
+      y += 30;
+    }
+    let height = 0;
+    row.nodes.forEach(node => {
+      const card = cards.get(node.id);
+      card.dataset.baseY = y;
+      card.style.top = `${y + (Number(ed.workflowNodeOffsets?.[node.id]?.y) || 0)}px`;
+      height = Math.max(height, card.offsetHeight);
+    });
+    row.nodes.forEach(node => { cards.get(node.id).style.height = `${height}px`; });
+    y += height + 40;
+  });
+  labels.forEach(label => label.remove());
+  if (!graph.nodes.length) {
+    stage.insertAdjacentHTML("beforeend", `<div class="workflow-panel-empty" style="position:absolute;left:20px;right:20px;top:${y}px">${Array.isArray(ed.muralRuntime?.tasks)
+      ? "尚无委派任务记录；Orchestrator 的状态和 Trace 仍可查看。"
+      : "接口尚未提供任务列表，请确认 WebUI 后端已更新；这不代表 Agent 没有执行。"}</div>`);
+    y += 96;
+  }
+  stage.style.height = `${y}px`;
+  stage._workflowEdges = layout.edges;
+  if (scroll && resetScroll) {
+    stage.dataset.centeredDeck = String(ed.id);
+    requestAnimationFrame(() => {
+      scroll.scrollLeft = Math.max(0, Math.round((width - scroll.clientWidth) / 2));
+      scroll.scrollTop = 0;
+    });
+  }
+  scheduleWorkflowEdgeDraw(stage);
+  syncWorkflowLayoutReset();
+  if (liveState) {
+    const active = graph.nodes.some(node => node.status === "running") || overview.coordinator.status === "running";
+    liveState.classList.toggle("running", active);
+    const text = `<i></i>${active ? "任务正在执行" : "任务状态来自运行记录"}`;
+    if (liveState.innerHTML !== text) liveState.innerHTML = text;
+  }
+}
+
+// 顶部控制「Workflow ⇄ 实时 PPT」工作区；底部控制实时 PPT 内当前页的
 // 「页面预览 ⇄ 子 Agent 消息」。两层状态必须独立，避免切换本页消息时跳回 00。
 function syncViewToggle() {
   const vt = $("#view-toggle");
   const previewReady = ed.kind === "dynamic" ? !!ed.dynamicDeckUrl : !!ed.staticDeckReady;
-  const isOutline = ed.sel === 0;
+  const isOutline = ed.sel === 0 || ed.sel == null;
   const hasPreview = !isOutline && (
     ed.kind === "dynamic" ? ed.rendered.has(ed.sel) : ed.authored.has(Number(ed.sel))
   );
-  const processMode = ed.workspaceView !== "ppt";
+  const loading = !!$("#canvas-empty > .deck-load-state");
+  const processMode = loading || (ed.kind === "dynamic" && ed.workspaceView === "process");
+  const workflowMode = !loading && ed.workspaceView === "workflow";
   const pageConsole = (pageViewTransitionTarget || ed.viewMode) === "console";
-  const onConsole = processMode || !hasPreview || pageConsole;
+  const onConsole = processMode || workflowMode || !hasPreview || pageConsole;
   const editor = $("#editor");
   // 00 is a conversation/progress surface, not a 16:9 slide. Its card is
   // content-sized (with a viewport cap) so large monitors do not turn a short
@@ -3966,7 +7081,8 @@ function syncViewToggle() {
   editor?.classList.toggle("preview-layout", !onConsole);
   editor?.classList.toggle("progress-layout", onConsole);
   editor?.classList.toggle("workspace-process", processMode);
-  editor?.classList.toggle("workspace-ppt", !processMode);
+  editor?.classList.toggle("workspace-workflow", workflowMode);
+  editor?.classList.toggle("workspace-ppt", !processMode && !workflowMode);
   const effectiveConsole = !hasPreview || pageConsole;
   if (vt) vt.dataset.active = effectiveConsole ? "console" : "ppt";
   vt?.querySelectorAll("button").forEach((b) => {
@@ -3975,27 +7091,45 @@ function syncViewToggle() {
     b.disabled = !isConsole && !hasPreview;
   });
   const workspaceSwitch = $("#workspace-view-switch");
-  if (workspaceSwitch) workspaceSwitch.dataset.active = processMode ? "process" : "ppt";
+  const workspaceView = workflowMode || processMode ? "workflow" : "ppt";
+  if (workspaceSwitch) workspaceSwitch.dataset.active = workspaceView;
   workspaceSwitch?.querySelectorAll("button").forEach((button) => {
-    const active = button.dataset.workspaceView === (processMode ? "process" : "ppt");
+    const active = button.dataset.workspaceView === workspaceView;
     const disabled = button.dataset.workspaceView === "ppt" && !previewReady;
     button.classList.toggle("on", active);
     button.setAttribute("aria-pressed", String(active));
     button.disabled = disabled;
     button.title = disabled ? "HTML 产出后即可查看实时 PPT" : "";
   });
+  const workspaceLabel = $("#workspace-primary-label");
+  if (workspaceLabel) workspaceLabel.textContent = ed.kind === "dynamic" ? "过程" : "Workflow";
+  const pageEdit = $("#page-edit-open");
+  if (pageEdit) {
+    pageEdit.disabled = trajectoryMode || ed.kind !== "static" || ed.status !== "completed"
+      || onConsole || !previewReady;
+    pageEdit.title = pageEdit.disabled ? "完成后，在实时 PPT 中编辑当前页" : "修改原页面 HTML，保存并更新当前页截图";
+  }
   syncPageSpeechDrawer();
+  if (workflowMode) renderWorkflowCanvas();
 }
 
 function setWorkspaceView(view) {
   if (!ed.id) return;
-  const processMode = view !== "ppt";
+  if ($("#canvas-empty > .deck-load-state")) return;
+  const next = view === "ppt" ? "ppt" : ed.kind === "static" ? "workflow" : "process";
+  const processMode = next === "process";
+  const workflowMode = next === "workflow";
   const previewReady = ed.kind === "dynamic" ? !!ed.dynamicDeckUrl : !!ed.staticDeckReady;
-  if (!processMode && !previewReady) return;
-  ed.workspaceView = processMode ? "process" : "ppt";
+  if (next === "ppt" && !previewReady) return;
+  ed.workspaceView = next;
   setProcRailOpen(false);
   if (processMode) {
     select(0, { byUser: false });
+    return;
+  }
+  if (workflowMode) {
+    $("#canvas-empty").replaceChildren();
+    syncViewToggle();
     return;
   }
   setFollow(true);
@@ -4049,8 +7183,64 @@ async function setPageView(view) {
 let deckViewportFitRaf = 0;
 let stableStaticImageToken = 0;
 let dynamicDeckRevealToken = 0;
+function activeCanvasSize() {
+  const width = Number(ed.canvasSpec?.width_px), height = Number(ed.canvasSpec?.height_px);
+  return width > 0 && height > 0 ? { width, height, ratio: width / height } : null;
+}
 
-// The preview column contains both the 16:9 player and a persistent bottom
+function setCanvasSpec(spec) {
+  ed.canvasSpec = spec || null;
+  const size = activeCanvasSize();
+  const editor = $("#editor");
+  if (!size) {
+    for (const key of ["--deck-aspect-ratio", "--deck-ratio", "--deck-ratio-inverse"])
+      editor?.style.removeProperty(key);
+    return;
+  }
+  editor?.style.setProperty("--deck-aspect-ratio", `${size.width} / ${size.height}`);
+  editor?.style.setProperty("--deck-ratio", String(size.ratio));
+  editor?.style.setProperty("--deck-ratio-inverse", String(1 / size.ratio));
+}
+
+// 预览缩放只作用于外层 iframe，作者坐标来自已经生成的真实 DOM/CSS。
+function fitCanonicalStaticFrame(frame) {
+  const canvas = $("#canvas");
+  if (!canvas || !frame) return;
+  const hostWidth = canvas.clientWidth;
+  const hostHeight = canvas.clientHeight;
+  if (hostWidth < 1 || hostHeight < 1) return;
+  if (!activeCanvasSize()) {
+    const doc = frame.contentDocument;
+    const page = doc?.querySelector("#deck > .slide[data-slide]");
+    const deck = page || doc?.querySelector("#deck");
+    if (deck?.offsetWidth > 0 && deck?.offsetHeight > 0)
+      setCanvasSpec({ width_px: deck.offsetWidth, height_px: deck.offsetHeight, source: "dom" });
+  }
+  const size = activeCanvasSize();
+  if (!size) return;
+  const { width, height } = size;
+  const scale = Math.min(
+    hostWidth / width,
+    hostHeight / height,
+  );
+  const renderedWidth = width * scale;
+  const renderedHeight = height * scale;
+  frame.style.inset = "auto";
+  frame.style.width = `${width}px`;
+  frame.style.height = `${height}px`;
+  frame.style.left = `${(hostWidth - renderedWidth) / 2}px`;
+  frame.style.top = `${(hostHeight - renderedHeight) / 2}px`;
+  frame.style.transformOrigin = "top left";
+  frame.style.transform = `scale(${scale})`;
+}
+
+function resetCanonicalStaticFrame(frame) {
+  for (const property of ["inset", "width", "height", "left", "top", "transformOrigin", "transform"]) {
+    frame.style.removeProperty(property.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`));
+  }
+}
+
+// The preview column contains the current canvas and a persistent bottom
 // dock. Sizing the player from width alone can make it taller than the actual
 // remaining row on wide/short screens, where the sticky dock then covers the
 // slide footer. Fit against both dimensions so the complete HTML canvas is
@@ -4083,7 +7273,7 @@ function fitWorkspaceCanvas() {
   const dock = wrap.querySelector(".canvas-bottom-dock");
   // The dock is allowed to stretch through the unused lower half of a tall
   // preview column so the speech drawer can stay pinned to its bottom edge.
-  // Only reserve the dock's visible children when fitting the 16:9 player;
+  // Only reserve the dock's visible children when fitting the player;
   // subtracting the stretched outer box would collapse the player to ~1px.
   let dockHeight = 0;
   if (dock && getComputedStyle(dock).display !== "none") {
@@ -4099,8 +7289,11 @@ function fitWorkspaceCanvas() {
   }
   const availableWidth = Math.max(1, wrap.clientWidth - horizontalPadding);
   const availableHeight = Math.max(1, wrap.clientHeight - verticalPadding - dockHeight);
-  const fittedWidth = Math.min(availableWidth, availableHeight * 16 / 9);
-  const fittedHeight = fittedWidth * 9 / 16;
+  const size = activeCanvasSize();
+  if (!size) return;
+  const { ratio } = size;
+  const fittedWidth = Math.min(availableWidth, availableHeight * ratio);
+  const fittedHeight = fittedWidth / ratio;
 
   canvas.style.width = `${Math.floor(fittedWidth * 10) / 10}px`;
   canvas.style.height = `${Math.floor(fittedHeight * 10) / 10}px`;
@@ -4156,6 +7349,39 @@ function stabilizeStaticDeckPlayer(frame) {
     frame.setAttribute("scrolling", "no");
     doc.documentElement.style.setProperty("overflow", "hidden", "important");
     doc.body.style.setProperty("overflow", "hidden", "important");
+    const deck = doc.getElementById("deck");
+    const size = activeCanvasSize();
+    if (size && deck?.querySelector(":scope > .slide[data-slide]")) {
+      // Older inline exports omit player geometry and stack every page vertically.
+      let inlineGuard = doc.getElementById("studio-static-inline-page-guard");
+      if (!inlineGuard) {
+        inlineGuard = doc.createElement("style");
+        inlineGuard.id = "studio-static-inline-page-guard";
+        doc.head?.appendChild(inlineGuard);
+      }
+      const css = `
+        #deck {
+          position: absolute !important;
+          width: ${size.width}px !important;
+          height: ${size.height}px !important;
+          transform-origin: top left !important;
+          margin: 0 !important;
+          overflow: hidden !important;
+        }
+        #deck > .slide[data-slide] {
+          position: absolute !important;
+          inset: 0 auto auto 0 !important;
+          margin: 0 !important;
+          visibility: hidden !important;
+          pointer-events: none !important;
+        }
+        #deck > .slide[data-slide].active {
+          visibility: visible !important;
+          pointer-events: auto !important;
+        }
+      `;
+      if (inlineGuard.textContent !== css) inlineGuard.textContent = css;
+    }
     let playerGuard = doc.getElementById("studio-static-player-viewport-guard");
     if (!playerGuard) {
       playerGuard = doc.createElement("style");
@@ -4248,6 +7474,10 @@ function fitDynamicDeckAfterLoad(frame, deckId) {
 function fitDeckViewport(frame = $("#canvas-deck")) {
   if (!frame || frame.hidden || !frame.contentWindow) return;
   frame.setAttribute("scrolling", "no");
+  const canonicalStatic = frame.dataset.deckKind === "static"
+    && editorPresentationKind() !== "dynamic";
+  if (canonicalStatic) fitCanonicalStaticFrame(frame);
+  else resetCanonicalStaticFrame(frame);
   try {
     const doc = frame.contentDocument;
     if (!doc?.documentElement || !doc.body) return;
@@ -4327,9 +7557,23 @@ function playStaticSlide(frame, n) {
   }
 }
 
+// Keep the hidden bitmap fallback on the selected page even while live HTML is
+// healthy.  Previously it retained the last page until a failure path called
+// keepStaticPng(); a font/load transition could therefore flash page N-1 under
+// a filmstrip selection for page N.
+function primeStaticPng(n) {
+  if (!ed.rendered?.has(Number(n))) return;
+  const img = $("#canvas-img");
+  const url = fileUrl(n);
+  const absoluteUrl = new URL(url, location.origin).href;
+  img.dataset.slide = String(n);
+  if (img.src !== absoluteUrl) img.src = url;
+}
+
 function keepStaticPng(n) {
   const img = $("#canvas-img"), frame = $("#canvas-deck"), empty = $("#canvas-empty");
   frame.hidden = true;
+  primeStaticPng(n);
   const url = fileUrl(n);
   const token = ++stableStaticImageToken;
   const currentIsUsable = img.complete && img.naturalWidth > 0;
@@ -4424,6 +7668,21 @@ async function revealStaticDeckWhenFontsReady(frame, deckWindow) {
   }
   if (frame.dataset.deckKind !== "static" || frame.dataset.deckId !== deckId || frame.contentWindow !== deckWindow) return;
   const player = deckWindow.cleanDeck;
+  const expectsSharedPreviewFonts = !!frame.contentDocument?.querySelector(
+    'meta[name="studio-preview-fonts"]'
+  );
+  if (!dynamicHtml && expectsSharedPreviewFonts) {
+    const faces = [...(frame.contentDocument?.fonts || [])];
+    // document.fonts.ready also resolves when a document has no @font-face at
+    // all, which previously promoted a system-fallback layout as if it matched
+    // the render worker. A marked v0.4 preview must register shared faces, and
+    // every face actually requested by the page must avoid the error state.
+    if (!faces.length || faces.some((face) => face.status === "error")) {
+      frame.dataset.fontsReady = "0";
+      keepStaticPng(ed.sel);
+      return;
+    }
+  }
   if (!player?.go || (player.provisional && Number(player.count) < 1)) {
     frame.dataset.fontsReady = "0";
     keepStaticPng(ed.sel);
@@ -4516,6 +7775,10 @@ function staticHtmlCheckpointReady(n) {
 function showStaticDeck(n) {
   const frame = $("#canvas-deck");
   const deckId = String(ed.id);
+  // Update the fallback before touching iframe visibility.  The target render
+  // is normally already cached by the filmstrip, so this is effectively free
+  // and removes the stale-page race entirely.
+  primeStaticPng(n);
   if (!staticHtmlCheckpointReady(n)) {
     keepStaticPng(n);
     return;
@@ -4607,6 +7870,9 @@ function outlineBriefData() {
       url: preview.url,
       fallbackUrl: preview.fallbackUrl,
       previewUrl: preview.previewUrl,
+      parse: item.source_sha256 ? (ed.attachmentParse || []).find((record) =>
+        record.source_sha256 === item.source_sha256) : null,
+      uploadStatus: item.upload_status || "",
     };
   });
   if (!attachments.length && attachmentBlock) {
@@ -4623,17 +7889,24 @@ function outlineBriefMetaHtml(data) {
     ${data.attachments.map((item) => {
       const kind = attachmentPreviewKind(item.name, item.type);
       const icon = kind === "image" ? "▧" : (kind === "pdf" ? "PDF" : "↥");
-      const meta = [attachmentTypeLabel(item.name, item.type), attachmentSizeLabel(item.size)].filter(Boolean).join(" · ");
+      const parseLabel = attachmentParseLabel(item.parse, item.uploadStatus);
+      const meta = [attachmentTypeLabel(item.name, item.type), attachmentSizeLabel(item.size), parseLabel].filter(Boolean).join(" · ");
       const visual = kind === "image" && item.url
         ? `<i><img src="${escapeHtml(item.url)}" alt=""${item.fallbackUrl ? ` data-attachment-image-fallback="${escapeHtml(item.fallbackUrl)}"` : ""}></i>`
         : `<i>${icon}</i>`;
       const attrs = item.url
         ? ` data-attachment-preview="1" data-attachment-url="${escapeHtml(item.url)}" data-attachment-fallback-url="${escapeHtml(item.fallbackUrl || "")}" data-attachment-preview-url="${escapeHtml(item.previewUrl || "")}" data-attachment-name="${escapeHtml(item.name)}" data-attachment-type="${escapeHtml(item.type)}" data-attachment-size="${item.size}"`
         : " disabled";
-      return `<button type="button" class="outline-attachment ${kind}" title="查看 ${escapeHtml(item.name)}"${attrs}>${visual}<span><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(meta)}</small></span></button>`;
+      return `<button type="button" class="outline-attachment ${kind}" title="查看 ${escapeHtml(item.name)}；解析状态不代表已阅读或语义核验"${attrs}>${visual}<span><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(meta)}</small></span></button>`;
     }).join("")}
   </div>` : "";
   return attachments;
+}
+
+function attachmentParseLabel(record, uploadStatus = "") {
+  if (!record) return uploadStatus === "saved" ? "原件已保存 · 等待 Harness" : uploadStatus === "not_saved" ? "上传未保存" : "";
+  const label = ({queued: "等待后台解析", processing: "后台解析中", completed: "解析完成", partial: "部分解析完成", failed: "解析失败"})[record.status] || "";
+  return [label, record.cached ? "复用缓存" : "", record.unresolved_count ? `${record.unresolved_count} 项未解决` : ""].filter(Boolean).join(" · ");
 }
 
 function taskComposerCopy(kind = ed.kind, status = ed.status) {
@@ -4690,13 +7963,23 @@ function conversationDayLabel(date) {
   return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
 }
 
-function conversationTime(value, { withDay = false } = {}) {
+function conversationTime(value, { withDay = false, bucketMinutes = 0 } = {}) {
   const date = conversationDate(value);
   if (!date) return null;
+  const displayDate = new Date(date.getTime());
+  const bucket = Number(bucketMinutes);
+  if (Number.isInteger(bucket) && bucket > 1) {
+    displayDate.setMinutes(Math.floor(displayDate.getMinutes() / bucket) * bucket, 0, 0);
+  }
   const clock = new Intl.DateTimeFormat("zh-CN", {
     hour: "2-digit", minute: "2-digit", hour12: false,
-  }).format(date);
-  return { date, iso: date.toISOString(), text: withDay ? `${conversationDayLabel(date)} ${clock}` : clock };
+  }).format(displayDate);
+  return {
+    date,
+    iso: date.toISOString(),
+    groupKey: displayDate.toISOString().slice(0, 16),
+    text: withDay ? `${conversationDayLabel(displayDate)} ${clock}` : clock,
+  };
 }
 
 function outlineMessageTimeMarkup(value, className = "") {
@@ -4714,7 +7997,7 @@ function outlineTimeDividerMarkup(value, round) {
   return `<div class="outline-time-divider" role="separator" aria-label="${escapeHtml(`${stage}，${time.text}`)}"><span></span><time datetime="${escapeHtml(time.iso)}">${escapeHtml(stage)} · ${escapeHtml(time.text)}</time><span></span></div>`;
 }
 
-function outlineUserTurnMarkup(content, { initial = false, createdAt = null } = {}) {
+function outlineUserTurnMarkup(content, { initial = false, createdAt = null, idPrefix = "outline" } = {}) {
   const text = String(content || "").trim() || (initial ? "正在读取你的演示需求…" : "");
   const displayName = $(".user-profile-copy strong")?.textContent?.trim() || "用户";
   const v1User = document.querySelector(".layout")?.dataset.authEnabled === "0";
@@ -4722,16 +8005,38 @@ function outlineUserTurnMarkup(content, { initial = false, createdAt = null } = 
     ? '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="rgba(255,255,255,.94)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8.2" r="3.25"/><path d="M5.8 19c.55-3.45 2.55-5.2 6.2-5.2s5.65 1.75 6.2 5.2"/></svg>'
     : escapeHtml($("#user-menu-trigger .user-avatar")?.textContent?.trim()
       || Array.from(displayName)[0]?.toUpperCase() || "U");
-  const copy = `<button type="button" class="outline-query-copy"${initial ? ' id="outline-query-copy"' : ""} data-copy-message="${escapeHtml(text)}" title="复制用户消息" aria-label="复制用户消息">复制</button>`;
-  const meta = initial ? `<div id="outline-query-meta">${outlineBriefMetaHtml(outlineBriefData())}</div>` : "";
+  const queryCopyId = idPrefix === "outline" ? "outline-query-copy" : `${idPrefix}-query-copy`;
+  const queryId = idPrefix === "outline" ? "outline-user-query" : `${idPrefix}-user-query`;
+  const queryMetaId = idPrefix === "outline" ? "outline-query-meta" : `${idPrefix}-query-meta`;
+  const copy = `<button type="button" class="outline-query-copy"${initial ? ` id="${queryCopyId}"` : ""} data-copy-message="${escapeHtml(text)}" title="复制用户消息" aria-label="复制用户消息">复制</button>`;
+  const meta = initial ? `<div id="${queryMetaId}">${outlineBriefMetaHtml(outlineBriefData())}</div>` : "";
   return `<section class="outline-user-turn${initial ? " initial" : " followup"}">
     <div class="outline-user-identity"><span class="outline-turn-label">${escapeHtml(displayName)}</span><span class="outline-user-avatar${v1User ? " outline-user-avatar-v1" : ""}" aria-hidden="true">${avatarContent}</span></div>
-    <div class="outline-user-bubble"><p${initial ? ' id="outline-user-query"' : ""}>${escapeHtml(text)}</p>${meta}</div>
+    <div class="outline-user-bubble"><p${initial ? ` id="${queryId}"` : ""}>${escapeHtml(text)}</p>${meta}</div>
     <div class="outline-user-actions">${outlineMessageTimeMarkup(createdAt)}${copy}</div>
   </section>`;
 }
 
+function skillProvenanceMarkup(prov) {
+  // 固定版本不等于已注入；实际上下文加载记录保留在 Trace 中。
+  if (!prov || typeof prov !== "object") return "";
+  const main = prov.main_sha256
+    ? `<div class="skill-prov-row"><span class="skill-prov-ok" aria-hidden="true">✓</span>
+        <div><b>已固定主 Skill 版本</b><code>${escapeHtml(prov.main_path || "SKILL.md")} · ${escapeHtml(prov.main_sha256)}</code></div></div>`
+    : "";
+  const roles = Array.isArray(prov.roles) ? prov.roles.filter((r) => r && r.sha256) : [];
+  const roleRows = roles.length
+    ? `<div class="skill-prov-row"><span class="skill-prov-ok" aria-hidden="true">✓</span>
+        <div><b>可用角色卡 · 不代表已启动</b>${roles.map((r) =>
+          `<code>${escapeHtml(r.path || `roles/${r.role}.md`)} · ${escapeHtml(r.sha256)}</code>`).join("")}</div></div>`
+    : "";
+  if (!main && !roleRows) return "";
+  const src = prov.source ? `<div class="skill-prov-src">来源 ${escapeHtml(prov.source)}</div>` : "";
+  return `<div class="skill-provenance" id="skill-provenance">${main}${roleRows}${src}</div>`;
+}
+
 function outlineTaskConfigMarkup(kind, config) {
+  const provenance = kind === "dynamic" ? "" : skillProvenanceMarkup(ed.skillProvenance);
   return `<details class="outline-task-config" id="outline-task-config" data-kind="${kind}">
     <summary>
       <span class="outline-config-mark" aria-hidden="true">${agentIdentityGlyph(kind, "outline-config-glyph")}</span>
@@ -4745,7 +8050,7 @@ function outlineTaskConfigMarkup(kind, config) {
       <div><span>深度思考</span><b id="outline-config-thinking">${escapeHtml(config.thinking)}</b></div>
       <div><span>Agent 上限</span><b id="outline-config-runtime">${escapeHtml(config.runtime)}</b></div>
       <div id="outline-config-pref-row"${config.preferences ? "" : " hidden"}><span>偏好</span><b id="outline-config-pref">${escapeHtml(config.preferences || "—")}</b></div>
-    </div>
+    </div>${provenance}
   </details>`;
 }
 
@@ -4762,7 +8067,7 @@ function outlineAssistantSummary(turn) {
     title: revision ? "本轮修改未能完成" : "初版演示未能完成",
     detail: "可以调整要求后重新尝试。", state: "failed",
   };
-  return { title: revision ? "正在处理这条修改" : "正在制作演示", detail: "SenseNova Present 正在继续推进。", state: "running" };
+  return { title: revision ? "正在处理这条修改" : "正在制作演示", detail: "MURAL Presenter 正在继续推进。", state: "running" };
 }
 
 function dynamicAssistantSummary(turn) {
@@ -4811,7 +8116,7 @@ function outlineHistoricalAgentMarkup(turn, kind) {
       </div>` : dynamicHistoricalProcessMarkup(turn);
   return `<div class="outline-thread-bridge" aria-hidden="true"><span></span></div>
     <section class="outline-agent-turn outline-agent-history ${summary.state}">
-      <div class="outline-agent-label"><span class="outline-agent-mark">${agentIdentityGlyph(kind)}</span><span class="outline-agent-copy"><b>SenseNova Present</b><i>上一轮回复</i></span>${outlineMessageTimeMarkup(turn?.responded_at || turn?.created_at, "agent")}</div>
+      <div class="outline-agent-label"><span class="outline-agent-mark">${agentIdentityGlyph(kind)}</span><span class="outline-agent-copy"><b>MURAL Presenter</b><i>上一轮回复</i></span>${outlineMessageTimeMarkup(turn?.responded_at || turn?.created_at, "agent")}</div>
       <details class="outline-agent-history-details">
         <summary class="outline-agent-history-card"><span class="outline-history-state" aria-hidden="true"></span><div><strong>${escapeHtml(summary.title)}</strong><p>${escapeHtml(summary.detail)}</p></div><i class="outline-history-chevron" aria-hidden="true"></i></summary>
         ${process}
@@ -4819,12 +8124,12 @@ function outlineHistoricalAgentMarkup(turn, kind) {
     </section>`;
 }
 
-function outlineCurrentAgentMarkup(kind, running, turn = {}) {
-  const responseLabel = ed.status === "not_started" ? "等待开始" : (running ? "正在思考并推进" : "本次任务回复");
+function outlineCurrentAgentMarkup(kind, running, turn = {}, { progressId = "agent-progress-console" } = {}) {
+  const responseLabel = ed.status === "not_started" ? "等待开始" : (running ? "正在执行任务" : "本次任务回复");
   return `<div class="outline-thread-bridge" aria-hidden="true"><span></span></div>
     <section class="outline-agent-turn">
-      <div class="outline-agent-label"><span class="outline-agent-mark">${agentIdentityGlyph(kind)}</span><span class="outline-agent-copy"><b>SenseNova Present</b><i>${responseLabel}</i></span>${outlineMessageTimeMarkup(turn?.responded_at || turn?.created_at, "agent")}</div>
-      <div class="outline-agent-progress" id="agent-progress-console"></div>
+      <div class="outline-agent-label"><span class="outline-agent-mark">${agentIdentityGlyph(kind)}</span><span class="outline-agent-copy"><b>MURAL Presenter</b><i>${responseLabel}</i></span>${outlineMessageTimeMarkup(turn?.responded_at || turn?.created_at, "agent")}</div>
+      <div class="outline-agent-progress" id="${escapeHtml(progressId)}"></div>
     </section>`;
 }
 
@@ -4844,7 +8149,7 @@ function outlineConversationTurns(kind, data) {
     : turn);
 }
 
-function outlineConversationLaneMarkup(kind, running) {
+function outlineConversationLaneMarkup(kind, running, { idPrefix = "outline", progressId = "agent-progress-console" } = {}) {
   const data = outlineBriefData();
   const turns = outlineConversationTurns(kind, data);
   let currentRendered = false;
@@ -4854,15 +8159,15 @@ function outlineConversationLaneMarkup(kind, running) {
       const initial = index === 0;
       round += 1;
       return outlineTimeDividerMarkup(turn.created_at, round)
-        + outlineUserTurnMarkup(turn.content, { initial, createdAt: turn.created_at });
+        + outlineUserTurnMarkup(turn.content, { initial, createdAt: turn.created_at, idPrefix });
     }
     if (turn.current || (index === turns.length - 1 && turn.role === "assistant")) {
       currentRendered = true;
-      return outlineCurrentAgentMarkup(kind, running, turn);
+      return outlineCurrentAgentMarkup(kind, running, turn, { progressId });
     }
     return outlineHistoricalAgentMarkup(turn, kind);
   }).join("");
-  return html + (currentRendered ? "" : outlineCurrentAgentMarkup(kind, running));
+  return html + (currentRendered ? "" : outlineCurrentAgentMarkup(kind, running, {}, { progressId }));
 }
 
 function outlineConversationStructureKey(kind) {
@@ -4899,10 +8204,14 @@ async function syncStaticHistoricalTurnFeeds() {
       const payload = await jget(`/api/decks/${encodeURIComponent(ed.id)}/turn-feed?revision_no=${revision}`);
       if (ed.kind !== "static" || !node.isConnected) return;
       node.dataset.feedState = "ready";
+      const workflowList = node.closest("#workflow-message-list");
       renderOrchestrationProgress(node, payload.agents || {}, {
         running: false,
         specialistArtifacts: payload.specialist_artifacts || {},
+        artifactMode: workflowList ? "links" : "inline",
+        scrollContainer: workflowList || null,
       });
+      if (workflowList) syncWorkflowArtifactSelection();
     } catch {
       if (!node.isConnected) return;
       node.dataset.feedState = "error";
@@ -5161,20 +8470,11 @@ function select(n, { byUser } = {}) {
   markSel();
   const img = $("#canvas-img"), frame = $("#canvas-deck"), empty = $("#canvas-empty");
   if (n === 0) {
-    // 00 · 大纲:画布 = 编排器(主 agent)输出
     const running = isStaticActiveStatus(ed.status);
-    img.hidden = true; frame.hidden = true; empty.hidden = false;
-    empty.innerHTML = workstreamMarkup({ n, kind: "static", running });
-    bindTaskComposer();
-    // The 00 conversation lane is created here, after the initial progress
-    // payload has already called syncOutlineConversationTurns().  Historical
-    // turn placeholders therefore did not exist during that earlier sync and
-    // stayed in their loading state forever.  Load them as soon as this lane is
-    // mounted (also covers returning to 00 from another slide).
-    void syncStaticHistoricalTurnFeeds();
+    ed.workspaceView = "workflow";
+    img.hidden = true; frame.hidden = true; empty.replaceChildren();
     ed.conKey = null; ed.conLines = [];
     if (!running && !ed.liveTimer) fetchLive();   // 已完成的 deck:拉一次历史输出
-    else renderLive();
     syncViewToggle();
     loadPlan(0);
     updateNav();
@@ -5477,8 +8777,30 @@ function bindDynamicDeckNavigation() {
 }
 
 /* ----- AI 制作活动流：底层日志增量追加，界面只呈现可读动作 ----- */
-function evKey(ev) { return ev.k === "tool" ? "t:" + ev.tool + ":" + (ev.hint || "") : "x:" + ev.s; }
-function evLine(ev) { return ev.k === "tool" ? (TOOL_LABEL[ev.tool] || ev.tool) + " " + (ev.hint || "") : ev.s; }
+function evKey(ev) {
+  if (ev.event_id) return `e:${ev.event_id}`;
+  if (ev.k === "tool" || ev.k === "tool_result") return `${ev.k}:${ev.tool_use_id || ""}:${ev.tool || ""}:${ev.hint || ""}`;
+  if (ev.k === "provider" || ev.k === "status") return `${ev.k}:${ev.event_type || ev.phase || ev.status || ""}:${ev.seq || ""}`;
+  return `${ev.k || "text"}:${ev.s || ""}`;
+}
+function livePreviewLabel(event, { thinking = false } = {}) {
+  if (!event.partial) return thinking ? "思考已完成" : "";
+  const interrupted = event.phase === "interrupted"
+    || ["failed", "interrupted", "completed", "rejected", "canceled", "cancelled", "stopped", "paused_recoverable", "error"].includes(ed.status);
+  return thinking ? (interrupted ? "思考已中断" : "思考中")
+    : interrupted ? "已中断 · 非最终消息" : "生成中 · 非最终消息";
+}
+function liveAgentText(event) {
+  // 新实时流已在写入时脱敏，保留模型原文，不把流式英文改写成固定进度文案。
+  return event.event_id ? String(event.s || "").trim() : cleanAgentText(event.s);
+}
+function evLine(ev) {
+  if (ev.k === "tool") return (TOOL_LABEL[ev.tool] || ev.tool) + " " + (ev.hint || "");
+  if (ev.k === "tool_result") return `${TOOL_LABEL[ev.tool] || ev.tool} · ${ev.ok ? "完成" : "失败"}`;
+  if (ev.k === "analysis") return `分析摘要 · ${ev.s || ""}`;
+  if (ev.k === "provider") return `Provider ${ev.phase || "状态更新"}`;
+  return ev.s || ev.status || "";
+}
 function agentKey(n) {
   return ed.pageAgents?.[String(Number(n))] || ("slide_" + pad2(n));
 }
@@ -5492,8 +8814,10 @@ function agentPages(key) {
 }
 
 function pageAgentLabel(key, n) {
-  if (String(key).startsWith("slide_group_")) {
-    const pages = agentPages(key);
+  if (key === "orch") return ed.pageAgents?.[String(Number(n))] === key
+    ? "由主 Agent 直接负责本页制作与修订" : "整册统筹与页面复核";
+  const pages = agentPages(key);
+  if (pages.length > 1) {
     const related = pages.filter((page) => page !== Number(n));
     return related.length
       ? `本页与第 ${related.map((page) => Number(page)).join("、")} 页保持统一设计`
@@ -5504,10 +8828,17 @@ function pageAgentLabel(key, n) {
 
 function evRow(ev) {
   const d = document.createElement("div");
-  d.className = "lv-row";
+  d.className = `lv-row${ev.k === "analysis" ? " analysis" : ""}${ev.k === "tool_result" && !ev.ok ? " failed" : ""}`;
   if (ev.k === "tool") {
     d.innerHTML = `<span class="lv-p lv-cmd">✦</span><span class="lv-fn">${escapeHtml(TOOL_LABEL[ev.tool] || "推进任务")}</span>` +
       `<span class="lv-hint">${escapeHtml(compactActivityHint(ev.hint || ""))}</span>`;
+  } else if (ev.k === "tool_result") {
+    d.innerHTML = `<span class="lv-p lv-cmd">${ev.ok ? "✓" : "!"}</span><span class="lv-fn">${escapeHtml(TOOL_LABEL[ev.tool] || ev.tool || "工具")}</span>` +
+      `<span class="lv-hint">${escapeHtml(ev.ok ? `完成${ev.duration_ms ? ` · ${ev.duration_ms}ms` : ""}` : `失败 · ${ev.error_code || "执行错误"}`)}</span>`;
+  } else if (ev.k === "analysis") {
+    d.innerHTML = `<span class="lv-p">◇</span><span class="lv-text"><b>分析摘要</b> · ${escapeHtml(ev.s || "")}</span>`;
+  } else if (ev.k === "provider" || ev.k === "status") {
+    d.innerHTML = `<span class="lv-p">·</span><span class="lv-text">${escapeHtml(evLine(ev))}</span>`;
   } else {
     d.innerHTML = `<span class="lv-p">·</span><span class="lv-text">${escapeHtml(ev.s)}</span>`;
   }
@@ -5551,9 +8882,10 @@ const TOOL_PROGRESS = {
   edit: ["调整页面细节", "正在优化页面布局与视觉细节"],
   edit_file: ["调整页面细节", "正在优化页面布局与视觉细节"],
   patch: ["调整页面细节", "正在根据检查结果优化布局与视觉细节"],
+  inspect: ["视觉检查", "正在准备实际图片与检查反馈"],
   vision_analyze: ["检查画面质量", "正在检查版式、可读性与画面完整性"],
   image_generate: ["制作视觉素材", "正在生成本页需要的视觉素材"],
-  fetch_image: ["下载真实图片", "正在将检索到的真实图片保存到本地"],
+  fetch_image: ["下载图片", "正在将网络图片保存到本地"],
   web_search: ["搜索参考资料", "正在搜索内容与视觉参考"],
   web_fetch: ["阅读参考资料", "正在整理检索到的有效信息"],
   delegate_task: ["安排页面制作", "正在安排多页内容与视觉同步推进"],
@@ -5592,31 +8924,14 @@ function friendlyToolHint(ev) {
 }
 
 function cleanAgentText(value) {
-  const text = String(value || "")
+  return String(value || "")
     .replace(/^\[\d+\]\s*💬\s*/, "")
     .replace(/^💬\s*/, "")
     .replace(/\r\n?/g, "\n")
-    // Keep Markdown's structural line breaks. Collapsing all whitespace here
-    // previously turned headings and lists into one unreadable paragraph.
     .replace(/[^\S\n]+/g, " ")
     .replace(/ *\n */g, "\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
-  if (!text || /^轨迹已写\b/.test(text)) return "";
-  if (/^The write_file didn't actually overwrite\b/i.test(text)) {
-    return "规划文件未通过批量写入约束，正在使用受控批量恢复方式更新。";
-  }
-  if (/^The harness rejects single-page groups\b/i.test(text)) {
-    return "页面责任分组格式未通过校验，正在按既定所有权拓扑修正单页组写法。";
-  }
-  if (/^Now I have enough context\./i.test(text)) return "资料与页面规划已梳理完成，开始搭建本页内容与版式。";
-  if (/^Let me reconsider\b/i.test(text)) return "发现当前版式与页面规划不完全一致，正在重新调整。";
-  if (/^Let me write the full deck\b/i.test(text)) return "演示结构已经梳理完成，正在开始整套页面编排。";
-  if (/^Let me (?:build|create) the full deck\b/i.test(text)) return "整体创作方案已经明确，正在把内容转化为完整演示。";
-  if (/^Let me (?:build|write|create) (?:the|this) slide/i.test(text)) return "页面资料已准备完成，开始进行内容与视觉设计。";
-  if (/^Let me\b/i.test(text)) return "正在根据当前结果继续推进演示制作。";
-  if (/^(?:I (?:will|need|can|should)|We need to|Now I)\b/i.test(text)) return "正在核对当前结果并安排后续步骤。";
-  return text;
 }
 
 function agentStoryHtml(text) {
@@ -5760,19 +9075,68 @@ function agentMarkdownHtml(value) {
   return output.join("");
 }
 
+function runtimeEventState(event) {
+  if (!event) return null;
+  switch (event.event_type) {
+    case "attachment_parse_queued":
+    case "attachment_parse_started":
+    case "attachment_parse_finished": return [event.s, `${event.attachment_id || "附件"} · ${attachmentParseLabel(event)}；后台解析状态不代表 Research 已阅读或语义核验。`];
+    case "agent_started": return ["Agent 已启动", "正在准备本轮运行上下文；模型是否开始请求以 Provider 事件为准。"];
+    case "agent_completed": return ["Agent 已完成", "该角色本轮执行已结束。"];
+    case "deck_completion_checked": return [event.status === "ready" ? "制作完成校验通过" : "制作完成校验未通过",
+      "这是 Harness 自动完成校验，不是模型工具调用，也不代表离线内容 QC 或 clean 准入。"];
+    case "agent_failed": return ["Agent 执行异常", event.error_summary || event.error_type || "请查看该角色的 Trace。"];
+    case "agent_context_compacted": {
+      const before = Number(event.tokens_before || event.estimated_tokens || 0);
+      const after = Number(event.tokens_after || 0);
+      const budget = Number(event.input_budget || 0);
+      const usage = [before ? `触发前估算 ${before.toLocaleString()} tokens` : "",
+        after ? `压缩后估算 ${after.toLocaleString()} tokens` : "",
+        budget ? `输入预算 ${budget.toLocaleString()} tokens` : ""].filter(Boolean).join(" · ");
+      return ["上下文压缩完成", `${usage || "旧历史已压缩为续接摘要"}；任务会从新上下文段继续。`];
+    }
+    case "agent_context_compaction_failed": return ["上下文压缩未完成",
+      `${event.error_summary || event.error_type || "压缩摘要没有形成可用结果。"}${event.recoverable ? " 已保留检查点，可恢复或缩小任务后续接。" : ""}`];
+    case "resource_wait_started": return ["等待模型资源", "正在等待本地资源槽，尚未发送本轮 Provider 请求。"];
+    case "resource_wait_failed": return ["本地资源等待失败", "本轮尚未请求 Provider；请查看资源等待记录。"];
+    case "provider_started": {
+      const kind = event.request_kind_label || "模型请求";
+      const budget = event.actual_max_tokens ? ` · 本轮输出上限 ${event.actual_max_tokens}` : "";
+      if (event.request_kind === "context_compaction") return ["正在压缩上下文",
+        `${event.model || "模型"} 已开始生成内部续接摘要${budget}；这是运行时维护步骤，不是任务正文。`];
+      return [`${kind} · 等待模型响应`, `${event.model || "模型"} 已开始请求${budget}。${event.request_kind_note ? event.request_kind_note + " " : ""}${event.streaming === false ? "本次未开启流式，完整响应返回后显示文本或工具动作。" : event.streaming === true ? "本次已开启流式，收到可展示内容后实时更新。" : "收到响应后将展示文本或工具动作。"}`];
+    }
+    case "provider_succeeded": return [`${event.request_kind_label || "模型请求"} · 已响应`, "响应已返回，正在处理文本或工具调用；没有自然语言消息不代表没有响应。"];
+    case "provider_failed": return [`${event.request_kind_label || "模型请求"} · 请求失败`, event.error_summary || event.error_kind || "请查看 Provider 记录。"];
+    case "provider_failover": return ["Provider 通道切换", `正在切换到 ${event.channel_id || "备用通道"}。`];
+    case "language_drift": return ["工作语言疑似漂移", event.detail || "当前工作语言要求与可见模型正文不一致，已记录用于排查。"];
+    default: return null;
+  }
+}
+
 function agentCurrentState(evs, { running, rendered, n }) {
   if (rendered) return running
     ? ["本页已有最新预览", "页面已生成预览，仍可能根据整套演示的检查结果继续优化。"]
     : ["本页制作已完成", "页面已经过渲染与检查，可以切换到页面预览查看结果。"];
-  const latest = [...evs].reverse().find((ev) => ev.k === "tool" || cleanAgentText(ev.s));
+  const latest = [...evs].reverse().find((ev) => ev.k !== "context"
+    && (runtimeEventState(ev) || ["tool", "tool_result"].includes(ev.k) || cleanAgentText(ev.s)));
   if (!latest) {
     return running
-      ? ["正在理解页面任务", n ? `正在梳理第 ${n} 页的目标、素材与版式要求。` : "正在拆解演示目标与整体结构。"]
+      ? ["等待 Agent 启动记录", n ? `第 ${n} 页尚无角色启动记录，不代表模型已经开始制作。` : "任务正在准备或等待调度，尚无模型请求记录。"]
       : ["暂无制作记录", "开始生成后，这里会展示当前正在进行的工作。"];
   }
+  const runtimeState = runtimeEventState(latest);
+  if (runtimeState) return runtimeState;
   if (latest.k === "tool") return toolProgress(latest);
+  if (latest.k === "tool_result") {
+    const label = TOOL_LABEL[latest.tool] || latest.tool || "当前步骤";
+    return latest.ok
+      ? [`${label}已完成`, latest.duration_ms ? `工具结果已返回，用时 ${latest.duration_ms} ms。` : "工具结果已返回，正在继续后续步骤。"]
+      : [`${label}未通过`, `错误状态：${latest.error_code || "执行失败"}，Agent 将根据结果调整。`];
+  }
   const text = cleanAgentText(latest.s);
-  return [text.length > 54 ? `${text.slice(0, 53)}…` : text, "本轮判断已经完成，正在继续推进后续步骤。"];
+  if (latest.partial) return [livePreviewLabel(latest), text];
+  return [text.length > 54 ? `${text.slice(0, 53)}…` : text, latest.k === "analysis" ? "这是 Provider 明确返回的可展示分析摘要。" : "本轮判断已经完成，正在继续推进后续步骤。"];
 }
 
 function summarizeToolEvents(evs) {
@@ -5787,6 +9151,276 @@ function summarizeToolEvents(evs) {
     groups.set(label, previous);
   });
   return [...groups.values()].sort((a, b) => b.last - a.last).slice(0, 7);
+}
+
+function compactTraceValue(value, maxLength = 220) {
+  if (value == null || value === "") return "";
+  let text;
+  try { text = typeof value === "string" ? value : JSON.stringify(value); }
+  catch { text = String(value); }
+  text = text.replace(/\s+/g, " ").trim();
+  return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text;
+}
+
+function liveToolTransactions(evs, { limit = 60 } = {}) {
+  const transactions = new Map();
+  (evs || []).forEach((event, index) => {
+    if (!["tool", "tool_result"].includes(event.k) || !event.tool_use_id) return;
+    const id = String(event.tool_use_id);
+    const current = transactions.get(id) || {
+      id, tool: event.tool || "tool", use: null, result: null,
+      order: Number.isFinite(Number(event.seq)) ? Number(event.seq) : index,
+      agent: event.agent || "",
+    };
+    current.tool = event.tool || current.tool;
+    if (event.k === "tool") current.use = event;
+    else current.result = event;
+    current.order = Math.min(current.order, Number.isFinite(Number(event.seq)) ? Number(event.seq) : index);
+    current.agent ||= event.agent || "";
+    transactions.set(id, current);
+  });
+  return [...transactions.values()].sort((a, b) => b.order - a.order).slice(0, limit);
+}
+
+function liveReadFileSummary(transaction, active) {
+  if (!["read_file", "read"].includes(transaction.tool)) return null;
+  const args = transaction.use?.args || {};
+  const result = transaction.result;
+  let receipt = result?.result;
+  if (typeof receipt === "string") {
+    try { receipt = JSON.parse(receipt); } catch { receipt = null; }
+  }
+  const path = String(args.path || receipt?.path || "");
+  const file = path.split("/").pop() || "文件名未提供";
+  let progress = !result ? active ? "读取中 · 等待回执" : "读取中断 · 范围未确认"
+    : !result.ok ? "读取失败 · 范围未确认" : "已返回 · 读取范围未提供";
+  if (result?.ok && receipt && typeof receipt === "object") {
+    const { line_count: total, returned_line_count: count, offset, next_offset: next } = receipt;
+    const countsKnown = Number.isInteger(total) && total >= 0 && Number.isInteger(count) && count >= 0;
+    if (String(args.query || "").trim() || receipt.mode === "search_snippets") {
+      progress = `搜索片段 · ${countsKnown ? `返回 ${count} / ${total} 行 · ` : ""}不代表全文`;
+    } else if (countsKnown && receipt.mode === "line_range" && Number.isInteger(offset) && offset >= 1) {
+      if (offset === 1 && count === total && next === null && !receipt.truncated) {
+        progress = total === 0 ? "全文已返回 · 空文件（0 行）" : `全文已返回 · ${count} / ${total} 行`;
+      } else {
+        progress = count > 0 ? `本次部分读取 · 第 ${offset}–${offset + count - 1} 行 / 共 ${total} 行`
+          : `未返回正文 · 文件共 ${total} 行`;
+        if (Number.isInteger(next) && next >= 1) progress += ` · 可从第 ${next} 行继续`;
+      }
+    }
+  }
+  return { path, file, progress };
+}
+
+function liveTerminalLabel(command) {
+  if (typeof command !== "string" || !command.trim()) return "运行制作工具 · 命令未记录";
+  const words = [];
+  let rest = command.trimStart();
+  // 只展示受限命令的执行器、脚本和动作；不从备注猜用途，也不在前端执行 shell。
+  while (rest && words.length < 32) {
+    const token = rest.match(/^(?:"([^"\\]*)"|'([^']*)'|([^\s"'\\]+))(?:\s+|$)/);
+    if (!token) return "运行制作工具 · 命令见详情";
+    words.push(token[1] ?? token[2] ?? token[3]);
+    rest = rest.slice(token[0].length);
+  }
+  if (rest) return "运行制作工具 · 命令见详情";
+  if (words[0] === "ls") {
+    let options = true;
+    const directories = [];
+    words.slice(1).forEach(word => {
+      if (options && word === "--") {
+        options = false;
+      } else if (options && word.startsWith("-")) {
+        // ls 选项不属于查询目标；-- 后以连字符开头的目录仍照常展示。
+      } else {
+        directories.push(word);
+      }
+    });
+    return `查看目录 · ${compactTraceValue((directories.length ? directories : ["."]).join(" · "), 100)}`;
+  }
+  const [interpreter, path, action] = words;
+  if (!/^python(?:\d+(?:\.\d+)*)?$/.test(interpreter?.split("/").pop()) || !path?.endsWith(".py") || !action) {
+    return "运行制作工具 · 命令见详情";
+  }
+  return `运行制作工具 · ${compactTraceValue(`${path.split("/").pop()} ${action}`, 100)}`;
+}
+
+function workflowDelegationNodes(transaction) {
+  if (transaction.tool !== "delegate_submit" || transaction.result?.ok === false) return [];
+  let receipt = transaction.result?.result;
+  if (typeof receipt === "string") {
+    try { receipt = JSON.parse(receipt); } catch { receipt = null; }
+  }
+  const recorded = Array.isArray(receipt?.tasks) ? receipt.tasks : [];
+  const requested = Array.isArray(transaction.use?.args?.tasks) ? transaction.use.args.tasks : recorded;
+  const ids = [...new Set(requested.map(task => String(task?.task_id || "")).filter(Boolean))];
+  // 回执可填补实时状态尚未到达的窗口；请求参数本身不证明任务已被接受。
+  const tasks = new Map([...recorded, ...(ed.muralRuntime?.tasks || [])]
+    .filter(task => task?.task_id).map(task => [String(task.task_id), task]));
+  const nodes = new Map();
+  workflowTaskGraph([...tasks.values()], ed.agentTimings || {}, ed.feed || {}, ed.status)
+    .nodes.forEach(node => [...new Set([node.taskId, ...(node.taskIds || [])])]
+      .filter(Boolean).forEach(id => nodes.set(String(id), node)));
+  return ids.map(id => {
+    const node = nodes.get(id);
+    const currentId = ed.agentTimings?.[node?.agentKey]?.task_id;
+    const ownerId = tasks.get(id)?.owner_id;
+    // 续接仍展示原 Owner 的当前任务，不能按重叠页码误连到其他 Agent。
+    return ownerId && currentId && tasks.get(String(currentId))?.owner_id === ownerId
+      ? nodes.get(String(currentId)) || node : node;
+  }).filter(Boolean);
+}
+
+function workflowDelegationMarkup(transaction) {
+  const nodes = workflowDelegationNodes(transaction);
+  if (!nodes.length) return "";
+  return `<section class="workflow-delegation-cards" aria-label="本次委派的 Agent · 实时状态" data-delegation-call="${escapeHtml(transaction.id)}">
+    ${nodes.map(node => `<article class="orch-entry specialist role-${escapeHtml(node.role)}" data-embedded-agent="true" data-owner-node-id="${escapeHtml(node.id)}" data-agent-key="${escapeHtml(node.agentKey)}" data-workflow-task-id="${escapeHtml(node.taskId)}" tabindex="0" role="link" aria-label="查看 ${escapeHtml(node.title)} 的迭代">${orchestrationEntryContent(workflowOwnerProgressEntry(node))}</article>`).join("")}
+  </section>`;
+}
+
+function workflowOwnerProgressEntry(node, previous = null) {
+  const events = (ed.feed?.[node.agentKey] || []).filter(event => !event.partial && event.k !== "context"
+    && (event.task_id ? event.task_id === node.taskId : !node.segment || event.segment_id === node.segment));
+  const tasks = ed.muralRuntime?.tasks || [];
+  const ownerId = tasks.find(task => task.task_id === node.taskId)?.owner_id;
+  const assigned = ownerId ? tasks.filter(task => task.owner_id === ownerId).flatMap(task => task.pages || []) : [];
+  const pages = [...new Set([...agentPages(node.agentKey), ...assigned, ...node.pages])].sort((a, b) => a - b);
+  const meta = {...orchestrationAgentMeta(node.agentKey || node.role), role: node.role, pages};
+  if (node.role === "slide") {
+    meta.label = `${pages.length > 1 ? "Group Owner" : "Slide Owner"}${pages.length ? ` · P${pages.join(" / P")}` : ""}`;
+    meta.note = pages.length > 1 ? "同一 Owner 连续制作与联合复核" : "页面制作与像素检查";
+  }
+  const artifacts = ed.specialistArtifacts?.agents?.[node.agentKey] || {};
+  const entry = node.role === "slide" ? {
+    type: "slide", meta, steps: slideProgressSteps(meta, events),
+    resultDetail: [...events].reverse().find(event => event.k === "text")?.s || "",
+  } : specialistProgressEntry(meta, events, artifacts);
+  const segment = node.segment || [...events].reverse().find(event => event.task_id === node.taskId && event.segment_id)?.segment_id
+    || (previous?.taskId === node.taskId ? previous.segment : "");
+  return {...entry, ownerNode: node, taskId: node.taskId, segment, repairs: Number(node.repairs) || 0,
+    key: `owner-progress:${node.agentKey || node.taskId}`, order: previous?.order ?? events[0]?.seq ?? 0,
+    artifactRels: previous?.artifactRels || workflowArtifactRelsFromEvents(events, meta),
+    completed: node.status === "complete",
+    failed: ["failed", "start_failed", "dependency_failed"].includes(node.status),
+    timing: agentTimingFor(node.agentKey)};
+}
+
+function slideProgressSteps(meta, events) {
+  const step = (label, tools) => specialistToolStep(label, events, tools);
+  return [step("读取制作依据", ["read_file", "read"]),
+    step("制作与修改页面", ["write_file", "patch", "edit_file"]),
+    step("视觉检查记录（单页 / 联系表 / 素材）", ["inspect", "inspect_group", "vision_analyze"])];
+}
+
+function workflowDelegationStateKey() {
+  return JSON.stringify([ed.muralRuntime?.tasks || [], ed.agentTimings || {},
+    Object.entries(ed.feed || {}).map(([agent, events]) => [agent, events.length, events.at(-1)]),
+    [...(ed.rendered || [])], ed.rtimes || {}, ed.specialistArtifacts || {}]);
+}
+
+function liveToolTransactionMarkup(transaction, { showAgent = false, open = false, compact = false, active = true } = {}) {
+  const result = transaction.result;
+  const failed = !!result && !result.ok;
+  const running = !result && active;
+  const args = compactTraceValue(transaction.use?.args, 260);
+  const output = compactTraceValue(result?.result, 260);
+  const argsDetail = transaction.use?.args && Object.keys(transaction.use.args).length
+    ? workflowTraceSafeJson(transaction.use.args) : "";
+  const outputDetail = result && result.result !== undefined
+    ? workflowTraceSafeJson(result.result) : "";
+  const duration = result?.duration_ms ? `${Number(result.duration_ms).toLocaleString()} ms` : "";
+  const status = !result && !active ? "未收到结束回执" : running ? "运行中" : failed
+    ? `失败${result.error_code ? ` · ${result.error_code}` : ""}`
+    : `完成${duration ? ` · ${duration}` : ""}`;
+  const agent = showAgent && transaction.agent
+    ? `${orchestrationAgentMeta(transaction.agent).label} · ` : "";
+  const read = liveReadFileSummary(transaction, active);
+  const editPath = ["patch", "write_file"].includes(transaction.tool)
+    ? String(transaction.use?.args?.path || result?.result?.path || "") : null;
+  const filePath = read?.path ?? editPath;
+  const toolLabel = TOOL_LABEL[transaction.tool] || transaction.tool;
+  const orch = ["orch", "orchestrator"].includes(transaction.agent);
+  const delegatedTasks = transaction.tool === "delegate_submit" && Array.isArray(transaction.use?.args?.tasks)
+    ? transaction.use.args.tasks : [];
+  const isFailedTaskStatus = task =>
+    ["failed", "dependency_failed", "start_failed", "skipped"].includes(String(task?.status || "").toLowerCase());
+  const invalidDelegationArguments = transaction.tool === "delegate_submit" && failed
+    && ["invalid_arguments", "missing_arguments", "unknown_arguments"].includes(result.error_code);
+  const delegatedRoles = new Map();
+  delegatedTasks.forEach(task => {
+    const role = String(task?.role || "").trim().toLowerCase();
+    if (role) delegatedRoles.set(role, (delegatedRoles.get(role) || 0) + 1);
+  });
+  const roleNames = {research: "Research", image: "Image", slide: "Slide"};
+  const delegationRoles = [...delegatedRoles].map(([role, count]) =>
+    `${roleNames[role] || role}${count > 1 ? ` × ${count}` : ""}`).join(" · ") || "任务角色未确认";
+  const runtimeTasks = typeof ed !== "undefined" && Array.isArray(ed.muralRuntime?.tasks)
+    ? ed.muralRuntime.tasks : [];
+  const delegatedTaskIds = new Set(delegatedTasks.map(task => String(task?.task_id || "")).filter(Boolean));
+  const delegatedRuntimeTasks = result?.ok
+    ? runtimeTasks.filter(task => delegatedTaskIds.has(String(task?.task_id || ""))) : [];
+  const failedDelegatedTask = delegatedRuntimeTasks.find(isFailedTaskStatus);
+  const waitPayload = transaction.tool === "delegate_wait" && result?.ok
+    && result.result && typeof result.result === "object" ? result.result : null;
+  const waitFailedTask = Array.isArray(waitPayload?.tasks)
+    ? waitPayload.tasks.find(isFailedTaskStatus) : null;
+  const waitFailureEvent = Array.isArray(waitPayload?.events)
+    ? waitPayload.events.find(event => ["task_failed", "task_start_failed", "dependency_failed"]
+      .includes(String(event?.type || event?.event_type || "").toLowerCase())) : null;
+  const waitUnresolvedFailure = Array.isArray(waitPayload?.unresolved_failures)
+    ? waitPayload.unresolved_failures[0] : null;
+  const childFailure = failedDelegatedTask || waitFailedTask || waitFailureEvent || waitUnresolvedFailure || null;
+  const childFailureText = String(childFailure?.error || childFailure?.detail || childFailure?.message
+    || childFailure?.status || childFailure?.type || childFailure?.event_type || "").trim();
+  const childFailureCode = childFailureText.match(/\b([a-z][a-z0-9_]+):/)?.[1]
+    || String(childFailure?.error_code || childFailure?.code || "").trim();
+  const delegatedStatuses = delegatedRuntimeTasks.map(task => String(task?.status || "").toLowerCase());
+  const delegationStatus = failedDelegatedTask
+    ? `提交完成；子任务后续失败${childFailureCode ? ` · ${childFailureCode}` : ""}`
+    : delegatedRuntimeTasks.length && delegatedStatuses.every(value => value === "succeeded") ? "同事已完成"
+    : delegatedStatuses.some(value => ["running", "processing"].includes(value)) ? "同事执行中"
+    : delegatedRuntimeTasks.length ? "已提交 · 等待执行" : "提交已处理";
+  const pendingRequestCount = Array.isArray(waitPayload?.pending_requests) ? waitPayload.pending_requests.length : 0;
+  const waitStatus = childFailure && transaction.tool === "delegate_wait"
+    ? `等待完成；收到子任务失败事件${childFailureCode ? ` · ${childFailureCode}` : ""}`
+    : pendingRequestCount ? `等待完成；收到协助请求 × ${pendingRequestCount}`
+    : waitPayload?.all_terminal ? "等待完成；当前批次已结束" : "等待完成";
+  const displayFailed = failed;
+  const displayStatus = transaction.tool === "delegate_submit" && result && !failed
+    ? `${delegationStatus}${duration ? ` · ${duration}` : ""}`
+    : transaction.tool === "delegate_wait" && result && !failed
+      ? `${waitStatus}${duration ? ` · ${duration}` : ""}` : status;
+  const scope = transaction.use?.args?.scope;
+  const unifiedVisual = transaction.tool === "inspect";
+  const target = transaction.use?.args || {};
+  const visualKind = Array.isArray(target.page) && target.page.length > 1 ? "多页联系表检查"
+    : target.page !== undefined ? "单页视觉检查" : "图片检查";
+  const visual = orch && (unifiedVisual || (transaction.tool === "vision_analyze" && ["deck", "page"].includes(scope)));
+  const label = visual ? `Orchestrator · ${unifiedVisual ? visualKind : scope === "deck" ? "整册视觉复核" : "页面视觉复核"}`
+    : orch && transaction.tool === "verification_submit" && transaction.use?.args?.status === "issues_found" ? "Orchestrator · 提交复核问题"
+    : invalidDelegationArguments ? "委派参数格式错误，任务未启动"
+    : orch && transaction.tool === "delegate_submit" ? `拉起同事 · ${delegationRoles}`
+    : orch && transaction.tool === "delegate_wait" ? "等待后台任务状态"
+    : read ? `读取文件 · ${read.file}` : editPath !== null
+    ? `${toolLabel} · ${editPath.split("/").pop() || "文件名未记录"}`
+    : transaction.tool === "terminal" ? liveTerminalLabel(transaction.use?.args?.command) : toolLabel;
+  return `<details class="agent-action live-transaction ${running ? "active running" : displayFailed ? "failed" : result ? "succeeded" : "interrupted"}${compact ? " compact-tool" : ""}" data-detail-key="tool-${escapeHtml(transaction.id)}" data-tool-use-id="${escapeHtml(transaction.id)}"${open ? " open" : ""}>
+    <summary><span>${running ? "•" : displayFailed ? "!" : result ? "✓" : "○"}</span>
+      <div class="live-transaction-copy"><b${filePath !== null ? ` class="live-tool-file" title="${escapeHtml(filePath)}"` : ""}>${escapeHtml(`${agent}${label}`)}</b>
+        ${read ? `<small class="live-read-progress" title="仅说明本次工具返回的范围，不代表模型已理解或落实文件要求。">${escapeHtml(read.progress)}</small>` : ""}
+        ${visual ? `<small class="live-read-progress">${escapeHtml(target.path || (target.page !== undefined ? `页码 ${[].concat(target.page).join(", ")}` : "图片路径未记录"))} · ${unifiedVisual ? "实际图片与检查反馈见回执；执行成功不等于质量通过，只读复核不取得修改权" : "原生看图，判断见本 Agent 后续消息；不是独立 Critic"}</small>` : ""}
+        ${!compact && args ? `<i><strong>参数</strong>${escapeHtml(args)}</i>` : ""}
+        ${!compact && output ? `<i><strong>结果</strong>${escapeHtml(output)}</i>` : ""}
+      </div><em>${escapeHtml(displayStatus)}</em><i class="live-transaction-chevron" aria-hidden="true"></i>
+    </summary>
+    <div class="live-transaction-detail">
+      ${argsDetail ? `<section><b>调用参数</b><pre>${escapeHtml(argsDetail)}</pre></section>` : ""}
+      ${outputDetail ? `<section><b>执行结果</b><pre>${escapeHtml(outputDetail)}</pre></section>` : !result ? `<p>${running ? "工具仍在执行，结果返回后会显示在这里。" : "本次运行已结束或暂停；此工具没有结束回执，不能判为成功。"}</p>` : ""}
+      ${childFailure && !failed ? `<p class="live-transaction-error">子任务后续失败（非本工具失败）：${escapeHtml(childFailureText || "未记录具体原因")}</p>` : ""}
+      ${failed && result.error_code ? `<p class="live-transaction-error">错误代码：${escapeHtml(result.error_code)}</p>` : ""}
+    </div>
+  </details>`;
 }
 
 function reconcileAgentStories(list, stories) {
@@ -5808,7 +9442,7 @@ function reconcileAgentStories(list, stories) {
     if (!card) {
       card = document.createElement("article");
       card.dataset.storyKey = key;
-      card.innerHTML = `<span class="agent-avatar">${agentIdentityGlyph(editorPresentationKind())}</span><div><b>SenseNova Present</b><p>${agentStoryHtml(text)}</p></div>`;
+      card.innerHTML = `<span class="agent-avatar">${agentIdentityGlyph(editorPresentationKind())}</span><div><b>MURAL Presenter</b><p>${agentStoryHtml(text)}</p></div>`;
     }
     card.className = `agent-message${index === stories.length - 1 ? " latest" : ""}`;
     existing.delete(key);
@@ -5823,12 +9457,17 @@ function reconcileAgentStories(list, stories) {
 
 function progressHistoryItems(evs) {
   const items = evs.flatMap((ev) => {
+    if (ev.k === "context") return [];
     if (ev.k === "tool") {
       const [title, detail] = toolProgress(ev);
       return [{ type: "tool", title, text: detail, count: 1 }];
     }
+    if (ev.k === "analysis") {
+      const value = cleanAgentText(ev.s);
+      return value ? [{ type: "analysis", title: "分析摘要", text: value, count: 1 }] : [];
+    }
     const value = cleanAgentText(ev.s);
-    return value ? [{ type: "message", title: "SenseNova Present", text: value, count: 1 }] : [];
+    return value ? [{ type: "message", title: "MURAL Presenter", text: value, count: 1 }] : [];
   });
   const toolIndexes = new Map();
   return items.reduce((result, item) => {
@@ -5848,10 +9487,12 @@ function progressHistoryItems(evs) {
 }
 
 function pageAgentDisplayName(source, n) {
-  if (String(source).startsWith("slide_group_")) return "页面组设计 Agent";
+  if (source === "orch" && ed.pageAgents?.[String(Number(n))] === source) return "主 Agent 制作";
+  if (String(source).startsWith("slide_group_")) return agentPages(source).length > 1
+    ? "页面组设计 Agent" : `第 ${pad2(n)} 页设计 Agent`;
   if (/^slide_\d+/.test(String(source))) return `第 ${pad2(n)} 页设计 Agent`;
   if (String(source).startsWith("dynamic:")) return "动态创作 Agent";
-  return "SenseNova Present";
+  return "MURAL Presenter";
 }
 
 function completedMilestoneDetail(label, count, hints) {
@@ -5875,11 +9516,17 @@ function pageAgentProgressItems(evs, source, n) {
   const groups = new Map();
   const messages = [];
   (evs || []).forEach((ev, index) => {
-    const order = Number.isFinite(Number(ev.seq)) ? Number(ev.seq) : index;
-    if (ev.k === "text") {
-      const text = cleanAgentText(ev.s);
+    const sequence = ev.stream_start_seq ?? ev.seq;
+    const order = Number.isFinite(Number(sequence)) ? Number(sequence) : index;
+    if (ev.k === "text" || ev.k === "analysis") {
+      const text = liveAgentText(ev);
       if (text && !messages.some((item) => item.text === text)) {
-        messages.push({ type: "message", title: owner, text, count: 1, order });
+        messages.push({
+          type: ev.k === "analysis" ? "analysis" : "message",
+          title: (ev.k === "analysis" ? `${owner} · 分析摘要` : owner) + (ev.partial ? ` · ${livePreviewLabel(ev)}` : ""),
+          streamId: ev.stream_id || "",
+          text, count: 1, order,
+        });
       }
       return;
     }
@@ -5913,7 +9560,7 @@ function reconcileProgressHistory(list, items) {
   const existing = new Map($$(".agent-message[data-history-key]", list).map((card) => [card.dataset.historyKey, card]));
   const occurrences = new Map();
   const desired = items.map((item, index) => {
-    const identity = JSON.stringify([item.type, item.title, item.text, item.count]);
+    const identity = item.streamId || JSON.stringify([item.type, item.title, item.text, item.count]);
     const occurrence = (occurrences.get(identity) || 0) + 1;
     occurrences.set(identity, occurrence);
     const key = JSON.stringify([identity, occurrence]);
@@ -5921,7 +9568,11 @@ function reconcileProgressHistory(list, items) {
     if (!card) {
       card = document.createElement("article");
       card.dataset.historyKey = key;
-      card.innerHTML = `<span class="agent-avatar">${agentIdentityGlyph(editorPresentationKind())}</span><div><b>${escapeHtml(item.title)}${item.count > 1 ? `<em class="history-count">×${item.count}</em>` : ""}</b>${item.type === "message" ? `<div class="agent-markdown">${agentMarkdownHtml(item.text)}</div>` : `<p>${escapeHtml(item.text)}</p>`}</div>`;
+    }
+    const content = `<span class="agent-avatar">${agentIdentityGlyph(editorPresentationKind())}</span><div><b>${escapeHtml(item.title)}${item.count > 1 ? `<em class="history-count">×${item.count}</em>` : ""}</b>${["message", "analysis"].includes(item.type) ? `<div class="agent-markdown">${agentMarkdownHtml(item.text)}</div>` : `<p>${escapeHtml(item.text)}</p>`}</div>`;
+    if (card.dataset.renderKey !== content) {
+      card.innerHTML = content;
+      card.dataset.renderKey = content;
     }
     card.className = `agent-message history-${item.type}${index === items.length - 1 ? " latest" : ""}`;
     existing.delete(key);
@@ -5941,7 +9592,7 @@ function renderAgentProgress(body, evs, { running = false, rendered = false, n =
   body.classList.remove("is-orchestration");
   body.closest(".outline-agent-turn")?.classList.remove("is-orchestration");
   const allStories = evs
-    .filter((ev) => ev.k === "text")
+    .filter((ev) => ev.k === "text" || ev.k === "analysis")
     .map((ev) => cleanAgentText(ev.s))
     .filter(Boolean)
     .filter((text, index, all) => index === 0 || text !== all[index - 1]);
@@ -5950,9 +9601,10 @@ function renderAgentProgress(body, evs, { running = false, rendered = false, n =
     ? progressHistoryItems(evs)
     : pageAgentProgressItems(evs, source, n);
   const actions = summarizeToolEvents(evs);
+  const transactions = liveToolTransactions(evs);
   const actionCount = evs.filter((ev) => ev.k === "tool").length;
   const [stateTitle, stateDetail] = agentCurrentState(evs, { running, rendered, n });
-  const signature = JSON.stringify([source, running, rendered, stateTitle, stories, historyItems, actions]);
+  const signature = JSON.stringify([source, running, rendered, stateTitle, stories, historyItems, actions, transactions]);
   if (body.dataset.progressSignature === signature) return;
   const scroller = body.closest(".outline-chat-body") || body;
   const wasNearBottom = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 80;
@@ -5991,15 +9643,22 @@ function renderAgentProgress(body, evs, { running = false, rendered = false, n =
     reconcileProgressHistory(storyList, historyItems);
   }
 
-  const actionKey = JSON.stringify([running, actions]);
+  const actionKey = JSON.stringify([running, actions, transactions]);
   const actionDetails = body.querySelector(".agent-actions");
   const actionSummary = actionDetails.querySelector("summary em");
-  const actionSummaryText = actionCount ? `${actions.length} 类动作 · ${actionCount} 次执行` : "等待执行";
+  const failedTransactions = transactions.filter((item) => item.result && !item.result.ok).length;
+  const openTransactions = transactions.filter((item) => !item.result).length;
+  const actionSummaryText = actionCount
+    ? `${actionCount} 次事务${openTransactions ? ` · ${openTransactions} 运行中` : ""}${failedTransactions ? ` · ${failedTransactions} 失败` : ""}`
+    : "等待执行";
   if (actionSummary.textContent !== actionSummaryText) actionSummary.textContent = actionSummaryText;
   const actionList = body.querySelector(".agent-action-list");
   if (actionList.dataset.renderKey !== actionKey) {
+    const openToolIds = new Set($$(".live-transaction[open]", actionList).map((item) => item.dataset.toolUseId));
     actionList.dataset.renderKey = actionKey;
-    actionList.innerHTML = actions.length ? actions.map((action, index) => `
+    actionList.innerHTML = transactions.length
+      ? transactions.map((transaction) => liveToolTransactionMarkup(transaction, { open: openToolIds.has(transaction.id), active: running })).join("")
+      : actions.length ? actions.map((action, index) => `
       <div class="agent-action${index === 0 && running ? " active" : ""}"><span>${index === 0 && running ? "•" : "✓"}</span><b>${escapeHtml(action.label)}</b>${action.hint ? `<i>${escapeHtml(action.hint)}</i>` : ""}${action.count > 1 ? `<em>×${action.count}</em>` : ""}</div>`).join("") : '<div class="agent-action-empty">还没有底层执行记录</div>';
   }
   requestAnimationFrame(() => {
@@ -6008,11 +9667,14 @@ function renderAgentProgress(body, evs, { running = false, rendered = false, n =
 }
 
 const ORCHESTRATION_ROLE_LABELS = {
+  harness: ["后台解析", "↥", "Harness 运行状态 · 非模型消息"],
   orch: ["整体策划", "主", "梳理结构并协调制作"],
   material: ["Material Agent", "材", "解析并整理用户材料"],
-  research: ["Research Agent", "研", "检索、阅读并核验外部资料"],
+  research: ["Research Agent", "研", "阅读材料、检索外部证据并形成知识依据"],
   image: ["Image Agent", "图", "搜索、生成并检查图片素材"],
   review: ["Review Agent", "审", "复核成稿与整体一致性"],
+  content: ["内容审计", "审", "核对用户要求、来源与最终页面内容"],
+  critic: ["视觉 Critic", "检", "独立检查当前页面像素"],
 };
 
 function canonicalOrchestrationAgentKey(value) {
@@ -6025,9 +9687,13 @@ function orchestrationAgentMeta(key) {
   const group = String(key).match(/^slide(?:_|-)group(?:_|-)(.+)$/);
   if (group) {
     const pages = agentPages(key);
+    if (pages.length === 1) return {
+      key, role: "slide", label: `第 ${pages[0]} 页制作`, icon: pad2(pages[0]),
+      note: "完善本页内容与画面", page: pages[0], pages,
+    };
     return {
-      key, role: "slide", label: "页面组协作", icon: "组",
-      note: pages.length ? `统一制作第 ${pages.map((page) => Number(page)).join("、")} 页` : "统一制作一组关联页面",
+      key, role: "slide", label: pages.length ? "页面组协作" : "页面制作", icon: pages.length ? "组" : "页",
+      note: pages.length ? `统一制作第 ${pages.map((page) => Number(page)).join("、")} 页` : "负责页码尚未获取",
       page: pages[0] || 0, pages,
     };
   }
@@ -6046,7 +9712,7 @@ function orchestrationAgentGlyph(meta, kind = editorPresentationKind(), classNam
   if (kind !== "static") return agentIdentityGlyph(kind, className);
   // One visual family: solid rounded modules rather than unrelated outline
   // icons.  The silhouettes differ at a glance while retaining the weight of
-  // the original SenseNova four-tile mark.
+  // the MURAL purple-to-mint identity mark.
   const svg = (body) => `<svg class="${className}" viewBox="0 0 20 20" fill="none" aria-hidden="true">${body}</svg>`;
   if (meta.role === "research") return svg(`
     <rect x="2.3" y="3.2" width="11.2" height="13.8" rx="3" fill="currentColor" opacity=".22"/>
@@ -6096,7 +9762,7 @@ function orchestrationFlatFeed(feed) {
   let fallbackSequence = 0;
   return Object.entries(feed || {}).flatMap(([agent, events]) => (events || []).map((event) => ({
     ...event, agent: canonicalOrchestrationAgentKey(agent),
-    order: Number.isFinite(Number(event.seq)) ? Number(event.seq) : fallbackSequence++,
+    order: Number.isFinite(Number(event.stream_start_seq ?? event.seq)) ? Number(event.stream_start_seq ?? event.seq) : fallbackSequence++,
   }))).sort((a, b) => a.order - b.order);
 }
 
@@ -6104,9 +9770,11 @@ function orchestrationEventTime(event) {
   const elapsed = Number(event?.elapsed_s);
   const local = conversationTime(event?.ts || event?.created_at);
   const full = conversationTime(event?.ts || event?.created_at, { withDay: true });
-  if (local && full) {
+  const grouped = conversationTime(event?.ts || event?.created_at, { withDay: true, bucketMinutes: 5 });
+  if (local && full && grouped) {
     return {
       text: local.text,
+      minute: grouped.groupKey, groupLabel: grouped.text, iso: local.iso,
       title: `${full.text} · 事件发生时间（浏览器本地时区）${Number.isFinite(elapsed) ? ` · 任务启动后 ${fmtDur(elapsed)}` : ""}`,
     };
   }
@@ -6117,6 +9785,7 @@ function orchestrationEventTime(event) {
   if (/^\d{2}:\d{2}:\d{2}$/.test(clock)) {
     return {
       text: clock,
+      minute: clock.slice(0, 5), groupLabel: clock.slice(0, 5),
       title: Number.isFinite(elapsed) ? `历史记录时间 · 任务启动后 ${fmtDur(elapsed)}` : "历史过程记录时间",
     };
   }
@@ -6152,17 +9821,18 @@ function agentTimingBadge(timing) {
   if (!started && !finished && !duration) return "";
   const running = timing.status === "running";
   const failed = timing.status === "failed";
+  const partial = timing.status === "partial";
   const waiting = timing.status === "waiting";
   const parts = [];
   if (started) parts.push(`<span>${escapeHtml(started.text)} 发起</span>`);
-  if (finished) parts.push(`<span>${escapeHtml(finished.text)} ${failed ? "结束" : "完成"}</span>`);
+  if (finished) parts.push(`<span>${escapeHtml(finished.text)} ${failed ? "结束" : partial ? "有界降级" : "完成"}</span>`);
   if (duration) parts.push(`<b>${escapeHtml(`${running ? "已进行" : "耗时"} ${duration}`)}</b>`);
   const titleParts = [];
   if (startedFull) titleParts.push(`发起：${startedFull.text}`);
-  if (finishedFull) titleParts.push(`${failed ? "结束" : "完成"}：${finishedFull.text}`);
+  if (finishedFull) titleParts.push(`${failed ? "结束" : partial ? "有界降级" : "完成"}：${finishedFull.text}`);
   if (duration) titleParts.push(`${running ? "已进行" : "耗时"}：${duration}`);
   titleParts.push("并行 Agent 的时间可能重叠");
-  return `<time class="orch-duration orch-stage-time${running ? " running" : ""}${failed ? " failed" : ""}${waiting ? " waiting" : ""}" datetime="${escapeHtml(started?.iso || finished?.iso || "")}" title="${escapeHtml(titleParts.join("；"))}">${parts.join("<span class=\"orch-time-separator\">·</span>")}</time>`;
+  return `<time class="orch-duration orch-stage-time${running ? " running" : ""}${failed ? " failed" : ""}${partial ? " partial" : ""}${waiting ? " waiting" : ""}" datetime="${escapeHtml(started?.iso || finished?.iso || "")}" title="${escapeHtml(titleParts.join("；"))}">${parts.join("<span class=\"orch-time-separator\">·</span>")}</time>`;
 }
 
 function timingAgentLabel(key) {
@@ -6218,11 +9888,12 @@ function orchestrationTimingMarkup() {
     const meta = orchestrationAgentMeta(key);
     const failed = timing.status === "failed";
     const running = timing.status === "running";
+    const completedWithFallback = timing.completion_status === "completed_with_fallback";
     return `<div class="orchestration-timing-agent role-${escapeHtml(meta.role)}${failed ? " failed" : ""}${running ? " running" : ""}" title="${escapeHtml(key)}">
       <i class="orchestration-timing-dot" aria-hidden="true"></i>
       <span>${escapeHtml(timingAgentLabel(key))}</span>
       <b>${escapeHtml(fmtDur(timing.duration_s))}</b>
-      <em>${failed ? "未完成" : (running ? "进行中" : "已完成")}</em>
+      <em>${failed ? "未完成" : (running ? "进行中" : (completedWithFallback ? "已完成 · 已采用替代方案" : "已完成"))}</em>
     </div>`;
   }).join("");
   return `<section class="orchestration-timing-card">
@@ -6234,135 +9905,17 @@ function orchestrationTimingMarkup() {
   </section>`;
 }
 
-function chinesePageAgentSummary(value, { page = 0 } = {}) {
+
+function compactPageAgentResult(value) {
   const text = cleanAgentText(value);
-  if (!text) return "";
-
-  // Prefer the structured handoff summary when the Agent supplied one.  A
-  // number of page Agents first write an English visual-check sentence and
-  // then append the actual Chinese delivery contract; showing the first line
-  // verbatim made the user-facing current-state card unexpectedly switch to
-  // English even though the rest of Studio is Chinese.
-  const declared = text.match(/(?:^|\n)\s*(?:[-*+]\s*)?summary\s*[:：]\s*([^\n]+)/i)?.[1]?.trim() || "";
-  if (/[\u3400-\u9fff]/.test(declared)) return declared;
-
-  const hanCount = (text.match(/[\u3400-\u9fff]/g) || []).length;
-  const latinCount = (text.match(/[A-Za-z]/g) || []).length;
-  if (hanCount >= Math.max(8, latinCount * 0.35)) return "";
-
-  const statedPage = Number(text.match(/\bslide\s*0*(\d{1,3})\b/i)?.[1] || page || 0);
-  const wordNumbers = {
-    one: 1, two: 2, three: 3, four: 4, five: 5, six: 6,
-    seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12,
-  };
-  const readyMatch = text.match(/\ball\s+(?:(\d+)|(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve))\s+pages?\s+(?:are\s+)?(?:ready|complete|completed|clean)\b/i);
-  const readyCount = readyMatch ? Number(readyMatch[1] || wordNumbers[String(readyMatch[2] || "").toLowerCase()] || 0) : 0;
-  const pagePrefix = statedPage ? `第 ${statedPage} 页` : "页面组";
-  const isReady = /\b(?:ready|complete|completed|clean|verified|passes?)\b/i.test(text);
-  const isAdjusting = /\b(?:fix|fixing|adjust|adjusting|revise|revising|refine|refining|update|updating)\b/i.test(text);
-  const layoutDone = /\b(?:layout|composition|spacing|alignment|balance|well-balanced)\b/i.test(text);
-  const visionDone = /\b(?:render|visual|vision|overflow|overlap|legible|readable)\b/i.test(text);
-
-  if (isReady && readyCount) {
-    const work = layoutDone ? "版式调整已完成" : (visionDone ? "渲染与画面检查已完成" : "制作已完成");
-    return `${pagePrefix}${work}，本组 ${readyCount} 页均已就绪。`;
-  }
-  if (isReady) {
-    const work = layoutDone ? "版式调整已完成" : (visionDone ? "渲染与画面检查已完成" : "制作与检查已完成");
-    return `${pagePrefix}${work}。`;
-  }
-  if (isAdjusting) return `${pagePrefix}正在根据检查结果继续优化。`;
-  return "页面组进展已更新，正在继续推进制作与检查。";
-}
-
-function compactPageAgentResult(value, { completed = false, page = 0 } = {}) {
-  const text = cleanAgentText(value);
-  if (!text) return { summary: "", detail: "" };
-  const localizedSummary = chinesePageAgentSummary(text, { page });
-  if (localizedSummary) {
-    return {
-      summary: localizedSummary,
-      detail: text !== localizedSummary ? text : "",
-    };
-  }
-  // Agent finals commonly start with one audience-facing conclusion and then
-  // append an identity declaration, file inventory and validation ledger.  The
-  // card should keep that first conclusion scannable; everything after it
-  // belongs in "查看完整制作说明" instead of leaking into the main timeline.
-  const leadLine = text.split("\n")
-    .map((line) => line.trim().replace(/^#{1,6}\s+/, "").replace(/^[-*+]\s+/, ""))
-    .find((line) => line && !/^(?:---+|身份(?:声明)?\s*[:：]?|产出\s*[:：]?|状态\s*[:：]?)/i.test(line)) || "";
-  const leadSentenceMatch = leadLine.match(/^(.{1,160}?[。！？!?](?:[”’\"']|$))/);
-  const leadSummary = (leadSentenceMatch?.[1] || leadLine).trim();
-  const conciseLead = leadSummary && leadSummary.length <= 160;
-  const hasHiddenDetail = text.length > leadSummary.length || text !== leadSummary;
-  const technical = /(?:slides?\/slide[_-]?\d+\.html|renders?\/slide[_-]?\d+\.png|OVERFLOW|OVERLAP|CROWDED|CONTRAST|hairline|margin:\s*\d|\b(?:PASS|FAIL)\b|(?:^|\s)[.#][\w-]+\s*[{,:])/i.test(text);
-  if (conciseLead && (hasHiddenDetail || /(?:ready|完成|达标|通过|良好|已交付)/i.test(leadSummary))) {
-    return {
-      summary: leadSummary,
-      detail: hasHiddenDetail ? text : "",
-    };
-  }
-  if (completed && technical) {
-    const checksPassed = /(?:通过|\bPASS\b|无\s*(?:OVERFLOW|OVERLAP|CROWDED)|零\s*(?:溢出|遮挡|空白页|错误))/i.test(text);
-    const outputs = [];
-    if (/slides?\/slide[_-]?\d+\.html/i.test(text)) outputs.push("页面文件");
-    if (/renders?\/slide[_-]?\d+\.png/i.test(text)) outputs.push("预览图");
-    const subject = page > 0 ? `第 ${pad2(page)} 页` : "本页";
-    const outputText = outputs.length ? `，已生成${outputs.join("和")}` : "";
-    const checkText = checksPassed ? "并通过渲染与画面检查" : "渲染与检查记录已保存";
-    return {
-      summary: `${subject}内容与画面已完成${outputText}，${checkText}。`,
-      detail: text,
-    };
-  }
-  const maxLength = 160;
   return {
-    summary: text.length > maxLength ? `${text.slice(0, maxLength).trim()}…` : text,
-    detail: text.length > maxLength ? text : "",
+    summary: text.length > 160 ? `${text.slice(0, 160).trimEnd()}…` : text,
+    detail: text.length > 160 ? text : "",
   };
 }
 
 function compactOrchestrationCurrentDetail(meta, value) {
-  const text = cleanAgentText(value);
-  if (!text) return "当前结果已经记录，正在继续推进后续步骤。";
-  // Specialist finals often contain asset manifests, validation ledgers and
-  // other implementation detail. Keep the current-state card readable; the
-  // complete text is still retained in the collapsible production timeline.
-  if (meta.role === "image") return "图片素材与质量检查结果已整理。";
-  if (meta.role === "research") return "研究资料与事实核验结果已整理。";
-  if (meta.role === "material") return "附件内容与材料摘要已整理。";
-  if (meta.role === "review") return "成稿检查与整体一致性结果已整理。";
-  if (meta.role === "slide") {
-    return compactPageAgentResult(text, { page: meta.page }).summary || "页面制作结果已整理。";
-  }
-  const lead = text.split("\n")
-    .map((line) => line.trim().replace(/^#{1,6}\s+/, "").replace(/^[-*+]\s+/, ""))
-    .find(Boolean) || text;
-  return lead.length > 150 ? `${lead.slice(0, 149).trim()}…` : lead;
-}
-
-function compactReviewPublicUpdate(value) {
-  const text = cleanAgentText(value);
-  if (!text) return "";
-  const lead = text.split("\n")
-    .map((line) => line.trim()
-      .replace(/^#{1,6}\s+/, "")
-      .replace(/^[-*+]\s+/, "")
-      .replace(/^身份(?:声明)?\s*[:：]?\s*/i, ""))
-    .find((line) => line && !/^(?:---+|status\s*[:：]|产出\s*[:：])/i.test(line)) || "";
-  if (!lead) return "";
-  // Chinese public replies can be shown directly. Keep the live card concise;
-  // the unabridged response remains available in the details disclosure.
-  if (/[\u3400-\u9fff]/.test(lead)) {
-    const sentence = lead.match(/^(.{1,180}?[。！？!?](?:[”’\"']|$))/)?.[1] || lead;
-    return sentence.length > 180 ? `${sentence.slice(0, 179).trim()}…` : sentence;
-  }
-  // Do not leak an English model-default response into a Chinese process UI.
-  // Preserve it in the full details while rendering a truthful localized state.
-  if (/(?:pass|ready|complete|verified|approved)/i.test(lead)) return "成稿复核已经完成，检查结论已整理。";
-  if (/(?:fix|revise|update|patch|issue)/i.test(lead)) return "复核发现需要调整的内容，正在修正并重新检查。";
-  return "Review Agent 已更新复核进展。";
+  return compactPageAgentResult(value).summary || "暂无 Agent 说明。";
 }
 
 function specialistToolCount(events, tools) {
@@ -6370,205 +9923,181 @@ function specialistToolCount(events, tools) {
   return (events || []).filter((event) => event.k === "tool" && wanted.has(event.tool)).length;
 }
 
+function specialistToolStep(label, events, tools) {
+  const relevant = (events || []).filter(event => ["tool", "tool_result"].includes(event.k) && tools.includes(event.tool));
+  const rows = liveToolTransactions(relevant, {limit: Infinity});
+  const success = rows.filter(row => row.result?.ok === true).length;
+  const failed = rows.filter(row => row.result?.ok === false).length;
+  const unmatched = rows.filter(row => !row.result).length + relevant.filter(event => event.k === "tool" && !event.tool_use_id).length;
+  const detail = relevant.length ? [
+    `${specialistToolCount(relevant, tools)} 次发起记录`,
+    `${success} 次成功回执`,
+    failed ? `${failed} 次失败回执` : "",
+    unmatched ? `${unmatched} 次未见结束回执` : "",
+  ].filter(Boolean).join(" · ") : "当前已载入记录未包含此类操作";
+  // 这里只汇总当前可见证据，不把调用成功或历史失败推断为阶段完成或失败。
+  return specialistStep(label, detail, relevant.length ? "recorded" : "unknown");
+}
+
 function specialistStep(label, detail, state) {
   return { label, detail, state };
 }
 
-function specialistProgressEntry(meta, events, artifacts = {}, { allowLegacyPreviewFallback = true } = {}) {
+function specialistProgressEntry(meta, events, artifacts = {}) {
   const ordered = (events || []).map((event, index) => ({
     ...event, order: Number.isFinite(Number(event.seq)) ? Number(event.seq) : index,
   })).sort((a, b) => a.order - b.order);
-  const textUpdates = ordered
-    .filter((event) => event.k === "text")
-    .map((event) => cleanAgentText(event.s))
-    .filter((text, index, values) => text && text !== values[index - 1]);
-  const latestText = textUpdates.at(-1) || "";
+  const latestText = [...ordered].reverse().find(event => event.k === "text" && !event.partial)?.s || "";
+  const lifecycle = [...ordered].reverse().find(event =>
+    ["agent_started", "agent_completed", "agent_failed"].includes(event.event_type));
+  const entry = {
+    type: "specialist", meta,
+    completed: lifecycle?.event_type === "agent_completed",
+    failed: lifecycle?.event_type === "agent_failed",
+    result: cleanAgentText(latestText),
+    order: ordered[0]?.order ?? 0, key: `specialist:${meta.key}`,
+    metrics: [], previews: [],
+  };
+  const step = (label, tools) => specialistToolStep(label, ordered, tools);
   if (meta.role === "review") {
-    const readCount = specialistToolCount(ordered, ["read", "read_file"]);
-    const visionCount = specialistToolCount(ordered, ["vision_analyze"]);
-    const renderCount = ordered.filter((event) => event.k === "tool" && (
-      ["render_slides", "render", "screenshot"].includes(event.tool)
-      || (event.tool === "terminal" && /(?:render|screenshot|playwright|chrom)/i.test(event.hint || ""))
-    )).length;
-    const fixCount = specialistToolCount(ordered, ["edit", "edit_file", "write", "write_file", "patch"]);
-    const completed = /(?:复核|检查|交付|成稿|全部|整册).*(?:完成|通过|就绪)|status\s*[:：]\s*ready/i.test(latestText)
-      || (ed.status === "completed" && ordered.length > 0);
-    const reviewCount = visionCount + renderCount;
-    const publicUpdates = textUpdates.map(compactReviewPublicUpdate)
-      .filter((text, index, values) => text && text !== values[index - 1]);
-    return {
-      type: "specialist", meta, completed,
-      result: publicUpdates.at(-1) || (completed ? "整册复核已完成，检查结论已整理。" : "Review Agent 正在检查成稿与页面一致性。"),
-      resultDetail: latestText && latestText !== publicUpdates.at(-1) ? latestText : "",
-      updates: publicUpdates,
-      order: ordered[0]?.order ?? 0, key: `specialist:${meta.key}`,
-      steps: [
-        specialistStep("收集成稿", ordered.length ? (readCount ? `${readCount} 次读取与范围确认` : "已确认检查范围") : "等待成稿", ordered.length ? "done" : "pending"),
-        specialistStep("逐页复核", reviewCount ? `${reviewCount} 次渲染与视觉检查` : "等待页面检查", completed ? "done" : (reviewCount ? "active" : "pending")),
-        specialistStep("修正问题", fixCount ? `${fixCount} 次针对性修正` : (completed ? "未记录额外修正" : "发现问题后会在此更新"), completed ? "done" : (fixCount ? "active" : "pending")),
-        specialistStep("汇总结论", completed ? "整册检查结论已完成" : (latestText ? "正在整理复核反馈" : "等待最终结论"), completed ? "done" : (latestText ? "active" : "pending")),
-      ],
-      metrics: [`${reviewCount} 次检查`, `${fixCount} 次修正`], previews: [],
-    };
+    const result = compactPageAgentResult(latestText);
+    return {...entry, result: result.summary, resultDetail: result.detail, steps: [
+      step("读取成稿", ["read", "read_file"]),
+      step("渲染与看图", ["vision_analyze", "inspect", "inspect_group", "render_slides", "render", "screenshot"]),
+      step("修改记录", ["edit", "edit_file", "write", "write_file", "patch"]),
+    ]};
   }
   if (meta.role === "research") {
-    const searchCount = specialistToolCount(ordered, ["web_search"]);
-    const sourceCount = specialistToolCount(ordered, ["web_extract", "web_fetch"]);
-    const briefStarted = ordered.some((event) => event.k === "tool" && event.tool === "write_file" && /knowledge-brief/i.test(event.hint || ""));
-    const completed = !!artifacts.brief_ready || /(?:研究|核验).*(?:完成|写入)|brief.*(?:ready|complete)/i.test(latestText);
-    return {
-      type: "specialist", meta, completed, result: latestText,
-      order: ordered[0]?.order ?? 0, key: `specialist:${meta.key}`,
-      steps: [
-        specialistStep("检索公开资料", searchCount ? `${searchCount} 次主题检索` : "等待开始", completed || sourceCount ? "done" : (searchCount ? "active" : "pending")),
-        specialistStep("阅读并交叉核验", sourceCount ? `${sourceCount} 个来源已读取` : "等待可靠来源", completed ? "done" : (sourceCount ? "active" : "pending")),
-        specialistStep("整理研究结论", completed ? "研究简报已完成" : (briefStarted ? "正在形成研究简报" : "等待汇总结论"), completed ? "done" : (briefStarted ? "active" : "pending")),
-      ],
-      metrics: searchCount ? [`${searchCount} 次检索`] : [], previews: [], assetCount: 0,
+    return {...entry, steps: [
+      step("检索公开资料", ["web_search"]),
+      step("读取知识与资料", ["web_extract", "web_fetch", "read", "read_file"]),
+      specialistStep("研究任务稿", artifacts.output_recorded ? `${artifacts.output_path} 已落盘；不代表研究完成`
+        : artifacts.output_path ? `已分配 ${artifacts.output_path}；尚无当前文件记录`
+        : "当前未提供本任务研究稿的落盘记录", artifacts.output_recorded ? "recorded" : "unknown"),
+    ],
       queries: Array.isArray(artifacts.queries) ? artifacts.queries : [],
       sources: Array.isArray(artifacts.sources) ? artifacts.sources : [],
     };
   }
   if (meta.role === "material") {
     const files = Array.isArray(artifacts.files) ? artifacts.files : [];
-    const parseCount = specialistToolCount(ordered, ["terminal", "read_file"]);
-    const summaryCompleted = /(?:材料|附件).*(?:完成|已整理|已解析)|coverage.*complete/i.test(latestText);
-    const completed = summaryCompleted || (files.length > 0 && files.every((file) => ["ok", "complete", "completed"].includes(String(file.status || file.coverage || "").toLowerCase())));
-    return {
-      type: "specialist", meta, completed, result: latestText,
-      order: ordered[0]?.order ?? 0, key: `specialist:${meta.key}`,
-      steps: [
-        specialistStep("接收材料", files.length ? `识别 ${files.length} 份材料` : "等待材料清单", files.length ? "done" : "pending"),
-        specialistStep("解析原文与页面", parseCount ? `${parseCount} 次读取/解析动作` : "等待解析", completed ? "done" : (parseCount ? "active" : "pending")),
-        specialistStep("形成可引用摘要", completed ? "材料覆盖已确认" : "等待覆盖检查", completed ? "done" : "pending"),
-      ],
-      metrics: files.length ? [`${files.length} 份材料`] : [], previews: [], files,
-    };
+    return {...entry, files, steps: [
+      specialistStep("材料清单", files.length ? `已记录 ${files.length} 份材料` : "当前未提供材料清单",
+        files.length ? "recorded" : "unknown"),
+      step("读取与解析记录", ["terminal", "read_file"]),
+    ]};
   }
-  const searchCount = specialistToolCount(ordered, ["web_search", "web_fetch", "web_extract"]);
-  const fetchCount = specialistToolCount(ordered, ["fetch_image"]);
-  const generateCount = specialistToolCount(ordered, ["image_generate"]);
-  const visionCount = specialistToolCount(ordered, ["vision_analyze"]);
   const imageItems = Array.isArray(artifacts.images) ? artifacts.images : [];
-  const statedCount = latestText.match(/(\d+)\s*\/\s*(\d+)\s*张/) || latestText.match(/(\d+)\s*(?:个|项|张).*?(?:视觉资产|素材)/);
-  const hasArtifactCount = Object.prototype.hasOwnProperty.call(artifacts, "count");
-  const assetCount = Number(hasArtifactCount
-    ? artifacts.count
-    : (imageItems.length || statedCount?.[2] || statedCount?.[1] || generateCount || 0));
-  const textCompleted = /(?:素材|视觉资产).*(?:已就绪|完成)|复检结果/i.test(latestText);
-  const completed = typeof artifacts.completed === "boolean"
-    ? artifacts.completed
-    : ((!!artifacts.catalog_ready || textCompleted) && assetCount > 0);
-  const fallbackContactSheet = allowLegacyPreviewFallback && (visionCount || completed) ? {
-    path: "assets/contact-sheet.png", name: "素材总览", mtime: ordered.at(-1)?.order || 0, legacy: true,
-  } : null;
-  const contactSheet = artifacts.contact_sheet || fallbackContactSheet;
+  const assetCount = Number.isInteger(artifacts.count) && artifacts.count >= 0 ? artifacts.count
+    : Array.isArray(artifacts.images) ? imageItems.length : null;
+  const visionCount = specialistToolCount(ordered, ["inspect", "vision_analyze"]);
   const origins = imageItems.reduce((counts, item) => {
     const key = String(item.origin || "unclassified");
     counts[key] = (counts[key] || 0) + 1;
     return counts;
   }, {});
-  const collectionStarted = searchCount + fetchCount + generateCount > 0;
-  return {
-    type: "specialist", meta, completed, result: latestText,
-    collectionResult: textUpdates.length > 1 ? textUpdates[0] : "",
-    order: ordered[0]?.order ?? 0, key: `specialist:${meta.key}`,
-    steps: [
-      specialistStep("梳理视觉需求", ordered.length ? "已读取页面规划与视觉方向" : "等待开始", ordered.length ? "done" : "pending"),
-      specialistStep("搜索与生成素材", collectionStarted ? `${searchCount} 次搜索 · ${fetchCount} 次下载 · ${generateCount} 次生成` : "等待素材任务", visionCount || completed ? "done" : (collectionStarted ? "active" : "pending")),
-      specialistStep("检查素材质量", visionCount ? `${visionCount} 次视觉检查` : "等待视觉检查", completed ? "done" : (visionCount ? "active" : "pending")),
-      specialistStep("整理素材库", completed ? `${assetCount} 项素材已就绪` : (assetCount ? `已收集 ${assetCount} 项素材` : "等待素材产出"), completed ? "done" : (assetCount ? "active" : "pending")),
-    ],
-    metrics: [`${assetCount} 项素材`, `${visionCount} 次检查`],
-    previews: imageItems,
-    contactSheet,
-    assetCount,
-    visionCount,
-    origins,
+  return {...entry, steps: [
+    step("读取视觉依据", ["read", "read_file"]),
+    step("搜索与生成素材", ["web_search", "web_fetch", "web_extract", "fetch_image", "image_generate"]),
+    step("素材看图记录", ["inspect", "vision_analyze"]),
+    specialistStep("素材登记", assetCount !== null ? `登记记录中有 ${assetCount} 项素材` : "当前未提供素材登记数量",
+      assetCount !== null ? "recorded" : "unknown"),
+  ],
+    metrics: [assetCount !== null ? `${assetCount} 项登记素材` : "素材数量未记录", `${visionCount} 次看图调用记录`],
+    previews: imageItems, contactSheet: artifacts.contact_sheet || null,
+    assetCount, visionCount, origins,
   };
 }
 
-function legacyImageArtifactScopes(feed, roleArtifacts = {}) {
-  // Compatibility for a backend that has not reloaded the per-agent artifact
-  // index yet.  The deck-wide image list is chronological, so split it by each
-  // generating Agent's real image_generate count instead of repeating it on
-  // every visual-material card.
-  const scopes = {};
-  const images = Array.isArray(roleArtifacts.images) ? roleArtifacts.images : [];
-  let cursor = 0;
-  Object.entries(feed || {}).forEach(([agent, events]) => {
-    const meta = orchestrationAgentMeta(agent);
-    if (meta.role !== "image") return;
-    const count = specialistToolCount(events, ["image_generate"]);
-    const scopedImages = count ? images.slice(cursor, cursor + count) : [];
-    cursor += count;
-    scopes[agent] = {
-      catalog_ready: roleArtifacts.catalog_ready,
-      count: scopedImages.length,
-      contact_sheet: null,
-      images: scopedImages,
-    };
-  });
-  return scopes;
-}
 
-function orchestratorProgressStage(value) {
-  const text = cleanAgentText(value);
-  if (/(?:完成|已完成|ready|交付|产出|已写入|已生成|已保存|收尾|最终总结|通过)/i.test(text)) return "result";
-  if (/(?:复核|review|检查|校验|审查|验证)/i.test(text)) return "review";
-  if (/(?:页面|slide|编排|制作|排版|渲染|并行生成)/i.test(text)) return "production";
-  if (/(?:视觉|素材|配图|图片|image)/i.test(text)) return "visual";
-  if (/(?:研究|资料|检索|搜索|事实核验|research)/i.test(text)) return "research";
-  return "planning";
-}
-
-function compactOrchestratorProgress(value) {
-  const text = cleanAgentText(value);
-  const lead = text.split("\n")
-    .map((line) => line.trim().replace(/^#{1,6}\s+/, "").replace(/^[-*+]\s+/, ""))
-    .find(Boolean) || text;
-  return lead.length > 180 ? `${lead.slice(0, 179).trim()}…` : lead;
-}
-
-function normalizedOrchestratorProgress(value) {
-  return compactOrchestratorProgress(value)
-    .toLowerCase()
-    .replace(/[\s\p{P}\p{S}]+/gu, "");
-}
 
 function appendOrchestratorProgress(updates, text, order, eventTime = null) {
-  const compact = compactOrchestratorProgress(text);
-  if (!compact) return;
-  const normalized = normalizedOrchestratorProgress(compact);
-  const previous = updates.at(-1);
-  if (!previous) {
-    updates.push({ text: compact, order, eventTime });
-    return;
-  }
-  const previousNormalized = normalizedOrchestratorProgress(previous.text);
-  if (normalized === previousNormalized) return;
-  // Models often repeat the same sentence and append one extra clause. Keep
-  // the more informative version inside the same phase instead of showing two
-  // near-identical progress rows.
-  if (previousNormalized.length >= 10 && normalized.includes(previousNormalized)) {
-    previous.text = compact;
-    previous.order = order;
-    previous.eventTime = eventTime;
-    return;
-  }
-  if (normalized.length >= 10 && previousNormalized.includes(normalized)) return;
-  updates.push({ text: compact, order });
+  const original = cleanAgentText(text);
+  if (!original || updates.at(-1)?.text === original) return;
+  updates.push({text: original, order, eventTime});
+}
+
+function slideOwnerSegments(events) {
+  const groups = new Map();
+  (events || []).filter((event) => !event.partial).forEach((event, index) => {
+    const id = String(event.segment_id || "unsegmented");
+    const rows = groups.get(id) || [];
+    rows.push({
+      ...event,
+      order: Number.isFinite(Number(event.seq)) ? Number(event.seq) : index,
+    });
+    groups.set(id, rows);
+  });
+  return [...groups.entries()].map(([segmentId, rows], index) => {
+    rows.sort((a, b) => a.order - b.order);
+    const terminal = [...rows].reverse().find((event) =>
+      ["agent_completed", "agent_failed"].includes(event.event_type));
+    const start = rows.find((event) => event.event_type === "agent_started") || rows[0];
+    const finish = terminal || rows.at(-1);
+    const started = Date.parse(start?.ts || "");
+    const finished = Date.parse(finish?.ts || "");
+    const patchReason = rows
+      .filter((event) => event.k === "tool" && event.tool === "patch")
+      .map((event) => String(event.args?.repair_reason || "").trim())
+      .find(Boolean) || "";
+    return {
+      segmentId,
+      rows,
+      reused: index > 0,
+      repairReason: patchReason,
+      failed: terminal?.event_type === "agent_failed",
+      completed: terminal?.event_type === "agent_completed",
+      timing: {
+        status: terminal?.event_type === "agent_failed" ? "failed"
+          : terminal?.event_type === "agent_completed" ? "complete" : "running",
+        started_at: start?.ts || null,
+        finished_at: terminal ? finish?.ts || null : null,
+        duration_s: Number.isFinite(started) && Number.isFinite(finished)
+          ? Math.max(0, Math.round((finished - started) / 100) / 10) : null,
+      },
+    };
+  });
 }
 
 function orchestrationEntries(feed, specialistArtifacts = ed.specialistArtifacts || {}) {
   const entries = [];
+  const contentAudits = new Map();
+  const seenContentEvents = new Set();
   const occurrences = new Map();
   const lastTextByAgent = new Map();
-  const flat = orchestrationFlatFeed(feed);
-  const supportsAgentArtifacts = Object.prototype.hasOwnProperty.call(specialistArtifacts, "agents");
-  const legacyImageScopes = supportsAgentArtifacts
-    ? {}
-    : legacyImageArtifactScopes(feed, specialistArtifacts.image || {});
+  const all = orchestrationFlatFeed(feed);
+  const flat = all.filter((event) => event.k !== "context");
+  // 关联执行状态与模型反馈；真实 Critic 自有 Trace，不冒充 Owner 或 Orchestrator 的发言。
+  const reviews = new Map();
+  all.filter(event => orchestrationAgentMeta(event.agent).role === "critic").forEach(event => {
+    const info = event.critic || {};
+    if (event.k === "context" && !info.inspection_id) return;
+    const identity = info.inspection_id ? [info.inspection_id, info.owner_id || "", info.png_sha256 || ""]
+      : [event.agent_id || event.agent, event.segment_id || ""];
+    const key = JSON.stringify(identity);
+    let review = reviews.get(key);
+    if (!review) {
+      review = {type: "critic-review", meta: {...orchestrationAgentMeta(event.agent)},
+        info: {}, messages: [], state: "pending", order: event.order, key: `critic:${key}`};
+      reviews.set(key, review);
+      entries.push(review);
+    }
+    Object.assign(review.info, info);
+    const traceAgent = info.trace_agent_id || (event.segment_id ? event.agent_id : "");
+    if (traceAgent) {
+      review.meta.key = traceAgent;
+      review.segment = info.trace_segment_id || event.segment_id || "";
+    }
+    if (event.event_type?.startsWith("critic_")) {
+      review.state = info.completed === true ? "complete"
+        : event.event_type === "critic_failed" || (event.event_type === "critic_completed" && info.completed === false) ? "failed" : "pending";
+      review.reused = event.event_type === "critic_reused" || info.cache_hit === true;
+    }
+    if (event.k === "text" && !event.partial && event.s && !review.messages.includes(event.s)) review.messages.push(event.s);
+    review.eventTime = orchestrationEventTime(event);
+  });
+  const toolResults = new Map(flat.filter(event => event.k === "tool_result" && event.tool_use_id)
+    .map(event => [`${event.agent}:${event.segment_id}:${event.tool_use_id}`, event]));
   let orchestratorProgress = null;
   const flushOrchestratorProgress = () => {
     if (!orchestratorProgress?.updates?.length) {
@@ -6580,10 +10109,9 @@ function orchestrationEntries(feed, specialistArtifacts = ed.specialistArtifacts
       meta: orchestratorProgress.meta,
       timing: agentTimingFor("orch"),
       eventTime: orchestratorProgress.updates.at(-1)?.eventTime || null,
-      stage: orchestratorProgress.stage,
       updates: orchestratorProgress.updates,
       order: orchestratorProgress.order,
-      key: `orchestrator-progress:${orchestratorProgress.stage}:${orchestratorProgress.order}`,
+      key: `orchestrator-progress:${orchestratorProgress.order}`,
     });
     orchestratorProgress = null;
   };
@@ -6591,14 +10119,108 @@ function orchestrationEntries(feed, specialistArtifacts = ed.specialistArtifacts
     const agentKey = canonicalOrchestrationAgentKey(event.agent);
     const rawMeta = orchestrationAgentMeta(agentKey);
     const isOrchestrator = rawMeta.role === "orch" || agentKey === "orch";
-    const meta = isOrchestrator ? orchestrationAgentMeta("orch") : rawMeta;
+    const meta = {...(isOrchestrator ? orchestrationAgentMeta("orch") : rawMeta),
+      segment: event.segment_id || "", taskId: event.task_id || ""};
+    if (meta.role === "critic") return;
+    if (meta.role === "content" && (event.event_type?.startsWith("content_qc_") || event.k === "text")) {
+      if (event.partial || (event.event_id && seenContentEvents.has(event.event_id))) return;
+      if (event.event_id) seenContentEvents.add(event.event_id);
+      flushOrchestratorProgress();
+      const isStatus = event.event_type?.startsWith("content_qc_");
+      const isStart = event.event_type === "content_qc_started";
+      let audit = contentAudits.get(agentKey);
+      // 摘要与模型消息的 segment 不同，只在明确的开始/结束边界内归并。
+      if (!audit || audit.closed || isStart || (isStatus && audit.segment !== event.segment_id)) {
+        audit = {type: "content-audit", meta, findings: [], rawMessages: [], summary: {},
+          findingsReceived: false, segment: event.segment_id, closed: false,
+          order: event.order, key: `content-audit:${event.event_id || event.order}`};
+        entries.push(audit);
+        contentAudits.set(agentKey, audit);
+      }
+      audit.eventTime = orchestrationEventTime(event);
+      if (isStatus) {
+        audit.eventType = event.event_type;
+        try {
+          const value = JSON.parse(String(event.s || "").slice(String(event.s || "").indexOf("{")));
+          if (value && !Array.isArray(value) && typeof value === "object") audit.summary = value;
+        } catch { /* 原始 Trace 保留，格式不完整时不推断审计通过。 */ }
+        audit.closed = !isStart;
+      } else {
+        try {
+          const findings = JSON.parse(event.s);
+          if (!Array.isArray(findings) || findings.some(row => !row || typeof row.summary !== "string" || !Array.isArray(row.pages))) throw new Error("invalid findings");
+          audit.findingsReceived = true;
+          for (const row of findings) {
+            if (!audit.findings.some(existing => JSON.stringify(existing) === JSON.stringify(row))) audit.findings.push(row);
+          }
+        } catch {
+          if (!audit.rawMessages.includes(event.s)) audit.rawMessages.push(event.s);
+        }
+      }
+      return;
+    }
+    if (event.partial) {
+      flushOrchestratorProgress();
+      entries.push({
+        type: "stream-preview", meta, text: liveAgentText(event),
+        analysis: event.k === "analysis", interrupted: event.phase === "interrupted",
+        label: `${event.k === "analysis" ? "分析摘要 · " : ""}${livePreviewLabel(event)}`,
+        eventTime: orchestrationEventTime(event), order: event.order,
+        key: `stream:${event.stream_id}`,
+      });
+      return;
+    }
+    const isCompactionRuntime = ["agent_context_compacted", "agent_context_compaction_failed"].includes(event.event_type)
+      || (event.k === "provider" && event.phase === "started" && event.request_kind === "context_compaction");
+    if (event.event_type?.startsWith("attachment_parse_") || isCompactionRuntime) {
+      flushOrchestratorProgress();
+      const [action, detail] = runtimeEventState(event);
+      entries.push({type: "runtime", meta, action, detail,
+        runtimeKind: isCompactionRuntime ? "compaction" : "background",
+        eventTime: orchestrationEventTime(event), order: event.order,
+        key: `runtime:${event.event_id || event.order}`});
+      return;
+    }
+    if (event.k === "provider" && ["failed", "failover"].includes(event.phase)) {
+      flushOrchestratorProgress();
+      const action = event.phase === "failover" ? "Provider 通道切换" : "Provider 请求失败";
+      const detail = event.phase === "failover"
+        ? `已切换到 ${event.channel_id || "备用通道"}，从闭合边界继续。`
+        : [event.status_code ? `HTTP ${event.status_code}` : event.error_kind || "上游请求失败",
+           event.error_summary, event.duration_ms ? `${event.duration_ms} ms` : ""].filter(Boolean).join(" · ");
+      entries.push({
+        type: "provider", meta, action, detail,
+        eventTime: orchestrationEventTime(event), order: event.order,
+        key: `provider:${event.event_id || event.order}`,
+      });
+      return;
+    }
+    if (meta.role === "content" && event.k === "status") return;
+    if (isOrchestrator && event.k === "analysis") {
+      flushOrchestratorProgress();
+      const text = liveAgentText(event);
+      if (text) entries.push({
+        type: "analysis", meta, text,
+        eventTime: orchestrationEventTime(event), order: event.order,
+        key: `analysis:${event.event_id || event.order}`,
+      });
+      return;
+    }
     if (isOrchestrator && event.k === "text") {
-      const text = cleanAgentText(event.s);
-      if (!text || lastTextByAgent.get(agentKey) === text) return;
+      const text = liveAgentText(event);
+      if (!text) return;
+      if (event.event_id) {
+        flushOrchestratorProgress();
+        entries.push({
+          type: "message", meta, text,
+          eventTime: orchestrationEventTime(event), order: event.order,
+          key: `message:${event.event_id}`,
+        });
+        return;
+      }
+      if (lastTextByAgent.get(agentKey) === text) return;
       lastTextByAgent.set(agentKey, text);
-      const stage = orchestratorProgressStage(text);
-      if (orchestratorProgress && orchestratorProgress.stage !== stage) flushOrchestratorProgress();
-      if (!orchestratorProgress) orchestratorProgress = { meta, stage, order: event.order, updates: [] };
+      if (!orchestratorProgress) orchestratorProgress = { meta, order: event.order, updates: [] };
       appendOrchestratorProgress(orchestratorProgress.updates, text, event.order, orchestrationEventTime(event));
       return;
     }
@@ -6614,6 +10236,9 @@ function orchestrationEntries(feed, specialistArtifacts = ed.specialistArtifacts
       entries.push({
         type: "orchestrator-action", meta, timing: agentTimingFor("orch"), eventTime: orchestrationEventTime(event),
         action, detail: hint ? `${detail}：${hint}` : detail,
+        transaction: event.tool_use_id ? {id: event.tool_use_id, tool: event.tool, agent: meta.key, use: event,
+          result: toolResults.get(`${event.agent}:${event.segment_id}:${event.tool_use_id}`) || null} : null,
+        artifactRels: workflowArtifactRelsFromEvents([event], meta),
         order: event.order, key: `orchestrator-action:${event.order}`,
       });
       return;
@@ -6637,63 +10262,161 @@ function orchestrationEntries(feed, specialistArtifacts = ed.specialistArtifacts
   });
   flushOrchestratorProgress();
   Object.entries(feed || {}).forEach(([agent, events]) => {
+    events = (events || []).filter((event) => !event.partial && event.k !== "context");
     const meta = orchestrationAgentMeta(agent);
     if (["research", "image", "material", "review"].includes(meta.role) && (events || []).length) {
       const agentArtifacts = specialistArtifacts.agents?.[meta.key];
-      const artifacts = agentArtifacts || (meta.role === "image"
-        ? (supportsAgentArtifacts ? {} : (legacyImageScopes[meta.key] || {}))
-        : (specialistArtifacts[meta.role] || {}));
-      const entry = specialistProgressEntry(meta, events, artifacts, {
-        allowLegacyPreviewFallback: meta.role !== "image" || !supportsAgentArtifacts,
-      });
+      const artifacts = agentArtifacts || (meta.role === "image" ? {} : (specialistArtifacts[meta.role] || {}));
+      const entry = specialistProgressEntry(meta, events, artifacts);
+      entry.artifactRels = workflowArtifactRelsFromEvents(events, meta);
+      entry.segment = events.at(-1)?.segment_id || "";
+      entry.taskId = events.at(-1)?.task_id || "";
       entry.timing = agentTimingFor(agent);
-      if (entry.timing?.status === "complete") entry.completed = true;
+      if (entry.timing?.status) {
+        entry.completed = entry.timing.status === "complete";
+        entry.failed = entry.timing.status === "failed";
+      }
       entries.push(entry);
       return;
     }
     if (meta.role !== "slide" || !(events || []).length) return;
-    const ordered = (events || []).map((event, index) => ({ ...event, order: Number.isFinite(Number(event.seq)) ? Number(event.seq) : index })).sort((a, b) => a.order - b.order);
-    const latestTool = [...ordered].reverse().find((event) => event.k === "tool");
-    const latestText = [...ordered].reverse().map((event) => event.k === "text" ? cleanAgentText(event.s) : "").find(Boolean) || "";
-    const [action] = latestTool ? toolProgress(latestTool) : ["理解本页任务"];
-    const completed = (meta.pages?.length
-      ? meta.pages.every((page) => ed.rendered.has(page))
-      : ed.rendered.has(meta.page)) || ed.status === "completed";
-    const result = compactPageAgentResult(latestText, { completed, page: meta.page });
-    entries.push({
-      type: "slide", meta, action, result: result.summary, resultDetail: result.detail, completed,
-      timing: agentTimingFor(agent), order: ordered[0].order, key: `slide:${agent}`,
+    slideOwnerSegments(events).forEach((segment) => {
+      const latestTool = [...segment.rows].reverse().find((event) => event.k === "tool");
+      const latestText = [...segment.rows].reverse()
+        .map((event) => event.k === "text" ? cleanAgentText(event.s) : "")
+        .find(Boolean) || "";
+      const isRepair = segment.reused;
+      const [defaultAction] = latestTool ? toolProgress(latestTool) : ["理解本页任务"];
+      const action = segment.repairReason ? "按整册检查反馈修订页面"
+        : segment.reused ? "续接原 Owner 完成页面" : defaultAction;
+      const completed = segment.completed;
+      const result = compactPageAgentResult(latestText, { completed, page: meta.page });
+      entries.push({
+        type: isRepair ? "repair" : "slide",
+        meta,
+        segment: segment.segmentId === "unsegmented" ? "" : segment.segmentId,
+        taskId: segment.rows.find(event => event.task_id)?.task_id || "",
+        action,
+        repairReason: segment.repairReason,
+        reused: segment.reused,
+        result: result.summary,
+        resultDetail: result.detail,
+        completed,
+        artifactRels: workflowArtifactRelsFromEvents(segment.rows, meta),
+        timing: segment.timing,
+        failed: segment.failed,
+        order: segment.rows[0].order,
+        lastOrder: segment.rows.at(-1).order,
+        key: `slide:${agent}:${segment.segmentId}`,
+      });
     });
   });
   return { flat, entries: entries.sort((a, b) => a.order - b.order) };
 }
 
-function orchestrationEntryContent(entry) {
+function specialistGalleryMarkup(items, { artifactMode = "inline", modifier = "" } = {}) {
+  const list = (Array.isArray(items) ? items : []).filter(item => item.path);
+  if (artifactMode === "links") {
+    const links = list.map(item => workflowArtifactLinkMarkup(item.path, {
+      name: item.name, kind: "image", size: item.size,
+      updated_at: item.updated_at || item.mtime, group: "Assets",
+    })).filter(Boolean).join("");
+    return links ? `<div class="orchestration-artifact-links${modifier ? ` ${modifier}` : ""}">${links}</div>` : "";
+  }
+  return list.length ? `<div class="specialist-gallery${list.length === 1 ? " single" : ""}${modifier ? ` ${modifier}` : ""}">${list.map(item => {
+    const rel = String(item.path);
+    const version = Number(item.mtime || 0);
+    const full = `/api/decks/${encodeURIComponent(ed.id)}/file?rel=${encodeURIComponent(rel)}`;
+    const thumb = item.legacy ? `${full}&v=${version}` : `/api/decks/${encodeURIComponent(ed.id)}/asset-thumbnail?rel=${encodeURIComponent(rel)}&v=${version}`;
+    const label = String(item.name || rel.split("/").at(-1)).replace(/\.[^.]+$/, "").replace(/^generated-[a-f0-9]+$/i, "生成素材").replace(/^contact-sheet$/i, "素材总览");
+    const origins = { downloaded: "网络图片 · 已下载", generated: "AI 生成", material: "用户材料", derived: "派生素材", unclassified: "来源未登记" };
+    const origin = String(item.origin || "unclassified");
+    const source = item.source_url || item.source_path || item.generator_model || item.parent_asset || "";
+    const badge = item.legacy || /contact-sheet/i.test(String(item.name || "")) ? "" : `<em class="asset-origin ${escapeHtml(origin)}" title="${escapeHtml(source)}">${escapeHtml(origins[origin] || origins.unclassified)}</em>`;
+    return `<a href="${full}" target="_blank" rel="noopener" title="查看原图"><img src="${thumb}" loading="lazy" decoding="async" alt="${escapeHtml(label)}" onerror="this.hidden=true;this.closest('a').classList.add('preview-unavailable')"><span>${escapeHtml(label)}</span>${badge}</a>`;
+  }).join("")}</div>` : "";
+}
+
+function renderWorkflowImageOutputs() {
+  const host = $("#workflow-image-outputs");
+  if (!host) return;
+  const key = canonicalOrchestrationAgentKey(ed.workflowTraceAgent);
+  const images = ed.specialistArtifacts?.agents?.[key]?.images || [];
+  const html = (ed.workflowTracePayload?.source || ed.workflowTraceSource || "messages") === "messages"
+    && orchestrationAgentMeta(key).role === "image" ? specialistGalleryMarkup(images) : "";
+  host.hidden = !html;
+  if (host.dataset.renderKey !== html) {
+    host.dataset.renderKey = html;
+    host.innerHTML = html ? `<summary>Image Owner 已产出图片 <small>该 Owner 的素材 · 跨执行段</small></summary>${html}` : "";
+  }
+}
+
+function orchestrationEntryContent(entry, { artifactMode = "inline" } = {}) {
   const meta = entry.meta;
-  const stageTiming = ["specialist", "slide"].includes(entry.type) ? agentTimingBadge(entry.timing) : "";
-  const outputTime = entry.eventTime ? orchestrationOutputTimeMarkup(entry.eventTime) : "";
-  const footerTime = stageTiming || outputTime;
+  const owner = entry.ownerNode;
+  const ownerStatus = owner ? workflowStatusLabel(owner.status) : "";
+  const ownerProgress = owner ? [owner.progress || owner.code, owner.repairs ? `修订回流 ×${owner.repairs}` : ""].filter(Boolean).join(" · ") : "";
+  const ownerDetails = owner ? `<div class="owner-progress-toolbar"><span>${escapeHtml(ownerProgress)}</span><button type="button" data-embedded-agent="true" data-owner-node-id="${escapeHtml(owner.id)}" data-agent-key="${escapeHtml(owner.agentKey)}" data-workflow-task-id="${escapeHtml(owner.taskId)}">查看迭代</button></div>
+    <p class="owner-progress-activity">${escapeHtml(owner.activity?.title || owner.detail)}</p>
+    <details class="specialist-phase" data-detail-key="owner-context"><summary class="specialist-phase-head"><b>任务说明与依赖</b><i class="specialist-phase-chevron" aria-hidden="true"></i></summary><div class="specialist-feedback-body"><p>${escapeHtml(owner.summary)}</p><p>${escapeHtml(owner.detail)}</p><small>${escapeHtml(owner.identity)}</small></div></details>` : "";
+  const stageMarkup = steps => `<div class="specialist-steps">${steps.map(step => `<div class="specialist-step ${step.state}"><i></i><span><b>${escapeHtml(step.label)}</b><small>${escapeHtml(step.detail)}</small></span></div>`).join("")}</div>
+    <p class="owner-progress-note">工具统计仅覆盖当前已载入记录，不代表完整历史或阶段完成；执行结束不代表内容与视觉质量通过。</p>`;
+  const footerTime = ["specialist", "slide", "repair"].includes(entry.type) ? agentTimingBadge(entry.timing) : "";
   const avatar = `<span class="orch-avatar ${escapeHtml(meta.role)}" aria-hidden="true">
     ${orchestrationAgentGlyph(meta, editorPresentationKind(), "orch-agent-glyph")}
   </span>`;
+  const artifactLinks = artifactMode === "links" && entry.artifactRels?.length
+    ? `<div class="orchestration-artifact-links">${entry.artifactRels.map((rel) => workflowArtifactLinkMarkup(rel)).join("")}</div>`
+    : "";
+  if (entry.type === "critic-review") {
+    const info = entry.info;
+    const feedback = info.body || entry.messages.join("\n\n");
+    const status = entry.state === "complete" ? "反馈已返回" : entry.state === "failed" ? "评审执行未完成" : "等待公开反馈";
+    return `${avatar}<div class="orch-entry-copy">
+      <div class="orch-entry-head"><b>独立视觉 Critic${info.page ? ` · P${escapeHtml(info.page)}` : ""}</b><span>${status}</span></div>
+      <p>${escapeHtml(info.owner_id ? `对应 Owner：${info.owner_id}` : "对应 Owner 未记录")} · ${entry.reused ? "复用同版像素反馈" : "单页外部检查"}，不是 Orchestrator 的整册复核。</p>
+      ${feedback ? `<details data-detail-key="critic-feedback"><summary>查看完整反馈</summary><div class="agent-markdown">${agentMarkdownHtml(feedback)}</div></details>` : ""}
+      ${info.incomplete_reason ? `<p>${escapeHtml(info.incomplete_reason)}</p>` : ""}
+      <small>点击卡片查看此 Critic 的 Trace；执行结束不代表页面通过。</small>
+    </div>`;
+  }
+  if (entry.type === "content-audit") {
+    const summary = entry.summary;
+    const completed = summary.status === "completed";
+    const count = Number.isInteger(summary.finding_count) && summary.finding_count >= 0 ? summary.finding_count : null;
+    const hasFindings = entry.findings.length > 0 || count > 0;
+    const title = completed && summary.passed === true
+      ? (hasFindings ? "通过，但有提示" : count === 0 ? "通过 · 未发现内容问题" : "通过 · 发现数量未记录")
+      : completed && summary.passed === false ? "未通过"
+      : entry.eventType === "content_qc_failed" || summary.status === "incomplete" ? "审计未完成"
+      : entry.closed ? "审计结果待确认" : "审计进行中";
+    const levels = {critical: "严重", major: "重要", minor: "轻微", advisory: "建议"};
+    const kinds = {factual_conflict: "事实与来源问题", coverage_gap: "需求覆盖缺口", off_topic: "内容偏题", internal_contradiction: "内部矛盾", citation_gap: "引用缺口"};
+    const counts = Object.entries(levels).map(([level, label]) => {
+      const n = entry.findings.filter(row => row.severity === level).length;
+      return n ? `${n} 项${label}` : "";
+    }).filter(Boolean);
+    const metrics = [summary.reviewer_model, typeof summary.elapsed_s === "number" ? `耗时 ${summary.elapsed_s.toFixed(1)} 秒` : "",
+      count != null ? `${count} 项发现` : "发现总数未记录", ...counts].filter(Boolean).join(" · ");
+    const note = completed && summary.passed === true
+      ? "本次未触发阻断条件；通过不代表提示已修复。修复状态需以后续真实记录为准。"
+      : "执行完成与审计通过不同；发现列表不是问题已修复的证明。";
+    const missing = (!entry.findingsReceived && count !== 0) || (count != null && count !== entry.findings.length) || entry.rawMessages.length > 0;
+    return `${avatar}<div class="orch-entry-copy content-audit-card">
+      <div class="orch-entry-head"><b>内容审计</b><span>${escapeHtml(title)}</span></div>
+      <p class="content-audit-meta">${escapeHtml(metrics)}</p><p>${escapeHtml(note)}</p>
+      ${summary.incomplete_reason ? `<p class="content-audit-warning">${escapeHtml(summary.incomplete_reason)}</p>` : ""}
+      ${missing ? `<p class="content-audit-warning">发现明细尚未完整获取（当前 ${entry.findings.length} 项）；不据此判断无问题。</p>` : ""}
+      <div class="content-audit-findings">${entry.findings.map(row => `<section class="content-audit-finding">
+        <header><b>${escapeHtml(levels[row.severity] || "未标注级别")}</b><span>${escapeHtml(row.pages.length ? row.pages.map(page => `P${page}`).join("、") : "整册 / 未指定页面")} · ${escapeHtml(kinds[row.kind] || row.kind || "内容问题")}</span></header>
+        <p>${escapeHtml(row.summary)}</p></section>`).join("")}</div>
+      ${entry.rawMessages.length ? `<details data-detail-key="audit-unparsed"><summary>未解析的审计文本</summary><pre>${escapeHtml(entry.rawMessages.join("\n\n"))}</pre></details>` : ""}
+      ${footerTime ? `<div class="orch-entry-foot">${footerTime}</div>` : ""}</div>`;
+  }
   if (entry.type === "specialist") {
-    const status = entry.completed ? "已完成" : "进行中";
-    const steps = entry.steps.map((step) => `<div class="specialist-step ${step.state}"><i></i><span><b>${escapeHtml(step.label)}</b><small>${escapeHtml(step.detail)}</small></span></div>`).join("");
+    const status = ownerStatus || (entry.failed ? "失败" : entry.completed ? "已完成" : "进行中");
     const galleryMarkup = (items, modifier = "") => {
-      const list = Array.isArray(items) ? items : [];
-      const previewClass = list.length === 1 ? " single" : "";
-      return list.length ? `<div class="specialist-gallery${previewClass}${modifier ? ` ${modifier}` : ""}">${list.map((item) => {
-      const rel = String(item.path || "");
-      const version = Number(item.mtime || 0);
-      const full = `/api/decks/${encodeURIComponent(ed.id)}/file?rel=${encodeURIComponent(rel)}`;
-      const thumb = item.legacy ? `${full}&v=${version}` : `/api/decks/${encodeURIComponent(ed.id)}/asset-thumbnail?rel=${encodeURIComponent(rel)}&v=${version}`;
-      const label = String(item.name || rel.split("/").at(-1) || "视觉素材").replace(/\.[^.]+$/, "").replace(/^generated-[a-f0-9]+$/i, "生成素材").replace(/^contact-sheet$/i, "素材总览");
-      const originLabels = { downloaded: "真实图片 · 已下载", generated: "AI 生成", material: "用户材料", derived: "派生素材", unclassified: "来源未登记" };
-      const origin = String(item.origin || "unclassified");
-      const sourceHint = item.source_url || item.source_path || item.generator_model || item.parent_asset || "";
-      const badge = item.legacy || /contact-sheet/i.test(String(item.name || "")) ? "" : `<em class="asset-origin ${escapeHtml(origin)}" title="${escapeHtml(sourceHint)}">${escapeHtml(originLabels[origin] || originLabels.unclassified)}</em>`;
-      return `<a href="${full}" target="_blank" rel="noopener" title="查看原图"><img src="${thumb}" loading="lazy" decoding="async" alt="${escapeHtml(label)}" onerror="this.closest('a').hidden=true"><span>${escapeHtml(label)}</span>${badge}</a>`;
-      }).join("")}</div>` : "";
+      return specialistGalleryMarkup(items, {modifier, artifactMode: meta.role === "image" ? "inline" : artifactMode});
     };
     const previews = galleryMarkup(entry.previews);
     const result = entry.result ? `<div class="specialist-result agent-markdown">${agentMarkdownHtml(entry.result)}</div>` : "";
@@ -6702,44 +10425,60 @@ function orchestrationEntryContent(entry) {
         <div class="specialist-feedback-body">${content}</div>
       </details>` : "";
     const researchSources = meta.role === "research" && entry.sources?.length ? `<details class="specialist-phase research-source-phase specialist-research-details" data-detail-key="research-sources">
-        <summary class="specialist-phase-head"><b>已浏览资料</b><span>${entry.sources.length} 个来源</span><i class="specialist-phase-chevron" aria-hidden="true"></i></summary>
+        <summary class="specialist-phase-head"><b>来源记录</b><span>${entry.sources.length} 个来源</span><i class="specialist-phase-chevron" aria-hidden="true"></i></summary>
         <div class="specialist-research-body">
           ${entry.queries?.length ? `<div class="specialist-query-list">${entry.queries.map((query) => `<span>${escapeHtml(query)}</span>`).join("")}</div>` : ""}
           <div class="specialist-source-list">${entry.sources.map((source) => `<a href="${escapeHtml(source.url || "#")}" target="_blank" rel="noopener noreferrer"><b>${escapeHtml(source.title || source.url || "资料来源")}</b><small>${escapeHtml(source.url || "")}</small></a>`).join("")}</div>
         </div>
       </details>` : "";
     const materialFiles = meta.role === "material" && entry.files?.length ? `<details class="specialist-phase material-file-phase specialist-material-details" data-detail-key="material-files">
-        <summary class="specialist-phase-head"><b>已处理材料</b><span>${entry.files.length} 份</span><i class="specialist-phase-chevron" aria-hidden="true"></i></summary>
+        <summary class="specialist-phase-head"><b>材料记录</b><span>${entry.files.length} 份</span><i class="specialist-phase-chevron" aria-hidden="true"></i></summary>
         <div class="specialist-file-list">${entry.files.map((file) => `<span><i>${escapeHtml(String(file.kind || "file").toUpperCase())}</i><b>${escapeHtml(file.name || "未命名材料")}</b><em>${escapeHtml(file.coverage || file.status || "处理中")}</em></span>`).join("")}</div>
       </details>` : "";
     const reviewPhases = meta.role === "review" ? `<div class="specialist-phase review-live-phase">
-        <div class="specialist-phase-head"><b>实时复核反馈</b><span>${entry.completed ? "复核已完成" : "随检查持续更新"}</span></div>
-        <div class="specialist-review-live agent-markdown">${agentMarkdownHtml(entry.result || "Review Agent 正在检查成稿与页面一致性。")}</div>
+        <div class="specialist-phase-head"><b>Agent 复核反馈</b><span>${entry.completed ? "执行已结束" : "随记录更新"}</span></div>
+        <div class="specialist-review-live agent-markdown">${agentMarkdownHtml(entry.result || "当前未提供 Agent 复核说明。")}</div>
         ${entry.resultDetail ? `<details class="specialist-review-details" data-detail-key="review-full"><summary class="specialist-phase-head"><b>查看完整复核说明</b><i class="specialist-phase-chevron" aria-hidden="true"></i></summary><div class="specialist-review-body agent-markdown">${agentMarkdownHtml(entry.resultDetail)}</div></details>` : ""}
       </div>` : "";
     const imagePhases = meta.role === "image" ? `<div class="specialist-phase material-phase">
-        <div class="specialist-phase-head"><b>已使用图片</b><span>${entry.assetCount ? `${entry.assetCount} 项图片素材` : "正在准备图片"}</span></div>
+        <div class="specialist-phase-head"><b>图片登记与预览</b><span>${entry.assetCount != null ? `${entry.assetCount} 项登记素材` : "素材数量未记录"}</span></div>
         ${previews}
       </div>
-      ${specialistFeedback("image", "查看完整素材说明", entry.visionCount ? `${entry.visionCount} 次检查 · 问题反馈默认收起` : "生成与核验记录默认收起", `
-        ${entry.collectionResult ? `<div class="specialist-phase-note agent-markdown">${agentMarkdownHtml(entry.collectionResult)}</div>` : ""}
+      ${specialistFeedback("image", "查看完整素材说明", "Agent 原始说明与已登记联系表", `
         ${galleryMarkup(entry.contactSheet ? [entry.contactSheet] : [], "contact-sheet-gallery")}
         ${result}
       `)}` : (meta.role === "review" ? reviewPhases : (meta.role === "research"
         ? `${researchSources}${specialistFeedback("research", "查看完整研究说明", "结论、核验与未决事项", result)}`
         : `${materialFiles}${previews}${specialistFeedback("material", "查看完整材料说明", "解析、覆盖与问题反馈", result)}`));
     return `${avatar}<div class="orch-entry-copy specialist-copy">
-      <div class="orch-entry-head"><b>${escapeHtml(meta.label)}</b><i>${escapeHtml(meta.note)}</i><em class="${entry.completed ? "done" : "running"}">${status}</em></div>
-      <div class="specialist-steps">${steps}</div>${imagePhases}
+      <div class="orch-entry-head"><b>${escapeHtml(meta.label)}</b><i>${escapeHtml(meta.note)}</i><em class="${entry.failed ? "failed" : entry.completed ? "done" : "running"}">${status}</em></div>
+      ${ownerDetails}${stageMarkup(entry.steps)}${imagePhases}${artifactLinks}
       ${footerTime ? `<div class="orch-entry-foot">${footerTime}</div>` : ""}
     </div>`;
   }
   if (entry.type === "slide") {
-    const status = entry.completed ? "已完成" : "正在执行";
-    const detail = entry.resultDetail ? `<details class="orch-slide-detail"><summary>查看完整制作说明<i></i></summary><div class="agent-markdown">${agentMarkdownHtml(entry.resultDetail)}</div></details>` : "";
+    const status = ownerStatus || (entry.failed ? "失败" : entry.completed ? "已完成" : "正在执行");
+    const steps = entry.steps || slideProgressSteps(meta, (ed.feed?.[meta.key] || []).filter(event => !entry.segment || event.segment_id === entry.segment));
+    const detail = entry.resultDetail || entry.result;
+    const previews = (meta.pages || [meta.page]).filter(page => ed.rendered?.has(page));
+    const outputs = previews.length ? `<div class="specialist-phase"><div class="specialist-phase-head"><b>页面预览</b><span>${previews.length} 页已有 PNG</span></div><div class="specialist-gallery">${previews.map(page => `<button type="button" data-embedded-agent="true" data-workflow-page="${page}"><img src="${fileUrl(page)}" alt="P${pad2(page)}" loading="lazy"><span>P${pad2(page)}</span></button>`).join("")}</div></div>` : "";
+    return `${avatar}<div class="orch-entry-copy specialist-copy">
+      <div class="orch-entry-head"><b>${escapeHtml(meta.label)}</b><i>${escapeHtml(meta.note)}</i><em class="${entry.failed ? "failed" : entry.completed ? "done" : "running"}">${status}</em></div>
+      ${ownerDetails}${stageMarkup(steps)}${outputs}
+      ${detail ? `<details class="specialist-phase specialist-feedback-details" data-detail-key="slide-feedback"><summary class="specialist-phase-head"><b>查看完整制作说明</b><i class="specialist-phase-chevron" aria-hidden="true"></i></summary><div class="specialist-feedback-body agent-markdown">${agentMarkdownHtml(detail)}</div></details>` : ""}${artifactLinks}
+      ${footerTime ? `<div class="orch-entry-foot">${footerTime}</div>` : ""}
+    </div>`;
+  }
+  if (entry.type === "repair") {
+    const hasIssue = !!entry.repairReason;
+    const status = entry.failed ? (hasIssue ? "修复失败" : "续接失败")
+      : entry.completed ? (hasIssue ? "修复执行已结束" : "续接执行已结束")
+        : (hasIssue ? "正在修复" : "正在续接");
+    const detail = entry.resultDetail ? `<details class="orch-slide-detail"><summary>查看完整修复说明<i></i></summary><div class="agent-markdown">${agentMarkdownHtml(entry.resultDetail)}</div></details>` : "";
     return `${avatar}<div class="orch-entry-copy">
-      <div class="orch-entry-head"><b>${escapeHtml(meta.label)}</b><i>${escapeHtml(meta.note)}</i><em class="${entry.completed ? "done" : "running"}">${status}</em></div>
-      <div class="orch-slide-flow"><span><i></i><b>执行</b><em>${escapeHtml(entry.action)}</em></span>${entry.result ? `<span class="result"><i></i><b>结果</b><em>${agentStoryHtml(entry.result)}</em></span>` : ""}</div>${detail}
+      <div class="orch-entry-head"><b>${escapeHtml(meta.label)}</b><i>重新拉起原 Owner</i><em class="${entry.failed ? "failed" : entry.completed ? "done" : "running"}">${status}</em></div>
+      <div class="owner-repair-callout"><b>${hasIssue ? "发现问题后重新拉起原 Owner" : "继续由原 Owner 负责"}</b><p>${escapeHtml(entry.repairReason || "原 Owner 已重新进入执行段，继续完成该负责页面。")}</p></div>
+      <div class="orch-slide-flow"><span><i></i><b>${hasIssue ? "修复" : "续接"}</b><em>${escapeHtml(entry.action)}</em></span>${entry.result ? `<span class="result"><i></i><b>${hasIssue ? "复验结果" : "执行结果"}</b><em>${agentStoryHtml(entry.result)}</em></span>` : ""}</div>${detail}${artifactLinks}
       ${footerTime ? `<div class="orch-entry-foot">${footerTime}</div>` : ""}
     </div>`;
   }
@@ -6751,37 +10490,72 @@ function orchestrationEntryContent(entry) {
       <summary>查看已合并的 ${history.length} 条阶段进展<i aria-hidden="true"></i></summary>
       <ol>${history.map((update) => `<li><p>${escapeHtml(update.text)}</p>${orchestrationOutputTimeMarkup(update.eventTime)}</li>`).join("")}</ol>
     </details>` : "";
-    return `${avatar}<div class="orch-entry-copy">
-      <div class="orch-entry-head"><b>${escapeHtml(meta.label)}</b><i>${escapeHtml(meta.note)}</i>${updates.length > 1 ? `<em>${updates.length} 条进展</em>` : ""}</div>
-      <div class="orch-progress-current"><i aria-hidden="true"></i><p>${escapeHtml(latest)}</p></div>
+    return `<div class="orch-entry-copy orch-plain-message">
+      <div class="agent-markdown"><p>${escapeHtml(latest)}</p></div>
       ${historyMarkup}
-      ${outputTime ? `<div class="orch-entry-foot">${outputTime}</div>` : ""}
     </div>`;
   }
   if (entry.type === "orchestrator-action") {
+    if (entry.transaction) return `<div class="orch-entry-copy orch-tool-message">
+      ${liveToolTransactionMarkup(entry.transaction, {compact: true, active: isStaticActiveStatus(ed.status)})}
+      ${artifactLinks}</div>`;
     return `${avatar}<div class="orch-entry-copy">
       <div class="orch-entry-head"><b>${escapeHtml(meta.label)}</b><i>${escapeHtml(meta.note)}</i></div>
-      <div class="orch-slide-flow"><span><i></i><b>${escapeHtml(entry.action || "推进任务")}</b><em>${escapeHtml(entry.detail || "继续推进整套演示。")}</em></span></div>
-      ${outputTime ? `<div class="orch-entry-foot">${outputTime}</div>` : ""}
+      <div class="orch-slide-flow"><span><i></i><b>${escapeHtml(entry.action || "推进任务")}</b><em>${escapeHtml(entry.detail || "继续推进整套演示。")}</em></span></div>${artifactLinks}
     </div>`;
+  }
+  if (["provider", "runtime"].includes(entry.type)) {
+    return `${avatar}<div class="orch-entry-copy">
+      <div class="orch-entry-head"><b>${escapeHtml(meta.label)}</b><i>${entry.type === "runtime" ? entry.runtimeKind === "compaction" ? "运行时上下文维护 · 非任务输出" : "后台状态 · 非模型消息" : "Provider 恢复"}</i></div>
+      <div class="orch-slide-flow"><span><i></i><b>${escapeHtml(entry.action)}</b><em>${escapeHtml(entry.detail)}</em></span></div>
+    </div>`;
+  }
+  if (entry.type === "analysis" || (entry.type === "stream-preview" && entry.analysis)) {
+    const label = livePreviewLabel({partial: entry.type === "stream-preview", phase: entry.interrupted ? "interrupted" : ""}, {thinking: true});
+    return `<div class="orch-entry-copy"><details class="orch-thinking-fold" data-detail-key="analysis-${escapeHtml(entry.key)}">
+      <summary title="仅展示模型返回的思考摘要；已完成指本段摘要已返回，不代表整个任务结束。">${meta.role !== "orch" ? `${escapeHtml(meta.label)} · ` : ""}${escapeHtml(label)}</summary><div class="agent-markdown">${agentMarkdownHtml(entry.text)}</div>
+      </details></div>`;
+  }
+  if (entry.type === "stream-preview") {
+    return `<div class="orch-entry-copy orch-plain-message">
+      <small class="orch-stream-label">${meta.role !== "orch" ? `${escapeHtml(meta.label)} · ` : ""}${escapeHtml(entry.label)}</small>
+      <div class="agent-markdown">${agentMarkdownHtml(entry.text)}</div>
+    </div>`;
+  }
+  if (entry.type === "message" && meta.role === "orch") {
+    return `<div class="orch-entry-copy orch-plain-message"><div class="agent-markdown">${agentMarkdownHtml(entry.text)}</div></div>`;
   }
   return `${avatar}<div class="orch-entry-copy">
     <div class="orch-entry-head"><b>${escapeHtml(meta.label)}</b><i>${escapeHtml(meta.note)}</i></div>
     ${entry.type === "assignment" ? `<p>${escapeHtml(entry.text)}</p>` : `<div class="agent-markdown">${agentMarkdownHtml(entry.text)}</div>`}
-    ${outputTime ? `<div class="orch-entry-foot">${outputTime}</div>` : ""}
   </div>`;
 }
 
-function reconcileOrchestrationEntries(list, entries) {
+function reconcileOrchestrationEntries(list, entries, { artifactMode = "inline" } = {}) {
   const existing = new Map($$(".orch-entry", list).map((card) => [card.dataset.entryKey, card]));
+  let previousMinute = "";
   entries.forEach((entry, index) => {
     let card = existing.get(entry.key);
     if (!card) {
       card = document.createElement("article");
       card.dataset.entryKey = entry.key;
     }
-    card.className = `orch-entry ${entry.type} role-${entry.meta.role}`;
-    const content = orchestrationEntryContent(entry);
+    card.className = `orch-entry ${entry.type}${entry.type === "slide" ? " specialist" : ""} role-${entry.meta.role}`;
+    if (artifactMode === "links" && entry.meta.key) {
+      card.dataset.messageAgent = entry.meta.key;
+      card.dataset.messageSegment = entry.segment || entry.meta.segment || "";
+      card.dataset.messageTask = entry.taskId || entry.meta.taskId || "";
+      card.tabIndex = 0;
+      card.setAttribute("role", "link");
+      card.setAttribute("aria-label", `查看 ${entry.meta.label} 的消息，并选中协作图卡片`);
+    }
+    const time = entry.eventTime;
+    const minute = time?.minute || time?.text?.slice(0, 5);
+    const heading = minute && minute !== previousMinute
+      ? `<time class="orch-time-group"${time.iso ? ` datetime="${escapeHtml(time.iso)}"` : ""} title="${escapeHtml(time.title || time.text)}">${escapeHtml(time.groupLabel || minute)}</time>` : "";
+    if (minute) previousMinute = minute;
+    card.title = time?.title || "";
+    const content = heading + orchestrationEntryContent(entry, { artifactMode });
     if (card.dataset.renderKey !== content) {
       const openDetailKeys = new Set([...card.querySelectorAll("details[data-detail-key][open]")]
         .map((detail) => detail.dataset.detailKey));
@@ -6798,12 +10572,96 @@ function reconcileOrchestrationEntries(list, entries) {
   existing.forEach((card) => card.remove());
 }
 
-function renderOrchestrationProgress(body, feed, { running = false, specialistArtifacts = ed.specialistArtifacts || {} } = {}) {
+function muralMakingView() {
+  const tasks = (ed.muralRuntime?.tasks || []).filter(task => task.role === "slide");
+  const total = Math.max(0, Number(ed.total) || 0);
+  const active = isStaticActiveStatus(ed.status);
+  const rows = Array.from({length: total}, (_, index) => {
+    const page = index + 1;
+    const selfAuthored = ed.pageAgents?.[String(page)] === "orch";
+    const task = tasks.filter(item => (item.pages || []).includes(page)).at(-1);
+    let state = selfAuthored ? (ed.status === "completed" && ed.artifactStatus === "complete" ? "complete" : "observed")
+      : task ? workflowExecutionStatus(task.status) : "not_started";
+    if (!active && ["running", "queued", "resource_wait", "waiting", "waiting_dependencies", "not_started"].includes(state)) state = "interrupted";
+    const preview = !!ed.rendered?.has(page);
+    return {page, state, preview, label: selfAuthored ? `主 Agent 制作 · ${state === "complete" ? "交付已验证" : preview ? "已有预览" : "已登记责任"}`
+      : task ? workflowStatusLabel(state)
+      : preview ? "已有预览 · 检查状态未记录" : active ? "等待页面任务" : "暂无页面产物"};
+  });
+  return {rows, total, active, previews: rows.filter(row => row.preview).length,
+    status: ed.status === "not_started" ? "尚未开始生成" : ed.status === "completed" ? "本轮制作已结束" : active ? "演示文稿制作中" : "本轮制作已暂停或结束"};
+}
+
+function muralMakingMarkup(view, hero = false, { checklist = true } = {}) {
+  const progress = view.total ? `${view.previews} / ${view.total}` : "—";
+  const percent = view.total ? Math.round(view.previews / view.total * 100) : 0;
+  const current = view.rows.filter(row => row.state === "running").map(row => `P${row.page}`).join("、");
+  return `${hero ? `<section class="mural-making-hero${view.active ? " active" : ""}" aria-label="${view.loadingRecords ? "MURAL 任务加载" : "MURAL 制作进度"}">
+    <header><span class="ce-text">${escapeHtml(view.status)}</span>${view.loadingRecords ? "" : `<span>${progress} 页已有预览</span>`}</header>
+    <div class="mural-making-brand"><img src="/static/logo.svg" alt="MURAL Logo"><strong>MURAL</strong>
+      <p>${escapeHtml(view.loadingRecords ? view.active ? "正在载入页面、消息与执行轨迹" : "未能读取任务记录，请重试" : !view.active ? "当前未继续生成，请查看任务记录与后续操作" : current ? `${current} 正在制作` : view.total ? "页面按实际任务并行推进" : "正在规划 · 页数尚未确定")}</p>
+      ${view.loadingRecords ? "" : `<b>${progress}<small>页已有预览</small></b>`}
+      ${view.total ? `<progress value="${view.previews}" max="${view.total}" aria-label="已生成预览页数"></progress>` : ""}
+      <small>${view.loadingRecords ? "读取已有任务记录，不代表重新开始生成" : view.total ? `预览覆盖率 ${percent}% · 不代表视觉检查或整册验收通过` : "没有页数记录时不显示估算百分比"}</small>
+    </div></section>` : ""}
+    ${view.loadingRecords || !checklist ? "" : `<details class="mural-page-checklist" data-detail-key="page-checklist" open><summary><b>演示文稿制作</b><span>${progress} 页已有预览</span></summary>
+      ${view.rows.length ? `<ol>${view.rows.map(row => `<li class="state-${escapeHtml(row.state)}"><span aria-hidden="true">${row.state === "complete" ? "✓" : row.state === "running" ? "●" : ["failed", "dependency_failed", "start_failed"].includes(row.state) ? "!" : "○"}</span><b>第 ${row.page} 页</b><small>${escapeHtml(row.label)}</small></li>`).join("")}</ol>` : '<p>分页计划尚未生成，等待真实页面任务。</p>'}
+    </details>`}`;
+}
+
+function orchestrationMainView(feed, specialistArtifacts = ed.specialistArtifacts || {}) {
+  const { flat, entries } = orchestrationEntries(feed, specialistArtifacts);
+  // 同一 Owner 保留一个概览并更新到最新段；局部修复不隐藏卡片，续段不冒充新委派。
+  const owners = new Map();
+  entries.forEach(entry => {
+    if (!["slide", "repair"].includes(entry.type)) return;
+    const key = entry.meta.key;
+    const previous = owners.get(key);
+    const latest = previous && previous.lastOrder > entry.lastOrder ? previous : entry;
+    owners.set(key, {
+      ...latest, type: "slide", key: `slide-owner:${key}`,
+      order: previous?.order ?? entry.order,
+      timing: agentTimingFor(key) || latest.timing,
+      artifactRels: [...new Set([...(previous?.artifactRels || []), ...(entry.artifactRels || [])])],
+    });
+  });
+  const visible = [...entries.filter(entry => entry.meta.role === "orch"
+    || entry.type === "specialist"
+    || (entry.type === "runtime" && (entry.meta.role === "harness" || entry.runtimeKind === "compaction"))), ...owners.values()];
+  // 委派回执只保留工具事务；每个真实 Owner 在下方维护一张阶段卡，尚未启动也可见。
+  const progress = new Map();
+  const include = (node, order = 0) => {
+    const key = node.agentKey || node.taskId;
+    const old = progress.get(key);
+    const currentId = ed.agentTimings?.[node.agentKey]?.task_id;
+    if (old && old.ownerNode.taskId === currentId && node.taskId !== currentId) return;
+    const previous = visible.find(entry => ["slide", "specialist"].includes(entry.type) && entry.meta.key === node.agentKey);
+    progress.set(key, {...workflowOwnerProgressEntry(node, previous), order: old?.order ?? previous?.order ?? order});
+  };
+  entries.filter(entry => entry.transaction?.tool === "delegate_submit").forEach(entry =>
+    workflowDelegationNodes(entry.transaction).forEach(node => include(node, entry.order + .1)));
+  workflowTaskGraph(ed.muralRuntime?.tasks || [], ed.agentTimings || {}, feed, ed.status).nodes
+    .forEach(node => include(node));
+  const represented = new Set([...progress.values()].map(entry => entry.meta.key));
+  return {
+    flat: flat.filter(event => ["orch", "harness"].includes(orchestrationAgentMeta(event.agent).role)),
+    entries: [...visible.filter(entry => !["slide", "specialist"].includes(entry.type) || !represented.has(entry.meta.key)),
+      ...progress.values()].sort((a, b) => a.order - b.order),
+  };
+}
+
+function renderOrchestrationProgress(body, feed, {
+  running = false,
+  specialistArtifacts = ed.specialistArtifacts || {},
+  scrollContainer = null,
+  artifactMode = "inline",
+} = {}) {
   if (!body) return;
   body.classList.add("is-orchestration");
+  body.classList.toggle("artifact-links-mode", artifactMode === "links");
   body.closest(".outline-agent-turn")?.classList.add("is-orchestration");
-  const { flat, entries } = orchestrationEntries(feed, specialistArtifacts);
-  const scroller = body.closest(".outline-chat-body") || body;
+  const { flat, entries } = orchestrationMainView(feed, specialistArtifacts);
+  const scroller = scrollContainer || body.closest(".outline-chat-body") || body;
   const wasNearBottom = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 120;
   const previousTop = scroller.scrollTop;
   const flowSignature = JSON.stringify(entries.map((entry) => [
@@ -6811,12 +10669,18 @@ function renderOrchestrationProgress(body, feed, { running = false, specialistAr
     entry.eventTime?.text || "",
     entry.updates?.at(-1)?.text || entry.result || entry.text || entry.action || "",
   ]));
-  const flowChanged = body.dataset.orchestrationFlowSignature !== flowSignature;
-  const firstFlowRender = !body.dataset.orchestrationFlowSignature;
-  const latest = [...flat].reverse().find((event) => event.k === "tool" || cleanAgentText(event.s));
+  const previousFlowSignature = body.dataset.orchestrationFlowSignature;
+  const flowChanged = previousFlowSignature !== flowSignature;
+  const firstFlowRender = !previousFlowSignature;
+  const firstPopulatedFlow = entries.length > 0
+    && (!previousFlowSignature || previousFlowSignature === "[]");
+  const firstPrimaryLoad = (firstFlowRender || firstPopulatedFlow)
+    && ["agent-progress-console", "workflow-agent-progress-console"].includes(body.id);
+  const latest = [...flat].reverse().find((event) => runtimeEventState(event) || ["tool", "tool_result"].includes(event.k) || cleanAgentText(event.s));
   const latestMeta = orchestrationAgentMeta(latest?.agent || "orch");
-  let stateTitle = running ? "正在组织整套演示" : "整套任务记录已整理";
-  let stateDetail = running ? "整体规划与各制作环节正在协同推进。" : "可以在这里回看从规划、任务安排到整套检查的完整过程。";
+  const runtimeState = runtimeEventState(latest);
+  let stateTitle = running ? "任务启动准备中" : "整套任务记录已整理";
+  let stateDetail = running ? "尚未收到 Agent 启动记录，不能确认模型已经开始响应。" : "可以在这里回看从规划、任务安排到整套检查的完整过程。";
   if (ed.status === "not_started") {
     stateTitle = "尚未开始生成";
     stateDetail = "这条 Query 已进入正式待生成清单，开始运行后会在这里展示完整制作过程。";
@@ -6826,23 +10690,37 @@ function renderOrchestrationProgress(body, feed, { running = false, specialistAr
     stateDetail = pageCount
       ? `全部 ${pageCount} 页已经完成制作与检查，可以继续预览、播放或导出。`
       : "页面制作与检查已经完成，可以继续预览、播放或导出。";
-  } else if (["failed", "rejected", "error"].includes(ed.status)) {
+    if (ed.trainingAdmission === "rejected") {
+      stateTitle = "交付完成 · 训练样本未准入";
+      stateDetail = "成品可以预览、下载；未计入训练正样本，不属于通道故障。原因："
+        + (ed.trainingRejectionReasons.join("；") || "请查看训练准入记录。");
+    }
+  } else if (["failed", "rejected", "error", "paused_recoverable"].includes(ed.status)) {
     stateTitle = "本次生成未能完成";
     stateDetail = "已保留本轮制作记录，可查看具体阶段与失败原因。";
   } else if (["stopped", "interrupted"].includes(ed.status)) {
     stateTitle = "本次生成已中断";
     stateDetail = "已保留中断前的制作记录，可以回看进展或重新生成。";
+  } else if (running && runtimeState) {
+    stateTitle = `${latestMeta.label} · ${runtimeState[0]}`;
+    stateDetail = runtimeState[1];
   } else if (running && latest?.k === "tool") {
     const [action, detail] = toolProgress(latest);
     stateTitle = `${latestMeta.label} · ${action}`;
     stateDetail = detail;
+  } else if (running && latest?.k === "tool_result") {
+    const label = TOOL_LABEL[latest.tool] || latest.tool || "工具事务";
+    stateTitle = `${latestMeta.label} · ${label}${latest.ok ? "已完成" : "失败"}`;
+    stateDetail = latest.ok
+      ? `结果已返回${latest.duration_ms ? `，耗时 ${latest.duration_ms} ms` : ""}，正在继续下一步。`
+      : `错误状态：${latest.error_code || "执行失败"}。`;
   } else if (running && latest) {
     const text = cleanAgentText(latest.s);
     stateTitle = `${latestMeta.label} 正在反馈`;
     stateDetail = compactOrchestrationCurrentDetail(latestMeta, text);
   }
   if (body.dataset.progressShell !== "orchestration" || !body.querySelector(".orchestration-stream")) {
-    const configHtml = body.id === "agent-progress-console"
+    const configHtml = ["agent-progress-console", "workflow-agent-progress-console"].includes(body.id)
       ? outlineTaskConfigMarkup(editorPresentationKind(), taskConfigData())
       : "";
     body.dataset.progressShell = "orchestration";
@@ -6850,10 +10728,10 @@ function renderOrchestrationProgress(body, feed, { running = false, specialistAr
       <section class="agent-now orchestration-now"><div><span class="agent-kicker">当前工作</span><strong></strong><p></p></div></section>
       ${configHtml}
       <div class="orchestration-timing"></div>
-      <div class="orchestration-overview"><span><b data-orch-count>${ed.status === "not_started" ? 0 : 1}</b> 整体策划</span><span class="research"><b data-research-count>0</b> Research</span><span class="image"><b data-image-count>0</b> Image</span><span class="material"><b data-material-count>0</b> Material</span><span><b data-slide-count>0</b> 页面制作</span></div>
+      <div class="orchestration-overview"><span><b data-orch-count>${ed.status === "not_started" ? 0 : 1}</b> 整体策划</span><span class="research"><b data-research-count>0</b> Research</span><span class="image"><b data-image-count>0</b> Image</span><span class="material" hidden><b data-material-count>0</b> Material</span><span><b data-slide-count>0</b> 页面制作</span></div>
       <section class="orchestration-stream">
         <button class="orchestration-stream-head" type="button" aria-expanded="true">
-          <span>完整制作过程</span><em>关键判断、任务安排与制作结果</em><i aria-hidden="true"></i>
+          <span>编排与页面协作</span><em>Orchestrator 原始消息与工具 · 协作任务进展</em><i aria-hidden="true"></i>
         </button>
         <div class="orchestration-stream-body"><div class="orchestration-entry-list"></div></div>
       </section>
@@ -6875,7 +10753,7 @@ function renderOrchestrationProgress(body, feed, { running = false, specialistAr
   if (nowKicker) {
     nowKicker.textContent = ed.status === "completed"
       ? "任务完成"
-      : (["failed", "rejected", "error", "stopped", "interrupted"].includes(ed.status) ? "任务状态" : "当前工作");
+      : (["failed", "rejected", "error", "stopped", "interrupted", "paused_recoverable"].includes(ed.status) ? "任务状态" : "当前工作");
   }
   const nowIcon = now.querySelector(".agent-now-icon");
   const nowGlyph = now.querySelector("[data-now-agent-glyph]");
@@ -6897,25 +10775,58 @@ function renderOrchestrationProgress(body, feed, { running = false, specialistAr
   const keys = Object.keys(feed || {});
   const slideCount = keys.filter((key) => orchestrationAgentMeta(key).role === "slide").length;
   const roleCount = (role) => keys.filter((key) => orchestrationAgentMeta(key).role === role).length;
-  body.querySelector("[data-slide-count]").textContent = slideCount;
-  body.querySelector("[data-research-count]").textContent = roleCount("research");
-  body.querySelector("[data-image-count]").textContent = roleCount("image");
-  body.querySelector("[data-material-count]").textContent = roleCount("material");
+  body.querySelector("[data-orch-count]").textContent = roleCount("orch") || "未启动";
+  body.querySelector("[data-slide-count]").textContent = slideCount || "未启动";
+  body.querySelector("[data-research-count]").textContent = roleCount("research") || "未启动";
+  body.querySelector("[data-image-count]").textContent = roleCount("image") || "未启动";
+  const materialCount = keys.filter((key) => orchestrationAgentMeta(key).role === "material" && feed[key]?.length).length;
+  body.querySelector("[data-material-count]").textContent = materialCount;
+  body.querySelector("[data-material-count]").closest("span").hidden = materialCount === 0;
   const list = body.querySelector(".orchestration-entry-list");
-  reconcileOrchestrationEntries(list, entries);
+  reconcileOrchestrationEntries(list, entries, { artifactMode });
+  if (ed.kind === "static" && body.id === "agent-progress-console") bindWorkflowTraceControls();
+  if (ed.kind === "static" && ["agent-progress-console", "workflow-agent-progress-console"].includes(body.id)) {
+    let making = body.querySelector(".mural-making-host");
+    if (!making) {
+      making = document.createElement("div");
+      making.className = "mural-making-host";
+      body.querySelector(".orchestration-stream").before(making);
+    }
+    const view = muralMakingView();
+    const signature = JSON.stringify(view);
+    if (making.dataset.renderKey !== signature) {
+      const open = making.querySelector("details")?.open ?? true;
+      making.innerHTML = muralMakingMarkup(view, view.active && body.id === "agent-progress-console");
+      making.querySelector("details").open = open;
+      making.dataset.renderKey = signature;
+    }
+  }
   body.dataset.orchestrationFlowSignature = flowSignature;
   const actions = summarizeToolEvents(flat);
+  const transactions = liveToolTransactions(flat);
   const actionCount = flat.filter((event) => event.k === "tool").length;
-  body.querySelector(".agent-actions summary em").textContent = actionCount ? `${actions.length} 类动作 · ${actionCount} 次执行` : "等待执行";
+  const failedTransactions = transactions.filter((item) => item.result && !item.result.ok).length;
+  const openTransactions = transactions.filter((item) => !item.result).length;
+  body.querySelector(".agent-actions summary em").textContent = actionCount
+    ? `${actionCount} 次事务${openTransactions ? ` · ${openTransactions} 运行中` : ""}${failedTransactions ? ` · ${failedTransactions} 失败` : ""}`
+    : "等待执行";
   const actionList = body.querySelector(".agent-action-list");
-  const actionKey = JSON.stringify([running, actions]);
+  const actionKey = JSON.stringify([running, actions, transactions]);
   if (actionList.dataset.renderKey !== actionKey) {
+    const openToolIds = new Set($$(".live-transaction[open]", actionList).map((item) => item.dataset.toolUseId));
     actionList.dataset.renderKey = actionKey;
-    actionList.innerHTML = actions.length ? actions.map((action, index) => `<div class="agent-action${index === 0 && running ? " active" : ""}"><span>${index === 0 && running ? "•" : "✓"}</span><b>${escapeHtml(action.label)}</b>${action.hint ? `<i>${escapeHtml(action.hint)}</i>` : ""}${action.count > 1 ? `<em>×${action.count}</em>` : ""}</div>`).join("") : '<div class="agent-action-empty">还没有底层执行记录</div>';
+    actionList.innerHTML = transactions.length
+      ? transactions.map((transaction) => liveToolTransactionMarkup(transaction, { showAgent: true, open: openToolIds.has(transaction.id), active: running })).join("")
+      : actions.length ? actions.map((action, index) => `<div class="agent-action${index === 0 && running ? " active" : ""}"><span>${index === 0 && running ? "•" : "✓"}</span><b>${escapeHtml(action.label)}</b>${action.hint ? `<i>${escapeHtml(action.hint)}</i>` : ""}${action.count > 1 ? `<em>×${action.count}</em>` : ""}</div>`).join("") : '<div class="agent-action-empty">还没有底层执行记录</div>';
   }
   if (flowChanged) {
     requestAnimationFrame(() => {
-      const shouldFollow = wasNearBottom || (firstFlowRender && running);
+      const shouldFollow = wasNearBottom || firstPrimaryLoad;
+      const shouldJump = firstPrimaryLoad || (firstFlowRender && wasNearBottom);
+      if (shouldFollow && shouldJump) {
+        setScrollBottomImmediately(scroller);
+        return;
+      }
       scroller.scrollTo({
         top: shouldFollow ? scroller.scrollHeight : previousTop,
         behavior: shouldFollow && !firstFlowRender ? "smooth" : "auto",
@@ -6926,53 +10837,77 @@ function renderOrchestrationProgress(body, feed, { running = false, specialistAr
 
 function miniRow(ev) {
   const d = document.createElement("div");
-  d.className = "phl-row" + (ev.k === "tool" ? " cmd" : "");
-  d.textContent = ev.k === "tool"
-    ? `${TOOL_LABEL[ev.tool] || "推进任务"}${compactActivityHint(ev.hint) ? " · " + compactActivityHint(ev.hint) : ""}`
-    : ev.s;
+  d.className = "phl-row" + (["tool", "tool_result"].includes(ev.k) ? " cmd" : "");
+  d.textContent = evLine(ev);
   return d;
+}
+
+function mergeIncrementalLiveFeed(current, delta, { reset = false } = {}) {
+  const merged = reset ? {} : { ...(current || {}) };
+  Object.entries(delta || {}).forEach(([agent, incoming]) => {
+    let rows = reset ? [] : [...(merged[agent] || [])];
+    const seen = new Set(rows.map(evKey));
+    (incoming || []).forEach((event) => {
+      const key = evKey(event);
+      if (seen.has(key)) return;
+      seen.add(key);
+      if (event.partial) {
+        const previous = rows.find((row) => row.stream_id === event.stream_id);
+        const finalized = rows.some((row) => !row.partial && row.k === event.k
+          && row.attempt_id && row.attempt_id === event.attempt_id);
+        if (finalized || (previous && Number(previous.seq) >= Number(event.seq))) return;
+        event = { ...event, stream_start_seq: previous?.stream_start_seq ?? previous?.seq ?? event.seq };
+        rows = rows.filter((row) => row.stream_id !== event.stream_id);
+      } else if (["text", "analysis"].includes(event.k)) {
+        rows = rows.filter((row) => !(row.partial && row.k === event.k
+          && row.segment_id === event.segment_id && row.turn === event.turn
+          && (!event.attempt_id || row.attempt_id === event.attempt_id)));
+      }
+      if ((event.k === "provider" && event.phase === "failed")
+          || (event.k === "status" && event.status === "failed")) {
+        rows = rows.map((row) => row.partial
+          && (event.attempt_id ? row.attempt_id === event.attempt_id : row.segment_id === event.segment_id)
+          ? { ...row, phase: "interrupted" } : row);
+      }
+      rows.push(event);
+    });
+    rows.sort((a, b) => Number(a.seq || 0) - Number(b.seq || 0));
+    merged[agent] = rows.slice(-600);
+    const context = [...rows].reverse().find((row) => row.k === "context");
+    if (context && !merged[agent].includes(context)) merged[agent].unshift(context);
+  });
+  return merged;
 }
 
 async function fetchLive() {
   if (!ed.id) return;
+  const deckId = ed.id;
+  const cursor = Number(ed.liveEventCursor || 0);
   try {
-    const payload = await jget(trajectoryMode ? trajectoryDeckApi(ed.id, "/livefeed") : `/api/decks/${ed.id}/livefeed`);
-    ed.feed = payload.agents || {};
-    ed.pageAgents = reconcilePageAgentOwners(ed.feed, payload.page_agents || {});
+    const suffix = `/livefeed?cursor=${encodeURIComponent(cursor)}`;
+    const payload = await jget(trajectoryMode ? trajectoryDeckApi(deckId, suffix) : `/api/decks/${deckId}${suffix}`);
+    if (ed.id !== deckId) return;
+    if (payload.live_event_schema === "mural.live-event.v1") {
+      const reset = payload.live_cursor_reset === true;
+      ed.feed = mergeIncrementalLiveFeed(ed.feed, payload.agents || {}, { reset });
+      ed.liveEventSchema = payload.live_event_schema;
+      ed.liveEventCursor = Number(payload.live_next_cursor || 0);
+    } else {
+      ed.feed = payload.agents || {};
+      ed.liveEventSchema = "";
+      ed.liveEventCursor = 0;
+    }
+    ed.pageAgents = { ...(payload.page_agents || {}) };
     ed.specialistArtifacts = payload.specialist_artifacts || {};
     ed.agentTimings = payload.agent_timings || {};
     ed.overallTiming = payload.overall_timing || null;
+    ed.workflow = payload.workflow || {};
+    if (payload.live_has_more === true) setTimeout(fetchLive, 0);
   }
   catch { return; }
   renderLive();
+  if (ed.workspaceView === "workflow") renderWorkflowCanvas();
   if (ed.kind === "static" && ed.sel > 0) loadPageHistory(ed.sel, { quiet: true });
-}
-
-function reconcilePageAgentOwners(feed, declared) {
-  const owners = { ...(declared || {}) };
-  const hasAgent = (key) => !!key && Array.isArray(feed?.[key]);
-  Object.entries(feed || {}).forEach(([key, events]) => {
-    const normalized = String(key || "");
-    const grouped = /^slide[-_]group[-_]/i.test(normalized)
-      || (/^slide[-_]/i.test(normalized) && !/^slide[-_]0*\d+(?:_r\d+)?$/i.test(normalized));
-    if (!grouped) return;
-    const pages = new Set();
-    (events || []).forEach((event) => {
-      const value = `${event?.hint || ""}\n${event?.s || ""}`;
-      for (const match of value.matchAll(/(?:slide_|page_)0*(\d{1,3})(?=\D|$)/gi)) {
-        const page = Number(match[1]);
-        if (page > 0) pages.add(page);
-      }
-      const summary = value.match(/\bpages\s*:\s*([0-9][0-9,\s]*)/i);
-      if (summary) (summary[1].match(/\d+/g) || []).forEach((page) => pages.add(Number(page)));
-    });
-    pages.forEach((page) => {
-      // Repair stale mappings produced by older parser versions only when the
-      // declared owner is absent from this feed.  A valid backend mapping wins.
-      if (!hasAgent(owners[String(page)])) owners[String(page)] = key;
-    });
-  });
-  return owners;
 }
 
 function renderLive() {
@@ -7063,7 +10998,7 @@ async function loadPlan(n) {
   if (ed.sel !== n) return;                                // 用户已切到别页
   if (!info.exists) {
     // 生成中规划可能还没写出来 → 不缓存为永久失败,稍后再试
-    if (["completed", "failed", "rejected", "interrupted"].includes(ed.status)) ed.planCache[n] = false;
+    if (["completed", "failed", "rejected", "interrupted", "paused_recoverable"].includes(ed.status)) ed.planCache[n] = false;
     if (n === 0) panel.hidden = true;
     else renderPlanMissing(n);                             // 如实告知 + 指路全局大纲
     return;
@@ -7116,7 +11051,7 @@ function subscribe(id) {
     if (ed.id !== id) { es.close(); return; }
     let p; try { p = JSON.parse(ev.data); } catch { return; }
     if (p && p.phase) apply(p);
-    if (p && ["completed", "failed", "rejected", "interrupted"].includes(p.status)) { es.close(); if (ed.sse === es) ed.sse = null; }
+    if (p && ["completed", "failed", "rejected", "interrupted", "paused_recoverable"].includes(p.status)) { es.close(); if (ed.sse === es) ed.sse = null; }
   };
   es.addEventListener("end", () => { es.close(); if (ed.sse === es) ed.sse = null; });
 }
@@ -7153,6 +11088,7 @@ $("#user-menu").addEventListener("click", (e) => {
   else if (action === "batch") openBatchModal();
   else if (action === "model") setModelDialog(true);
   else if (action === "services") setServiceDialog(true);
+  else if (action === "environment") setEnvironmentDialog(true);
   else if (action === "static" || action === "dynamic") {
     setCreationMode(action);
     closeEditor();
@@ -7186,6 +11122,15 @@ setThinkingEnabled(
   { remember: false },
 );
 $("#thinking-toggle").addEventListener("click", () => setThinkingEnabled(!thinkingEnabled()));
+$("#effort-sel")?.addEventListener("change", (event) => {
+  const model = $("#model-sel")?.value;
+  if (model) localStorage.setItem(`studio_effort_${model}`, event.target.value);
+});
+$("#batch-model")?.addEventListener("change", syncBatchEffortControl);
+$("#batch-effort")?.addEventListener("change", (event) => {
+  const model = $("#batch-model")?.value;
+  if (model) localStorage.setItem(`studio_effort_${model}`, event.target.value);
+});
 $("#style-trigger").addEventListener("click", (e) => {
   e.stopPropagation();
   setLengthMenu(false);
@@ -7300,6 +11245,28 @@ $("#workspace-view-switch")?.addEventListener("click", (event) => {
   const button = event.target.closest("button[data-workspace-view]");
   if (!button) return;
   setWorkspaceView(button.dataset.workspaceView);
+});
+$("#page-edit-open")?.addEventListener("click", async (event) => {
+  const button = event.currentTarget;
+  if (button.disabled) return;
+  button.disabled=true;
+  try {
+    const deckId=ed.id, page=Number(ed.sel);
+    await window.MuralPageEditor.open({page, deckId, trigger:button, onSaved:async result=>{
+      if (ed.id===deckId) { await openDeck(deckId); select(page, {byUser:true}); setWorkspaceView("ppt"); }
+      showStudioNotice(result.rendered
+        ? "原页面 HTML 已保存，PNG 已更新。修改后的正式导出仍需重新验收。"
+        : `HTML 已保存，但截图未更新：${result.error || "渲染失败"}。请重新打开页面修正后保存，旧截图不代表本次修改。`);
+    }});
+  } catch (error) { showStudioNotice(error.message || "编辑画布未能打开"); }
+  finally { syncViewToggle(); }
+});
+window.addEventListener("resize", () => {
+  if (ed.workspaceView !== "workflow") return;
+  const stage = $("#workflow-stage");
+  if (!stage) return;
+  delete stage.dataset.workflowSignature;
+  requestAnimationFrame(renderWorkflowCanvas);
 });
 $("#view-toggle").addEventListener("click", (e) => {
   const b = e.target.closest("button[data-view]");
@@ -7416,6 +11383,7 @@ $("#model-modal").addEventListener("click", (event) => {
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && !$("#model-modal").hidden) setModelDialog(false);
   if (event.key === "Escape" && !$("#service-modal").hidden) setServiceDialog(false);
+  if (event.key === "Escape" && !$("#environment-modal").hidden) setEnvironmentDialog(false);
 });
 
 $("#service-dialog-close").addEventListener("click", () => setServiceDialog(false));
@@ -7423,16 +11391,25 @@ $("#service-form-cancel").addEventListener("click", () => setServiceDialog(false
 $("#service-modal").addEventListener("click", (event) => {
   if (event.target === $("#service-modal")) setServiceDialog(false);
 });
-["image", "search"].forEach((name) => {
+$("#environment-dialog-close").addEventListener("click", () => setEnvironmentDialog(false));
+$("#environment-check-close").addEventListener("click", () => setEnvironmentDialog(false));
+$("#environment-check-run").addEventListener("click", runEnvironmentCheck);
+$("#environment-modal").addEventListener("click", (event) => {
+  if (event.target === $("#environment-modal")) setEnvironmentDialog(false);
+});
+["image", "search", "visual-critic"].forEach((name) => {
   $(`#service-${name}-enabled`).addEventListener("change", syncServiceCards);
 });
 $("#service-image-provider").addEventListener("change", () => syncImageProviderFields({ applyDefaults: true }));
 $("#service-generation-reset").addEventListener("click", () => {
-  $("#service-max-tokens").value = 65536;
-  $("#service-streaming-enabled").checked = true;
-  $("#service-static-max-turns").value = 4096;
-  $("#service-static-subagent-max-turns").value = 200;
+  $("#service-max-tokens").value = 40960;
+  $("#service-streaming-enabled").checked = false;
+  $("#service-static-max-turns").value = 240;
+  $("#service-static-subagent-max-turns").value = 240;
   $("#service-dynamic-max-turns").value = 4096;
+  if ([...$("#service-title-task-model").options].some((option) => option.value === "deployment-model")) {
+    $("#service-title-task-model").value = "deployment-model";
+  }
 });
 $("#service-form").addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -7458,9 +11435,11 @@ $("#service-form").addEventListener("submit", async (event) => {
         clear_search_api_key: $("#service-search-clear").checked,
         max_tokens: Number($("#service-max-tokens").value),
         streaming_enabled: $("#service-streaming-enabled").checked,
+        enable_visual_critic: $("#service-visual-critic-enabled").checked,
         static_max_turns: Number($("#service-static-max-turns").value),
         static_subagent_max_turns: Number($("#service-static-subagent-max-turns").value),
         dynamic_max_turns: Number($("#service-dynamic-max-turns").value),
+        title_task_model: $("#service-title-task-model").value,
       }),
     });
     const payload = await response.json();
@@ -7515,12 +11494,6 @@ $("#custom-model-list").addEventListener("click", async (event) => {
   await deleteCustomModel(button.dataset.deleteModel, button);
 });
 if ($("#attach-btn")) {              // 附件上传区交互(仅支持附件的管线可见)
-  const savedAttachmentMode = localStorage.getItem("studio_attachment_mode");
-  if (savedAttachmentMode && $(`#attachment-mode option[value="${savedAttachmentMode}"]`)) {
-    $("#attachment-mode").value = savedAttachmentMode;
-  }
-  $("#attachment-mode").addEventListener("change", () =>
-    localStorage.setItem("studio_attachment_mode", attachmentMode()));
   $("#attach-btn").addEventListener("click", (event) => {
     event.stopPropagation();
     if (creationMode !== "static") return;
@@ -7818,7 +11791,7 @@ document.addEventListener("keydown", (event) => {
 setTheme(document.documentElement.dataset.theme || "dark", { remember: false });
 setLanguage(currentLanguage, { remember: false });
 setTopbar();
-initHistoryFilters();
+initHistorySearch();
 const initialParams = new URLSearchParams(location.search);
 if (initialParams.get("mode") === "dynamic") setCreationMode("dynamic", { remember: false });
 if (["login", "register"].includes(initialParams.get("auth"))) {

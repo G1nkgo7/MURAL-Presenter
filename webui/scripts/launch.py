@@ -10,6 +10,7 @@ installed.  Configuration precedence is:
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import os
 import shutil
@@ -22,6 +23,24 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 STUDIO_ROOT = PROJECT_ROOT / "studio"
 ENGINE_ROOT = PROJECT_ROOT / "inference"
 MURAL_PRESENTER_SUITE = PROJECT_ROOT.parent
+
+
+def _verify_mural_release() -> dict:
+    guard_path = (
+        MURAL_PRESENTER_SUITE
+        / "harnesses/mural-presenter-v1/runtime/release_guard.py"
+    )
+    spec = importlib.util.spec_from_file_location("mural_v1_release_guard", guard_path)
+    if spec is None or spec.loader is None:
+        raise SystemExit(f"Cannot load MURAL release guard: {guard_path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    try:
+        return module.verify_runtime_release(
+            "webui", repository_root=MURAL_PRESENTER_SUITE
+        )
+    except RuntimeError as exc:
+        raise SystemExit(f"MURAL release verification failed: {exc}") from exc
 
 
 def _load_env_file(path: Path) -> None:
@@ -54,13 +73,6 @@ def _python_in(project: Path) -> Path:
     if os.name == "nt":
         return project / ".venv" / "Scripts" / "python.exe"
     return project / ".venv" / "bin" / "python"
-
-
-def _venv_python(venv: Path) -> Path:
-    """Return the interpreter inside a virtualenv directory itself."""
-    if os.name == "nt":
-        return venv / "Scripts" / "python.exe"
-    return venv / "bin" / "python"
 
 
 def _find_browser(root: Path) -> Path | None:
@@ -117,15 +129,43 @@ def _font_has_weight_axis(
         return False
 
 
+def _python_imports_runtime_modules(python: Path) -> bool:
+    """Verify attachment/runtime modules inside the managed engine venv."""
+    modules = (
+        "playwright",
+        "PIL",
+        "numpy",
+        "cv2",
+        "pptx",
+        "docx",
+        "openpyxl",
+        "pymupdf",
+        "rapidocr_onnxruntime",
+        "fontTools",
+    )
+    probe = "; ".join(f"import {name}" for name in modules)
+    try:
+        return subprocess.run(
+            [str(python), "-c", probe],
+            cwd=PROJECT_ROOT,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+            timeout=30,
+        ).returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
 def _presenter_runtime_ready(
     engine_python: Path,
-    normalize_python: Path,
     fonts_dir: Path,
 ) -> bool:
     sans = fonts_dir / "NotoSansSC.ttf"
     serif = fonts_dir / "NotoSerifSC.ttf"
     return (
-        normalize_python.is_file()
+        engine_python.is_file()
+        and _python_imports_runtime_modules(engine_python)
         and sans.is_file()
         and serif.is_file()
         and _font_has_weight_axis(engine_python, sans, 100, 900)
@@ -133,55 +173,14 @@ def _presenter_runtime_ready(
     )
 
 
-def _prepare_presenter_runtime(engine_python: Path, playwright_root: Path) -> tuple[Path, Path]:
-    """Install the complete attachment/font runtime on Linux and macOS.
-
-    Native Windows users are supported through Docker or WSL because the
-    paired Skill installer is POSIX shell based. The WebUI itself still runs
-    natively; an actionable warning is emitted instead of a cryptic failure.
-    """
-    runtime_root = Path(os.environ.get("SENSENOVA_RUNTIME_DIR", PROJECT_ROOT / "runtime"))
-    runtime_root = runtime_root.expanduser().resolve()
-    normalize_venv = runtime_root / "normalize"
-    normalize_python = _venv_python(normalize_venv)
-    fonts_dir = runtime_root / "fonts"
-    install_script = (
-        MURAL_PRESENTER_SUITE
-        / "skills/mural-presenter/scripts/install.sh"
+def _prepare_presenter_runtime(engine_python: Path, fonts_dir: Path) -> tuple[Path, Path]:
+    """依赖由 inference 的 uv.lock 安装，字体随唯一源码交付，不执行历史安装器。"""
+    if _presenter_runtime_ready(engine_python, fonts_dir):
+        return engine_python, fonts_dir
+    raise SystemExit(
+        f"Incomplete inference runtime or packaged fonts: {engine_python}; {fonts_dir}. "
+        f"Run uv sync --project {ENGINE_ROOT} --frozen and restore the release fonts directory."
     )
-    if _presenter_runtime_ready(engine_python, normalize_python, fonts_dir):
-        return normalize_python, fonts_dir
-    if os.name == "nt":
-        print(
-            "[SenseNova Present] Full attachment/font setup on native Windows "
-            "requires Docker or WSL; see README.md.",
-            flush=True,
-        )
-        return normalize_python, fonts_dir
-    bash = shutil.which("bash")
-    if not bash or not install_script.is_file():
-        raise SystemExit(f"Presenter installer is missing: {install_script}")
-    env = os.environ.copy()
-    env.update({
-        "PYBIN": str(engine_python),
-        "NORMALIZE_VENV": str(normalize_venv),
-        "FONTS_DIR": str(fonts_dir),
-        "PLAYWRIGHT_BROWSERS_PATH": str(playwright_root),
-        "PATH": str(engine_python.parent) + os.pathsep + env.get("PATH", ""),
-    })
-    print("[SenseNova Present] Preparing fonts and attachment parsers (first run only)", flush=True)
-    try:
-        subprocess.run(
-            [bash, str(install_script), "normalize", "pymupdf", "fonts", "fonttools", "image-cutout", "material-tools"],
-            cwd=PROJECT_ROOT,
-            env=env,
-            check=True,
-        )
-    except subprocess.CalledProcessError as exc:
-        raise SystemExit(f"Presenter runtime setup failed (exit={exc.returncode})") from exc
-    if not _presenter_runtime_ready(engine_python, normalize_python, fonts_dir):
-        raise SystemExit("Presenter setup finished but required fonts/parsers are still missing")
-    return normalize_python, fonts_dir
 
 
 def _mask(value: str) -> str:
@@ -243,6 +242,9 @@ def main() -> int:
     known, _ = preliminary.parse_known_args()
     env_file = known.env_file.expanduser().resolve()
     _load_env_file(env_file)
+    sys.path.insert(0, str(MURAL_PRESENTER_SUITE / "scripts"))
+    from runtime_environment import prepare_environment
+    prepare_environment(MURAL_PRESENTER_SUITE)
     args = _parser().parse_args()
 
     if not 1 <= args.port <= 65535:
@@ -251,14 +253,23 @@ def main() -> int:
     pipeline_root = Path(
         os.environ.get("PPTAGENT_CLEAN_PIPELINE_ROOT", PROJECT_ROOT / "vendor/static_ppt-clean-current")
     ).expanduser().resolve()
-    presenter_skill = MURAL_PRESENTER_SUITE / "skills" / "mural-presenter" / "SKILL.md"
-    presenter_harness = MURAL_PRESENTER_SUITE / "harnesses" / "mural-presenter" / "infer.py"
-    has_presenter = presenter_skill.is_file() and presenter_harness.is_file()
+    presenter_skill = (
+        MURAL_PRESENTER_SUITE
+        / "skills/mural-presenter-v1/SKILL.md"
+    )
+    presenter_v1_harness = (
+        MURAL_PRESENTER_SUITE / "harnesses/mural-presenter-v1/infer.py"
+    )
+    has_presenter = presenter_skill.is_file() and presenter_v1_harness.is_file()
     if not has_presenter and not (pipeline_root / "infer.py").is_file():
         raise SystemExit(
             "No runnable static generation pair was found. Expected either "
-            f"{presenter_skill} + {presenter_harness}, or {pipeline_root / 'infer.py'}."
+            f"{presenter_skill} + {presenter_v1_harness}, or "
+            f"{pipeline_root / 'infer.py'}."
         )
+    if args.reload:
+        os.environ.setdefault("MURAL_RELEASE_POLICY", "development")
+    release_report = _verify_mural_release() if has_presenter else None
 
     uv_bin = os.environ.get("SENSE_NOVA_UV_BIN") or shutil.which("uv")
     if not args.no_install:
@@ -280,15 +291,10 @@ def main() -> int:
     playwright_root = Path(
         os.environ.get("PLAYWRIGHT_BROWSERS_PATH", STUDIO_ROOT / "data/ms-playwright")
     ).expanduser().resolve()
-    normalize_python = _venv_python(Path(os.environ.get(
-        "SENSENOVA_RUNTIME_DIR", PROJECT_ROOT / "runtime"
-    )).expanduser().resolve() / "normalize")
-    fonts_dir = (
-        Path(os.environ.get("SENSENOVA_RUNTIME_DIR", PROJECT_ROOT / "runtime"))
-        .expanduser().resolve() / "fonts"
-    )
+    normalize_python = engine_python
+    fonts_dir = MURAL_PRESENTER_SUITE / "fonts"
     if not args.no_install and has_presenter:
-        normalize_python, fonts_dir = _prepare_presenter_runtime(engine_python, playwright_root)
+        normalize_python, fonts_dir = _prepare_presenter_runtime(engine_python, fonts_dir)
     browser = _find_browser(playwright_root)
     if browser is None and not args.no_browser_install:
         env = os.environ.copy()
@@ -313,7 +319,6 @@ def main() -> int:
         "STUDIO_AUTH_ENABLED": "0" if is_v1 else "1",
         "STUDIO_DYNAMIC_ENABLED": "0" if is_v1 else "1",
         "STUDIO_SINGLE_USER_USERNAME": "user",
-        "STUDIO_MAX_PER_MODEL": "0",
         "STUDIO_AGENT_MAX_TOKENS": "40960",
         "STUDENT_TEMPERATURE": "0.3",
         # Release deployments start with no internal test model exposed.
@@ -328,14 +333,19 @@ def main() -> int:
         })
     if has_presenter:
         defaults.update({
-            "PPTAGENT_MURAL_PRESENTER_SKILL_ROOT": str(MURAL_PRESENTER_SUITE / "skills/mural-presenter"),
-            "PPTAGENT_MURAL_PRESENTER_HARNESS_ROOT": str(MURAL_PRESENTER_SUITE / "harnesses/mural-presenter"),
-            "PPTAGENT_MURAL_PRESENTER_HARNESS_ENTRY": "infer.py",
-            "PPTAGENT_PUBLIC_SKILL_KEYS": "mural-presenter,mural-presenter-creative",
-            "PPTAGENT_DEFAULT_SKILL": "mural-presenter",
+            "MURAL_SKILL_DIR": str(MURAL_PRESENTER_SUITE / "skills/mural-presenter-v1"),
+            "PPTAGENT_MURAL_V1_HARNESS_ROOT": str(MURAL_PRESENTER_SUITE / "harnesses/mural-presenter-v1"),
+            "PPTAGENT_MURAL_V1_HARNESS_ENTRY": "infer.py",
+            "PPTAGENT_PUBLIC_SKILL_KEYS": "mural-presenter-v1",
+            "PPTAGENT_DEFAULT_SKILL": "mural-presenter-v1",
         })
     for key, value in defaults.items():
         os.environ.setdefault(key, value)
+    # These paths are managed runtime identities. Generation, attachment/OCR
+    # workers and model-issued shell commands must all resolve the same venv.
+    os.environ["PPTAGENT_INFERENCE_ROOT"] = str(ENGINE_ROOT)
+    os.environ["PPTAGENT_ENGINE_PYTHON"] = str(engine_python)
+    os.environ["NORMALIZE_PY"] = str(engine_python)
     configured_data_dir = os.environ.get("STUDIO_DATA_DIR", "").strip()
     if configured_data_dir:
         data_path = Path(configured_data_dir).expanduser()
@@ -356,6 +366,11 @@ def main() -> int:
             "SENSENOVA_MODEL_BASE_URL and SENSENOVA_MODEL_NAME must be configured together"
         )
 
+    # 启动诊断复用 WebUI 的 stdlib 配置读取器，不再展示已停用的 Provider 别名。
+    sys.path.insert(0, str(PROJECT_ROOT))
+    from studio.app import service_config
+
+    external_env = service_config.system_runtime_env()
     public = {
         "url": f"http://{args.host}:{args.port}",
         "language": args.language,
@@ -380,14 +395,26 @@ def main() -> int:
         "data_dir": os.environ.get("STUDIO_DATA_DIR", str(STUDIO_ROOT / "data")),
         "environment_file": str(env_file),
         "browser": str(browser or "not installed"),
+        "engine_python": str(engine_python),
         "normalize_python": str(normalize_python),
         "font_source_dirs": os.environ.get("PPT_FONT_SOURCE_DIRS", str(fonts_dir)),
+        "mural_release": (
+            {
+                "release": release_report["release"],
+                "source_commit": release_report["source_commit"],
+                "dirty_override": release_report["dirty_override"],
+            }
+            if release_report
+            else None
+        ),
         "external_services": {
+            "provider_environment_file": str(service_config.PROVIDER_ENV_PATH),
             "model_key": _mask(os.environ.get("SENSENOVA_MODEL_API_KEY", "")),
-            "image_url": os.environ.get("SENSENOVA_IMAGE_BASE_URL", ""),
-            "image_key": _mask(os.environ.get("SENSENOVA_IMAGE_API_KEY", "")),
-            "search_url": os.environ.get("SENSENOVA_SEARCH_BASE_URL", ""),
-            "search_key": _mask(os.environ.get("SENSENOVA_SEARCH_API_KEY", "")),
+            "image_url": external_env.get("IMAGE_BASE_URL", ""),
+            "image_model": external_env.get("IMAGE_MODEL", ""),
+            "image_key": _mask(external_env.get("IMAGE_API_KEY", "")),
+            "search_url": external_env.get("SERPER_BASE_URL", ""),
+            "search_key": _mask(external_env.get("SERPER_API_KEY", "")),
         },
     }
     keep_awake = (
@@ -403,6 +430,7 @@ def main() -> int:
     command = [
         str(studio_python), "-m", "uvicorn", "app.main:app",
         "--host", args.host, "--port", str(args.port),
+        "--timeout-graceful-shutdown", "5",
     ]
     if args.reload:
         command.append("--reload")

@@ -1,0 +1,221 @@
+{
+  "schema": "mural.font-substitutions.v1",
+  "version": 1,
+  "notes": [
+    "This catalog resolves font *names* that a source design (Refero clone, brand deck, screenshot) may request but that are NOT part of the redistributable OFL allowlist in font_bundle.FAMILY_FACES.",
+    "Two kinds of entries: (1) aliases — the SAME family under a different spelling/variant name, resolved 1:1 to a canonical allowlist family; (2) mappings — a commercial or otherwise non-redistributable family, resolved to one or more portable candidate families that carry a similar voice.",
+    "Commercial entries carry ONLY the requested name and metadata. They MUST NOT carry font file paths, download URLs, or binaries. Displaying a commercial name in a source design is not a redistribution license.",
+    "Every mapping starts status:\"proposed\". Promotion to \"audited\" requires a visual specimen sign-off (rendered specimen under harnesses/mural-presenter-v1/canary/font-coverage/<run-id>/) confirming the substitute reads acceptably for the role. proposed mappings are NOT auto-enabled in production; the deterministic resolver will only emit resolution_kind audited_substitute for an audited mapping. A proposed mapping degrades to portable_fallback with the first candidate as the family, so the deck still renders and provenance is still recorded.",
+    "Catalog invariants (enforced by font_bundle._validate_substitution_catalog): no alias cycles; an alias target must be a canonical allowlist family or another alias that ultimately resolves to one; a canonical allowlist family never appears as an alias source; an audited mapping's candidates must ALL exist in FAMILY_FACES; audited requires a non-empty specimen field. There is no silent swallow: a name with no alias and no mapping resolves to unmapped_fallback."
+  ],
+  "aliases": {
+    "PPNeueMontreal": "PP Neue Montreal",
+    "PP Neue Montreal Mono": "PP Neue Montreal",
+    "InterVariable": "Inter",
+    "Inter Variable": "Inter",
+    "Inter var": "Inter",
+    "InterTight": "Inter Tight",
+    "Geist Sans": "Geist",
+    "GeistSans": "Geist",
+    "GeistMono": "Geist Mono",
+    "JetBrainsMono": "JetBrains Mono",
+    "JetBrains Mono NL": "JetBrains Mono",
+    "SuisseIntl": "Suisse Intl",
+    "Suisse Int'l": "Suisse Intl",
+    "SohneBuch": "Söhne",
+    "Soehne": "Söhne",
+    "NeueHaasGrotesk": "Neue Haas Grotesk",
+    "Neue Haas Grotesk Display": "Neue Haas Grotesk",
+    "SFProDisplay": "SF Pro Display",
+    "SF Pro": "SF Pro Text",
+    "-apple-system": "SF Pro Text",
+    "BlinkMacSystemFont": "SF Pro Text",
+    "SFMono-Regular": "SF Mono",
+    "SFMono": "SF Mono",
+    "BerkeleyMono": "Berkeley Mono",
+    "Berkeley Mono Variable": "Berkeley Mono",
+    "PlusJakartaSans": "Plus Jakarta Sans",
+    "OpenSans": "Open Sans",
+    "RobotoMono": "Roboto Mono",
+    "PlayfairDisplay": "Playfair Display",
+    "DMSans": "DM Sans"
+  },
+  "mappings": [
+    {
+      "id": "sf-pro-display",
+      "requested_family": "SF Pro Display",
+      "status": "proposed",
+      "candidates": ["Inter Tight", "Manrope"],
+      "metadata": {
+        "vendor": "Apple",
+        "license": "commercial-proprietary",
+        "redistributable": false,
+        "voice": "neutral-grotesque display",
+        "note": "System font on Apple platforms; not redistributable. Portable neutral grotesque candidates."
+      },
+      "specimen": null
+    },
+    {
+      "id": "sf-pro-text",
+      "requested_family": "SF Pro Text",
+      "status": "proposed",
+      "candidates": ["Inter", "Open Sans"],
+      "metadata": {
+        "vendor": "Apple",
+        "license": "commercial-proprietary",
+        "redistributable": false,
+        "voice": "neutral-grotesque body"
+      },
+      "specimen": null
+    },
+    {
+      "id": "sf-mono",
+      "requested_family": "SF Mono",
+      "status": "proposed",
+      "candidates": ["JetBrains Mono", "IBM Plex Mono"],
+      "metadata": {
+        "vendor": "Apple",
+        "license": "commercial-proprietary",
+        "redistributable": false,
+        "voice": "monospace"
+      },
+      "specimen": null
+    },
+    {
+      "id": "berkeley-mono",
+      "requested_family": "Berkeley Mono",
+      "status": "proposed",
+      "candidates": ["JetBrains Mono", "IBM Plex Mono"],
+      "metadata": {
+        "vendor": "Berkeley Graphics",
+        "license": "commercial-proprietary",
+        "redistributable": false,
+        "voice": "monospace"
+      },
+      "specimen": null
+    },
+    {
+      "id": "pp-neue-montreal",
+      "requested_family": "PP Neue Montreal",
+      "status": "proposed",
+      "candidates": ["Inter", "DM Sans"],
+      "metadata": {
+        "vendor": "Pangram Pangram",
+        "license": "commercial-proprietary",
+        "redistributable": false,
+        "voice": "neutral-grotesque"
+      },
+      "specimen": null
+    },
+    {
+      "id": "graphik",
+      "requested_family": "Graphik",
+      "status": "proposed",
+      "candidates": ["Inter", "Archivo"],
+      "metadata": {
+        "vendor": "Commercial Type",
+        "license": "commercial-proprietary",
+        "redistributable": false,
+        "voice": "neutral-grotesque"
+      },
+      "specimen": null
+    },
+    {
+      "id": "soehne",
+      "requested_family": "Söhne",
+      "status": "proposed",
+      "candidates": ["Inter", "Manrope"],
+      "metadata": {
+        "vendor": "Klim Type Foundry",
+        "license": "commercial-proprietary",
+        "redistributable": false,
+        "voice": "neutral-grotesque"
+      },
+      "specimen": null
+    },
+    {
+      "id": "roobert",
+      "requested_family": "Roobert",
+      "status": "proposed",
+      "candidates": ["Inter", "Plus Jakarta Sans"],
+      "metadata": {
+        "vendor": "Displaay Type Foundry",
+        "license": "commercial-proprietary",
+        "redistributable": false,
+        "voice": "geometric-grotesque"
+      },
+      "specimen": null
+    },
+    {
+      "id": "neue-haas-grotesk",
+      "requested_family": "Neue Haas Grotesk",
+      "status": "proposed",
+      "candidates": ["Inter", "Archivo"],
+      "metadata": {
+        "vendor": "Linotype",
+        "license": "commercial-proprietary",
+        "redistributable": false,
+        "voice": "neo-grotesque"
+      },
+      "specimen": null
+    },
+    {
+      "id": "suisse-intl",
+      "requested_family": "Suisse Intl",
+      "status": "proposed",
+      "candidates": ["Inter", "Manrope"],
+      "metadata": {
+        "vendor": "Swiss Typefaces",
+        "license": "commercial-proprietary",
+        "redistributable": false,
+        "voice": "neo-grotesque"
+      },
+      "specimen": null
+    },
+    {
+      "id": "signifier",
+      "requested_family": "Signifier",
+      "status": "proposed",
+      "candidates": ["Fraunces", "Playfair Display"],
+      "metadata": {
+        "vendor": "Klim Type Foundry",
+        "license": "commercial-proprietary",
+        "redistributable": false,
+        "voice": "high-contrast serif"
+      },
+      "specimen": null
+    },
+    {
+      "id": "canela",
+      "requested_family": "Canela",
+      "status": "proposed",
+      "candidates": ["Playfair Display", "Cormorant Garamond"],
+      "metadata": {
+        "vendor": "Commercial Type",
+        "license": "commercial-proprietary",
+        "redistributable": false,
+        "voice": "display serif"
+      },
+      "specimen": null
+    },
+    {
+      "id": "editorial-new",
+      "requested_family": "Editorial New",
+      "status": "proposed",
+      "candidates": ["Fraunces", "Cormorant Garamond"],
+      "metadata": {
+        "vendor": "Pangram Pangram",
+        "license": "commercial-proprietary",
+        "redistributable": false,
+        "voice": "editorial serif"
+      },
+      "specimen": null
+    }
+  ],
+  "unmapped_fallback": {
+    "serif": "Noto Serif SC",
+    "monospace": "IBM Plex Mono",
+    "sans-serif": "Inter",
+    "default": "Inter"
+  }
+}

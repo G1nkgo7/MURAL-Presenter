@@ -1,0 +1,211 @@
+/* 公共底座只提供画布、显隐、字体角色与有界容器。
+   本册共享设计由 Orchestrator 写入；单页构图留在所属 HTML。 */
+:root {
+  --canvas-w: 1600px;
+  --canvas-h: 900px;
+  --safe-x: 90px;
+  --safe-y: 60px;
+
+  --bg: #f4f7f9;
+  --content-canvas: var(--bg);
+  --surface: #e9eff2;
+  --ink: #111820;
+  --muted: #5b6875;
+  --accent: #176b87;
+  --accent-2: #cf6848;
+  --line: rgba(17, 24, 32, 0.18);
+
+  --font-sans: "Noto Sans SC", "Source Han Sans SC", "Microsoft YaHei", sans-serif;
+  --font-serif: "Noto Serif SC", "Source Han Serif SC", "Songti SC", serif;
+  --font-display: var(--font-sans);
+  --font-title: var(--font-display);
+  --font-body: var(--font-sans);
+  --font-number: "Archivo", "Manrope", var(--font-sans);
+  --font-annotation: var(--font-sans);
+  --font-mono: "IBM Plex Mono", "Noto Sans Mono", monospace;
+  --font-display-weight: 800;
+  --fs-title: 60px;
+  --fs-body: 26px;
+  --fs-small: 20px;
+  --lh-title: 1.12;
+  --lh-body: 1.5;
+  --layout-gap: 36px;
+  --layout-gap-tight: 20px;
+}
+
+* { box-sizing: border-box; }
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  background: #111;
+}
+
+body {
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  font-synthesis: none;
+  text-rendering: geometricPrecision;
+}
+
+.stage {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: #111;
+}
+
+.deck {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: var(--canvas-w);
+  height: var(--canvas-h);
+  overflow: hidden;
+  background: var(--content-canvas);
+  transform-origin: top left;
+}
+
+/* 播放器只切换当前页；动效由本册按需添加，不默认施加模糊或逐层入场。 */
+.slide {
+  position: absolute;
+  inset: 0;
+  width: var(--canvas-w);
+  height: var(--canvas-h);
+  overflow: hidden;
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+  isolation: isolate;
+  color: var(--ink);
+  background: var(--content-canvas);
+}
+
+.slide.active {
+  visibility: visible;
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.slide.ground-dark,
+.slide.page--dark {
+  --bg: #10171d;
+  --content-canvas: var(--bg);
+  --surface: #18252d;
+  --ink: #f4f7f9;
+  --muted: #aebbc5;
+  --line: rgba(244, 247, 249, 0.22);
+  color: var(--ink);
+  background: var(--content-canvas);
+}
+
+.slide.ground-light,
+.slide.page--light,
+.slide.ground-paper,
+.slide.page--paper {
+  --bg: #f4f7f9;
+  --content-canvas: var(--bg);
+  --surface: #e9eff2;
+  --ink: #111820;
+  --muted: #5b6875;
+  --line: rgba(17, 24, 32, 0.18);
+  color: var(--ink);
+  background: var(--content-canvas);
+}
+
+.page-background,
+.page-stage {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.page-background {
+  z-index: 0;
+  pointer-events: none;
+}
+
+/* 所有页共享同一舞台；安全边距仅为正常流起点，不预留页眉、分栏或页脚。 */
+.page-stage {
+  z-index: 1;
+  padding: var(--safe-y) var(--safe-x);
+  min-width: 0;
+  min-height: 0;
+}
+
+/* 可组合的结构起点，不绑定页型、配色或可见组件。
+   可直接加在 .page-stage，或加在其内部的单一布局容器。 */
+.deck-layout {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  gap: var(--layout-gap);
+}
+
+.deck-layout > * {
+  min-width: 0;
+  min-height: 0;
+}
+
+/* 一个主视觉或证据场，辅以短标题/问题区。 */
+.deck-layout--hero {
+  grid-template: minmax(0, 1fr) auto / minmax(0, 1fr);
+}
+
+/* 稳定标题锚点，下方由一个主要证据区承重。 */
+.deck-layout--focus {
+  grid-template: auto minmax(0, 1fr) / minmax(0, 1fr);
+}
+
+/* 主次明确的图文、对象/解释或问题/答案并置。 */
+.deck-layout--split {
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 0.85fr);
+}
+
+/* 共同尺度下的双向比较；内部仍须显式共享基线和口径。 */
+.deck-layout--compare {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+/* 步骤、时间或因果推进；作者按实际阶段数创建子项。 */
+.deck-layout--sequence {
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: var(--layout-gap-tight);
+}
+
+/* figure 的浏览器默认边距会破坏媒体边界；实际裁切与比例仍由页面明确设置。 */
+.slide figure { margin: 0; }
+
+.page-title {
+  margin: 0;
+  font-family: var(--font-title);
+  font-size: var(--fs-title);
+  font-weight: var(--font-display-weight);
+  line-height: var(--lh-title);
+}
+
+.page-subtitle {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: var(--fs-body);
+}
+
+.page-subtitle:empty { display: none; }
+
+.page-footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  min-width: 0;
+  flex-shrink: 0;
+  color: var(--muted);
+  font-size: var(--fs-small);
+}

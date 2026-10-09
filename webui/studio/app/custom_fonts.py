@@ -15,13 +15,16 @@ from . import engine
 MAX_FONT_FILES = 6
 MAX_FONT_BYTES = 25 * 1024 * 1024
 FONT_EXTENSIONS = {".ttf", ".otf", ".woff", ".woff2"}
-FONT_ROLES = {"title", "body", "number", "annotation"}
+FONT_ROLES = {"display", "title", "body", "number", "annotation", "mono"}
 BUILTIN_FAMILIES = {
     "Noto Sans SC", "Noto Serif SC", "LXGW WenKai", "Smiley Sans",
     "Ma Shan Zheng", "ZCOOL KuaiLe", "ZCOOL XiaoWei", "Zhi Mang Xing",
     "Archivo", "Fraunces", "Spectral", "Montserrat", "Oswald",
     "Bebas Neue", "Space Grotesk", "Playfair Display", "DM Sans",
     "Manrope", "Sora", "IBM Plex Mono", "Dancing Script", "Kalam",
+    "Inter", "Inter Tight", "Geist", "Geist Mono", "JetBrains Mono",
+    "Poppins", "Roboto", "Roboto Mono", "Open Sans", "Figtree",
+    "Plus Jakarta Sans",
 }
 
 

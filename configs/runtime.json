@@ -1,0 +1,26 @@
+{
+  "decks": {
+    "total": 12,
+    "per_model": 8,
+    "owners": 12
+  },
+  "resources": {
+    "directory": "webui/studio/data/resource-slots",
+    "provider": 64,
+    "render": 32,
+    "web_search": 8,
+    "image_generation": 4
+  },
+  "mineru": {
+    "endpoints": ["http://127.0.0.1:8200", "http://127.0.0.1:8201"],
+    "gpu": {
+      "concurrency": 4,
+      "window": 64
+    },
+    "cpu": {
+      "concurrency": 4,
+      "window": 16,
+      "cores": 48
+    }
+  }
+}

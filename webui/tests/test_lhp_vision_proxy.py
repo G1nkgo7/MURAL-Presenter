@@ -1,6 +1,7 @@
 import importlib.util
 import json
 import os
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -11,13 +12,26 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 MODULE_PATH = (
     ROOT.parent
-    / "harnesses/mural-presenter/core/one_shot_vision.py"
+    / "archive/mural-presenter-pre-v0.6/harnesses/mural-presenter/core/one_shot_vision.py"
 )
 
 
 def load_module():
-    spec = importlib.util.spec_from_file_location("lhp_one_shot_vision_test", MODULE_PATH)
+    package_name = "legacy_mural_core_test"
+    core_dir = MODULE_PATH.parent
+    package_spec = importlib.util.spec_from_file_location(
+        package_name,
+        core_dir / "__init__.py",
+        submodule_search_locations=[str(core_dir)],
+    )
+    package = importlib.util.module_from_spec(package_spec)
+    sys.modules[package_name] = package
+    package_spec.loader.exec_module(package)
+    spec = importlib.util.spec_from_file_location(
+        f"{package_name}.one_shot_vision", MODULE_PATH
+    )
     module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 

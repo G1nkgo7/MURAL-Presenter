@@ -26,7 +26,7 @@ def _flag(name: str, default: bool) -> bool:
 EDITION = os.environ.get("STUDIO_EDITION", "v1").strip().lower() or "v1"
 IS_V1 = EDITION in {"v1", "static", "static-v1"}
 AUTH_ENABLED = _flag("STUDIO_AUTH_ENABLED", not IS_V1)
-DYNAMIC_ENABLED = _flag("STUDIO_DYNAMIC_ENABLED", not IS_V1)
+DYNAMIC_ENABLED = False  # 当前发行版只注册 v1；历史运行入口由 Git 归档维护。
 LANGUAGE = (
     os.environ.get("STUDIO_LANGUAGE", "zh").strip().lower()
     if os.environ.get("STUDIO_LANGUAGE", "zh").strip().lower() in {"zh", "en"}

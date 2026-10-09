@@ -1,0 +1,129 @@
+{
+  "schema": "mural.typography-routes.v1",
+  "language_defaults": {
+    "en": {"Noto Sans SC": "Manrope", "Noto Serif SC": "Spectral"}
+  },
+  "routes": {
+    "executive-clean": {
+      "tokens": {
+        "--font-display": "\"Manrope\", \"Noto Sans SC\", sans-serif",
+        "--font-title": "\"Noto Sans SC\", sans-serif",
+        "--font-body": "\"Noto Sans SC\", sans-serif",
+        "--font-number": "\"Manrope\", \"Noto Sans SC\", sans-serif",
+        "--font-annotation": "\"Noto Sans SC\", sans-serif",
+        "--font-mono": "\"IBM Plex Mono\", \"Noto Sans SC\", monospace",
+        "--font-display-weight": "800"
+      }
+    },
+    "tech-product": {
+      "tokens": {
+        "--font-display": "\"Space Grotesk\", \"Noto Sans SC\", sans-serif",
+        "--font-title": "\"Sora\", \"Noto Sans SC\", sans-serif",
+        "--font-body": "\"Noto Sans SC\", sans-serif",
+        "--font-number": "\"Sora\", \"Noto Sans SC\", sans-serif",
+        "--font-annotation": "\"Noto Sans SC\", sans-serif",
+        "--font-mono": "\"IBM Plex Mono\", \"Noto Sans SC\", monospace",
+        "--font-display-weight": "700"
+      }
+    },
+    "tech-forward": {
+      "tokens": {
+        "--font-display": "\"Smiley Sans\", \"Noto Sans SC\", sans-serif",
+        "--font-title": "\"Sora\", \"Noto Sans SC\", sans-serif",
+        "--font-body": "\"Noto Sans SC\", sans-serif",
+        "--font-number": "\"Space Grotesk\", \"Noto Sans SC\", sans-serif",
+        "--font-annotation": "\"Noto Sans SC\", sans-serif",
+        "--font-mono": "\"IBM Plex Mono\", \"Noto Sans SC\", monospace",
+        "--font-display-weight": "400"
+      }
+    },
+    "academic-institutional": {
+      "tokens": {
+        "--font-display": "\"Spectral\", \"Noto Serif SC\", serif",
+        "--font-title": "\"Noto Serif SC\", serif",
+        "--font-body": "\"Noto Sans SC\", sans-serif",
+        "--font-number": "\"Archivo\", \"Noto Sans SC\", sans-serif",
+        "--font-annotation": "\"Noto Serif SC\", serif",
+        "--font-mono": "\"IBM Plex Mono\", \"Noto Sans SC\", monospace",
+        "--font-display-weight": "700"
+      }
+    },
+    "editorial-documentary": {
+      "tokens": {
+        "--font-display": "\"Fraunces\", \"Noto Serif SC\", serif",
+        "--font-title": "\"Noto Serif SC\", serif",
+        "--font-body": "\"Noto Sans SC\", sans-serif",
+        "--font-number": "\"Archivo\", \"Noto Sans SC\", sans-serif",
+        "--font-annotation": "\"LXGW WenKai\", \"Noto Serif SC\", serif",
+        "--font-mono": "\"IBM Plex Mono\", \"Noto Sans SC\", monospace",
+        "--font-display-weight": "700"
+      }
+    },
+    "culture-refined": {
+      "tokens": {
+        "--font-display": "\"ZCOOL XiaoWei\", \"Noto Serif SC\", serif",
+        "--font-title": "\"Noto Serif SC\", serif",
+        "--font-body": "\"Noto Sans SC\", sans-serif",
+        "--font-number": "\"Cormorant Garamond\", \"Noto Serif SC\", serif",
+        "--font-annotation": "\"LXGW WenKai\", \"Noto Serif SC\", serif",
+        "--font-mono": "\"IBM Plex Mono\", \"Noto Sans SC\", monospace",
+        "--font-display-weight": "400"
+      }
+    },
+    "brand-luxury": {
+      "tokens": {
+        "--font-display": "\"Playfair Display\", \"Noto Serif SC\", serif",
+        "--font-title": "\"Noto Serif SC\", serif",
+        "--font-body": "\"Manrope\", \"Noto Sans SC\", sans-serif",
+        "--font-number": "\"Playfair Display\", \"Noto Serif SC\", serif",
+        "--font-annotation": "\"Noto Serif SC\", serif",
+        "--font-mono": "\"IBM Plex Mono\", \"Noto Sans SC\", monospace",
+        "--font-display-weight": "700"
+      }
+    },
+    "sport-poster": {
+      "tokens": {
+        "--font-display": "\"Oswald\", \"Noto Sans SC\", sans-serif",
+        "--font-title": "\"Barlow Condensed\", \"Noto Sans SC\", sans-serif",
+        "--font-body": "\"Noto Sans SC\", sans-serif",
+        "--font-number": "\"Bebas Neue\", \"Noto Sans SC\", sans-serif",
+        "--font-annotation": "\"Noto Sans SC\", sans-serif",
+        "--font-mono": "\"IBM Plex Mono\", \"Noto Sans SC\", monospace",
+        "--font-display-weight": "700"
+      }
+    },
+    "experimental-graphic": {
+      "tokens": {
+        "--font-display": "\"Unbounded\", \"Noto Sans SC\", sans-serif",
+        "--font-title": "\"Syne\", \"Noto Sans SC\", sans-serif",
+        "--font-body": "\"Noto Sans SC\", sans-serif",
+        "--font-number": "\"Unbounded\", \"Noto Sans SC\", sans-serif",
+        "--font-annotation": "\"Noto Sans SC\", sans-serif",
+        "--font-mono": "\"IBM Plex Mono\", \"Noto Sans SC\", monospace",
+        "--font-display-weight": "700"
+      }
+    },
+    "education-friendly": {
+      "tokens": {
+        "--font-display": "\"Sora\", \"Noto Sans SC\", sans-serif",
+        "--font-title": "\"Noto Sans SC\", sans-serif",
+        "--font-body": "\"Noto Sans SC\", sans-serif",
+        "--font-number": "\"Sora\", \"Noto Sans SC\", sans-serif",
+        "--font-annotation": "\"Xiaolai\", \"Noto Sans SC\", cursive",
+        "--font-mono": "\"IBM Plex Mono\", \"Noto Sans SC\", monospace",
+        "--font-display-weight": "700"
+      }
+    },
+    "children-playful": {
+      "tokens": {
+        "--font-display": "\"ZCOOL KuaiLe\", \"Noto Sans SC\", sans-serif",
+        "--font-title": "\"ZCOOL KuaiLe\", \"Noto Sans SC\", sans-serif",
+        "--font-body": "\"Noto Sans SC\", sans-serif",
+        "--font-number": "\"Sora\", \"Noto Sans SC\", sans-serif",
+        "--font-annotation": "\"Xiaolai\", \"Noto Sans SC\", cursive",
+        "--font-mono": "\"IBM Plex Mono\", \"Noto Sans SC\", monospace",
+        "--font-display-weight": "400"
+      }
+    }
+  }
+}

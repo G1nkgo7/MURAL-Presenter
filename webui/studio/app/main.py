@@ -34,19 +34,40 @@ os.umask(0o022)
 # Keep every generation backend on one explicit per-turn completion budget.
 # This must run before importing ``dynamic`` because its runtime reads
 # STUDIO_MAX_TOKENS at module import time.
-_AGENT_MAX_TOKENS = os.environ.get("STUDIO_AGENT_MAX_TOKENS", "65536")
+_AGENT_MAX_TOKENS = os.environ.get("STUDIO_AGENT_MAX_TOKENS", "40960")
 for _token_env in (
     "MAX_TOKENS",
     "SUBAGENT_MAX_TOKENS",
     "CLEAN_MAX_TOKENS",
     "STUDIO_MAX_TOKENS",
+    "AGENT_MAX_TOKENS",
+    "OWNER_MAX_TOKENS",
 ):
     os.environ[_token_env] = _AGENT_MAX_TOKENS
 
+
+def _bounded_token_default(limit: int) -> str:
+    try:
+        budget = max(1, int(_AGENT_MAX_TOKENS))
+    except ValueError:
+        return str(limit)
+    return str(min(budget, limit))
+
+
+for _token_env, _limit in (
+    ("ORCHESTRATOR_MAX_TOKENS", 16384),
+    ("SLIDE_OWNER_MAX_TOKENS", 20000),
+    ("RESEARCH_OWNER_MAX_TOKENS", 12000),
+    ("IMAGE_OWNER_MAX_TOKENS", 8192),
+    ("CRITIC_MAX_TOKENS", 8192),
+):
+    os.environ.setdefault(_token_env, _bounded_token_default(_limit))
+
 from . import (attachments, auth, custom_fonts, custom_models, dynamic, engine,
-               features, jobs, service_config, titles, trace,
-               trajectory_monitor)
+               environment_checks, features, jobs, page_editor, preview_fonts, service_config,
+               titles, trace, trajectory_monitor)
 from .db import DATA_DIR, connect, init_db
+from .workspace_layout import WorkspaceLayout
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
@@ -57,7 +78,7 @@ def _asset_ver() -> str:
     static = BASE_DIR / "static"
     try:
         digest = hashlib.sha256()
-        for name in ("app.css", "app.js"):
+        for name in ("app.css", "app.js", "page-editor.css", "page-editor.js"):
             digest.update(name.encode("utf-8"))
             digest.update((static / name).read_bytes())
         return digest.hexdigest()[:12]
@@ -86,10 +107,15 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="SenseNova-Present", lifespan=lifespan)
+app = FastAPI(title="MURAL Presenter", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 if features.DYNAMIC_ENABLED:
     app.include_router(dynamic.router)
+
+
+@app.exception_handler(page_editor.EditError)
+async def page_edit_error(_request: Request, error: page_editor.EditError):
+    return JSONResponse(status_code=error.status_code, content={"detail": str(error)})
 
 
 def get_db():
@@ -124,6 +150,31 @@ def _client(request: Request):
 @app.get("/healthz")
 def healthz():
     return {"ok": True, **features.public_payload()}
+
+
+@app.get("/api/preview-fonts.css")
+def preview_font_stylesheet(user=Depends(require_user)):
+    """Shared worker-equivalent faces for live v0.4 HTML previews."""
+    return Response(
+        preview_fonts.stylesheet(),
+        media_type="text/css",
+        headers={"Cache-Control": "private, max-age=300"},
+    )
+
+
+@app.get("/api/preview-fonts/{filename}")
+def preview_font_file(filename: str, user=Depends(require_user)):
+    """Serve only approved font files named by the shared preview catalog."""
+    if Path(filename).name != filename:
+        raise HTTPException(status_code=404, detail="字体不存在")
+    source = preview_fonts.catalog().get(filename)
+    if source is None:
+        raise HTTPException(status_code=404, detail="字体不存在")
+    return FileResponse(
+        source,
+        media_type="font/ttf",
+        headers={"Cache-Control": "private, max-age=31536000, immutable"},
+    )
 
 
 # ---- login / logout -------------------------------------------------------
@@ -246,7 +297,8 @@ def home(request: Request, user=Depends(current_user), con=Depends(get_db)):
             "default_model": default_model,
             "pipelines": [(k, p["label"], ",".join(p["supports"]), p["skill_mode"],
                            ",".join(p.get("caps", [])), int(p.get("ready", True)))
-                          for k, p in engine.PIPELINES.items()
+                          for k in engine.PUBLIC_PIPELINE_KEYS
+                          for p in (engine.PIPELINES[k],)
                           if features.DYNAMIC_ENABLED or "dynamic_html" not in p.get("caps", [])],
             "default_pipeline": engine.DEFAULT_PIPELINE,
             "skills": [(k, engine.SKILLS[k]["label"], engine.SKILLS[k].get("pipeline", ""),
@@ -263,19 +315,24 @@ def home(request: Request, user=Depends(current_user), con=Depends(get_db)):
 
 def _model_options(con, user_id: int | None):
     stack = engine.default_generation_stack(engine.DEFAULT_MODEL)
-    options = [
-        (key, engine.model_option_label(model), model["backend"],
-         stack["pipeline"], stack["skill"],
-         int(engine.thinking_capability(key)["toggle"]))
-        for key, model in engine.user_selectable_models()
-    ]
+    options = []
+    for key, model in engine.user_selectable_models():
+        capability = engine.thinking_capability(key)
+        options.append((
+            key, engine.model_option_label(model), model["backend"],
+            stack["pipeline"], stack["skill"], int(capability["toggle"]),
+            ",".join(capability["effort_levels"]), capability["effort"],
+            ",".join(capability.get("effort_levels_without_thinking", ())),
+        ))
     if user_id is not None:
-        options.extend(
-            (custom_models.key_for(row["id"]), row["display_name"], "openai",
-             stack["pipeline"], stack["skill"],
-             int(custom_models.thinking_capability(row)["toggle"]))
-            for row in custom_models.list_rows(con, user_id)
-        )
+        for row in custom_models.list_rows(con, user_id):
+            capability = custom_models.thinking_capability(row)
+            options.append((
+                custom_models.key_for(row["id"]), row["display_name"], "openai",
+                stack["pipeline"], stack["skill"], int(capability["toggle"]),
+                ",".join(capability["effort_levels"]), capability["effort"],
+                ",".join(capability.get("effort_levels_without_thinking", ())),
+            ))
     return options
 
 
@@ -307,9 +364,15 @@ class ServiceConfigInput(BaseModel):
     clear_search_api_key: bool = False
     max_tokens: int = service_config.DEFAULT_MAX_TOKENS
     streaming_enabled: bool = service_config.DEFAULT_STREAMING_ENABLED
+    enable_visual_critic: bool | None = None
     static_max_turns: int = service_config.DEFAULT_STATIC_MAX_TURNS
     static_subagent_max_turns: int = service_config.DEFAULT_STATIC_SUBAGENT_MAX_TURNS
     dynamic_max_turns: int = service_config.DEFAULT_DYNAMIC_MAX_TURNS
+    title_task_model: str = service_config.DEFAULT_TITLE_TASK_MODEL
+
+
+class EnvironmentCheckInput(BaseModel):
+    model: str
 
 
 class DeckContinueRequest(BaseModel):
@@ -357,6 +420,9 @@ def get_service_config(user=Depends(require_user)):
 @app.put("/api/settings/services")
 def save_service_config(body: ServiceConfigInput, user=Depends(require_user)):
     try:
+        registry = dynamic._model_registry(user)
+        if body.title_task_model not in registry:
+            raise ValueError("侧栏标题 Task Model 不存在或当前不可用")
         service_config.update(
             user["id"],
             image_enabled=body.image_enabled,
@@ -373,9 +439,11 @@ def save_service_config(body: ServiceConfigInput, user=Depends(require_user)):
             clear_search_api_key=body.clear_search_api_key,
             max_tokens=body.max_tokens,
             streaming_enabled=body.streaming_enabled,
+            enable_visual_critic=body.enable_visual_critic,
             static_max_turns=body.static_max_turns,
             static_subagent_max_turns=body.static_subagent_max_turns,
             dynamic_max_turns=body.dynamic_max_turns,
+            title_task_model=body.title_task_model,
         )
     except (ValueError, RuntimeError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -416,6 +484,43 @@ def _generation_selection(model: str, skill: str, con=None, user_id: int | None 
     if err:
         raise HTTPException(status_code=400, detail=err)
     return model, pipeline, skill
+
+
+@app.get("/api/settings/environment-check")
+def get_environment_check(user=Depends(require_user)):
+    return environment_checks.latest(user["id"])
+
+
+@app.post("/api/settings/environment-check")
+async def run_environment_check(
+    body: EnvironmentCheckInput,
+    user=Depends(require_user),
+    con=Depends(get_db),
+):
+    skill = engine.DEFAULT_SKILL
+    model, pipeline, skill = _generation_selection(
+        body.model,
+        skill,
+        con=con,
+        user_id=user["id"],
+    )
+    model_config = None
+    if custom_models.id_from_key(model) is not None:
+        row = custom_models.get_owned(con, user["id"], model, active_only=False)
+        if not row:
+            raise HTTPException(status_code=400, detail="自定义模型不存在或无权使用")
+        model_config = custom_models.runtime_config(row)
+    try:
+        return await environment_checks.run(
+            user_id=user["id"],
+            model_key=model,
+            model_label=_model_label(con, user["id"], model),
+            pipeline_key=pipeline,
+            skill_key=skill,
+            model_config=model_config,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 _LANG_ALIASES = {
@@ -471,12 +576,31 @@ def _resolve_auto_skill(skill: str, query: str, lang_hint: str = "") -> str:
 
 def _seed_for_query(
     query, skill, slide_count=0, theme="", style="", scheme="", dry=False,
-    thinking=True, ppt_output="static_html",
+    thinking=True, ppt_output="static_html", run_mode="inference",
+    authoring_profile="auto", lang="",
 ):
     seed = {"query": query, "user_query": query, "thinking": bool(thinking)}
+    normalized_run_mode = str(run_mode or "inference").strip().lower()
+    if normalized_run_mode not in {"inference", "synthesis"}:
+        raise HTTPException(
+            status_code=400,
+            detail="run_mode 仅支持 inference 或 synthesis",
+        )
+    seed["run_mode"] = normalized_run_mode
+    normalized_profile = str(authoring_profile or "auto").strip().lower().replace("_", "-")
+    profile_aliases = {"default": "auto", "material": "material-grounded"}
+    normalized_profile = profile_aliases.get(normalized_profile, normalized_profile)
+    if normalized_profile not in {"auto", "general", "material-grounded"}:
+        raise HTTPException(
+            status_code=400,
+            detail="authoring_profile 仅支持 auto、general 或 material-grounded",
+        )
+    seed["authoring_profile"] = normalized_profile
     language = engine.SKILLS[skill].get("deck_language", engine.SKILLS[skill]["language"])
     if language != "auto":
         seed["lang"] = language
+    elif lang:
+        seed["lang"] = lang
     if slide_count and int(slide_count) > 0:
         seed["slide_count"] = int(slide_count)
     for key, value in (("theme", theme), ("style", style), ("scheme", scheme)):
@@ -493,13 +617,26 @@ def _seed_for_query(
 def _insert_deck(
     con, user_id, query, model, pipeline, skill, *,
     slide_count=0, theme="", style="", scheme="", dry=False, thinking=True,
-    ppt_output="static_html",
+    effort="",
+    ppt_output="static_html", run_mode="inference", authoring_profile="auto",
     conversation_id=None, batch_id=None, batch_index=None, now=None,
+    enable_visual_critic=None, lang="",
 ):
     if not features.DYNAMIC_ENABLED and (
         ppt_output == "dynamic_html" or skill == "sense-present-dazzle"
     ):
         raise HTTPException(status_code=404, detail="V1 暂不开放动态演示")
+    model_config = None
+    if custom_models.id_from_key(model) is not None:
+        custom_row = custom_models.get_owned(con, user_id, model, active_only=False)
+        if not custom_row:
+            raise HTTPException(status_code=400, detail="自定义模型不存在或无权使用")
+        model_config = custom_models.runtime_config(custom_row)
+    try:
+        thinking_state = engine.resolve_thinking(
+            model, bool(thinking), model_config=model_config, requested_effort=effort)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     now = now or int(time.time())
     task_title = titles.fallback_title(query)
     cid = conversation_id or None
@@ -520,33 +657,50 @@ def _insert_deck(
         "INSERT INTO messages(conversation_id,role,content,created_at) VALUES(?,?,?,?)",
         (cid, "user", query, now),
     )
-    model_config = None
-    if custom_models.id_from_key(model) is not None:
-        custom_row = custom_models.get_owned(con, user_id, model, active_only=False)
-        if not custom_row:
-            raise HTTPException(status_code=400, detail="自定义模型不存在或无权使用")
-        model_config = custom_models.runtime_config(custom_row)
-    thinking_state = engine.resolve_thinking(
-        model, bool(thinking), model_config=model_config
-    )
+    lang_hint = _normalize_language_hint(lang, "query lang") if lang else ""
+    if not lang_hint:
+        deck_language = engine.SKILLS[skill].get(
+            "deck_language", engine.SKILLS[skill]["language"]
+        )
+        if deck_language == "auto":
+            lang_hint = _query_language(query)
     seed_store = _seed_for_query(
         query, skill, slide_count=slide_count, theme=theme, style=style,
         scheme=scheme, dry=dry, thinking=thinking_state["effective"],
-        ppt_output=ppt_output,
+        ppt_output=ppt_output, run_mode=run_mode,
+        authoring_profile=authoring_profile, lang=lang_hint,
     )
     seed_store["requested_thinking"] = thinking_state["requested"]
     seed_store["effective_thinking"] = thinking_state["effective"]
     seed_store["thinking_mode"] = thinking_state["mode"]
     seed_store["thinking_transport"] = thinking_state["transport"]
-    seed_store["thinking_effort"] = thinking_state["effort"]
+    seed_store["requested_effort"] = thinking_state["requested_effort"]
+    seed_store["effective_effort"] = thinking_state["effective_effort"]
+    # Compatibility alias consumed by older task viewers.
+    seed_store["thinking_effort"] = thinking_state["effective_effort"]
     seed_store["runtime_limits"] = service_config.generation_limits(user_id)
+    # --- external visual critic switch ---
+    # Persist both fields for trace compatibility. External visual review is an
+    # explicit opt-in in every run mode, so requested and effective are equal.
+    requested_visual_critic = bool(
+        seed_store["runtime_limits"].get("enable_visual_critic", False)
+        if enable_visual_critic is None else enable_visual_critic
+    )
+    effective_visual_critic = requested_visual_critic
+    seed_store["enable_visual_critic"] = requested_visual_critic
+    seed_store["requested_visual_critic"] = requested_visual_critic
+    seed_store["effective_visual_critic"] = effective_visual_critic
+    seed_store["runtime_limits"]["requested_visual_critic"] = requested_visual_critic
+    seed_store["runtime_limits"]["effective_visual_critic"] = effective_visual_critic
+    seed_store["runtime_limits"]["enable_visual_critic"] = effective_visual_critic
     cur = con.execute(
         "INSERT INTO decks("
-        "user_id,conversation_id,batch_id,batch_index,title,seed_json,status,"
-        "model,pipeline,skill_version,created_at"
-        ") VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+        "user_id,conversation_id,batch_id,batch_index,title,title_source,"
+        "title_locked,title_updated_at,seed_json,status,model,pipeline,"
+        "skill_version,created_at"
+        ") VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (
-            user_id, cid, batch_id, batch_index, task_title,
+            user_id, cid, batch_id, batch_index, task_title, "fallback", 0, now,
             json.dumps(seed_store, ensure_ascii=False), "queued",
             model, pipeline, skill, now,
         ),
@@ -562,11 +716,25 @@ def _insert_deck(
     return deck_id, cid, seed_store
 
 
-def _store_summarized_deck_title(deck_id: int, conversation_id: int, title: str):
+def _store_summarized_deck_title(
+    deck_id: int, conversation_id: int, expected_title: str, title: str
+):
+    """Apply the Query title only while the provisional title is untouched."""
     con = connect()
     try:
-        con.execute("UPDATE decks SET title = ? WHERE id = ?", (title, deck_id))
-        con.execute("UPDATE conversations SET title = ? WHERE id = ?", (title, conversation_id))
+        now = int(time.time())
+        changed = con.execute(
+            "UPDATE decks SET title = ?, title_source = 'task_model', "
+            "title_updated_at = ? WHERE id = ? AND title_locked = 0 "
+            "AND title_source = 'fallback' AND title = ?",
+            (title, now, deck_id, expected_title),
+        ).rowcount
+        if changed:
+            con.execute(
+                "UPDATE conversations SET title = ?, updated_at = ? "
+                "WHERE id = ? AND title = ?",
+                (title, now, conversation_id, expected_title),
+            )
         con.commit()
     finally:
         con.close()
@@ -848,29 +1016,21 @@ def _parse_batch_entries(upload: UploadFile):
 
 def _apply_deck_attachments(
     con, deck_id: int, query: str, seed_store: dict,
-    files: list[UploadFile], attachment_mode: str,
+    files: list[UploadFile],
 ):
-    """Store one deck's files and update its seed with parsed/raw attachment metadata."""
+    """保存原件并传给 Harness；上传请求不启动第二套解析器。"""
     if not files:
         return
-    mode = attachments.normalize_mode(attachment_mode)
-    records = attachments.store_attachments(
-        deck_id, files, parse=(mode == attachments.MODE_WEB_PARSE)
-    )
+    records = attachments.store_attachments(deck_id, files)
     if not records:
         return
     # Keep the model-visible user message byte-for-byte equal to the user's
     # request. Attachment metadata is runtime context carried in the seed and
     # staged workspace, never prose appended to ``query``.
-    seed_store["attachment_mode"] = mode
     seed_store["attachments"] = records
-    if mode == attachments.MODE_PIPELINE_AGENT:
-        raw = attachments.raw_attachments(records)
-        if raw:
-            seed_store["_raw_attachments"] = raw
-    images = attachments.attachment_images(records)
-    if images:
-        seed_store["_attachment_images"] = images
+    raw = attachments.raw_attachments(records)
+    if raw:
+        seed_store["_raw_attachments"] = raw
     con.execute(
         "UPDATE decks SET seed_json = ? WHERE id = ?",
         (json.dumps(seed_store, ensure_ascii=False), deck_id),
@@ -887,12 +1047,15 @@ def create_deck(
     style: str = Form(""),
     scheme: str = Form(""),
     thinking: int = Form(1),
+    effort: str = Form(""),
     dry: int = Form(0),
     model: str = Form(""),
     pipeline: str = Form(""),
     skill: str = Form(""),
     ppt_output: str = Form("static_html"),
-    attachment_mode: str = Form(""),
+    run_mode: str = Form("inference"),
+    enable_visual_critic: int | None = Form(None),
+    authoring_profile: str = Form("auto"),
     font_roles: str = Form(""),
     font_license_ack: int = Form(0),
     conversation_id: int = Form(0),
@@ -906,22 +1069,23 @@ def create_deck(
         raise HTTPException(status_code=400, detail="query 不能为空")
     # Skill 是版本真源;忽略客户端提交的旧 pipeline 值,强制选择同版本 Harness。
     model, pipeline, skill = _generation_selection(model, skill, con, user["id"])
-    skill = _resolve_auto_skill(skill, query)
+    lang_hint = _normalize_language_hint(lang, "form lang")
+    skill = _resolve_auto_skill(skill, query, lang_hint)
     pipeline = engine.pipeline_for_skill(skill)
     now = int(time.time())
 
     deck_id, cid, seed_store = _insert_deck(
         con, user["id"], query, model, pipeline, skill,
         slide_count=slide_count, theme=theme, style=style, scheme=scheme, dry=dry,
-        thinking=bool(thinking), ppt_output=ppt_output,
-        conversation_id=conversation_id, now=now,
+        thinking=bool(thinking), effort=effort, ppt_output=ppt_output,
+        run_mode=run_mode, authoring_profile=authoring_profile,
+        enable_visual_critic=enable_visual_critic,
+        conversation_id=conversation_id, now=now, lang=lang_hint,
     )
 
-    # 附件默认 web_parse:Studio 先解析为文本/工作区图片引用,再拼到 query。
-    # pipeline_agent 模式只保存原始附件,由管线侧先派 attachment_reader 子 agent 处理。
     if files and "attachments" in engine.PIPELINES[pipeline].get("caps", []):
         _apply_deck_attachments(
-            con, deck_id, query, seed_store, files, attachment_mode
+            con, deck_id, query, seed_store, files
         )
 
     font_config = custom_fonts.store_custom_fonts(
@@ -937,10 +1101,17 @@ def create_deck(
     con.commit()
 
     jobs.enqueue(deck_id)
-    title_model = dynamic._model_registry(user).get(model) or {}
+    title_model = titles.select_task_model(
+        dynamic._model_registry(user),
+        service_config.title_task_model_key(user["id"]),
+    )
+    expected_title = titles.fallback_title(query)
     titles.schedule_summary(
-        query, title_model,
-        lambda title: _store_summarized_deck_title(deck_id, cid, title),
+        query,
+        title_model,
+        lambda title: _store_summarized_deck_title(
+            deck_id, cid, expected_title, title
+        ),
     )
     return {"deck_id": deck_id, "conversation_id": cid, "status": "queued"}
 
@@ -952,6 +1123,11 @@ def continue_deck(
     user=Depends(require_user),
     con=Depends(get_db),
 ):
+    with page_editor.saving(deck_id):
+        return _continue_deck(deck_id, body, user, con)
+
+
+def _continue_deck(deck_id, body, user, con):
     """Continue editing a completed static Deck in its existing workspace.
 
     The Deck id, history entry and output directory remain stable.  Conversation
@@ -1033,7 +1209,7 @@ def _batch_payload(con, row, include_decks=False):
     counts = {"waiting": 0, "queued": 0, "running": 0, "completed": 0, "failed": 0}
     for deck in decks:
         status = deck["status"]
-        if status in ("failed", "rejected"):
+        if status in ("failed", "rejected", "paused_recoverable"):
             status = "failed"
         counts[status] = counts.get(status, 0) + 1
     total = len(decks)
@@ -1083,7 +1259,10 @@ def create_batch(
     style: str = Form(""),
     scheme: str = Form(""),
     thinking: int = Form(1),
-    attachment_mode: str = Form(attachments.MODE_WEB_PARSE),
+    effort: str = Form(""),
+    run_mode: str = Form("inference"),
+    enable_visual_critic: int | None = Form(None),
+    authoring_profile: str = Form("auto"),
     user=Depends(require_user),
     con=Depends(get_db),
 ):
@@ -1093,10 +1272,6 @@ def create_batch(
     has_attachments = any(entry["attachments"] for entry in entries)
     if has_attachments and "attachments" not in engine.PIPELINES[pipeline].get("caps", []):
         raise HTTPException(status_code=400, detail="当前 Skill/Harness 不支持附件")
-    attachment_mode = (
-        attachments.normalize_mode(attachment_mode)
-        if has_attachments else attachments.MODE_WEB_PARSE
-    )
     now = int(time.time())
     source_name = Path(query_file.filename or "queries.txt").name[:180]
     batch_name = (name.strip() or Path(source_name).stem.strip() or f"batch-{now}")[:80]
@@ -1115,8 +1290,11 @@ def create_batch(
         deck_id, _, seed_store = _insert_deck(
             con, user["id"], query, model, deck_pipeline, deck_skill,
             slide_count=slide_count, theme=theme, style=style, scheme=scheme,
-            thinking=bool(thinking),
+            thinking=bool(thinking), effort=effort,
+            run_mode=run_mode, enable_visual_critic=enable_visual_critic,
+            authoring_profile=authoring_profile,
             batch_id=batch_id, batch_index=index, now=now,
+            lang=entry.get("lang", ""),
         )
         package_files = [
             UploadFile(filename=item["name"], file=io.BytesIO(item["data"]))
@@ -1124,7 +1302,7 @@ def create_batch(
         ]
         if package_files:
             _apply_deck_attachments(
-                con, deck_id, query, seed_store, package_files, attachment_mode
+                con, deck_id, query, seed_store, package_files
             )
         deck_ids.append(deck_id)
     con.commit()
@@ -1154,7 +1332,8 @@ def get_batch(batch_id: int, user=Depends(require_user), con=Depends(get_db)):
 def list_decks(user=Depends(require_user), con=Depends(get_db)):
     rows = con.execute(
         "SELECT id,batch_id,batch_index,parent_deck_id,revision_no,title,status,"
-        "slide_count,created_at,started_at,finished_at,model,skill_version,seed_json "
+        "title_source,title_locked,slide_count,created_at,started_at,finished_at,"
+        "model,skill_version,seed_json "
         "FROM decks WHERE user_id = ? ORDER BY id DESC", (user["id"],)
     ).fetchall()
     prefs = {
@@ -1174,7 +1353,12 @@ def list_decks(user=Depends(require_user), con=Depends(get_db)):
             seed = {}
         if not features.DYNAMIC_ENABLED and seed.get("ppt_output") == "dynamic_html":
             continue
-        item["display_title"] = titles.display_title(item.get("title"), seed.get("user_query") or seed.get("query") or "")
+        item["display_title"] = titles.display_title(
+            item.get("title"),
+            seed.get("user_query") or seed.get("query") or "",
+            item.get("title_source") or "",
+        )
+        item["title_refresh_pending"] = item["status"] == "completed" and jobs.title_refresh_pending(item["id"])
         item["presentation_kind"] = (
             "dynamic" if seed.get("ppt_output") == "dynamic_html" else "static"
         )
@@ -1222,11 +1406,17 @@ def update_history_item(
                     (title, int(time.time()), row["conversation_id"], user["id"]),
                 )
                 con.execute(
-                    "UPDATE decks SET title = ? WHERE conversation_id = ? AND user_id = ?",
-                    (title, row["conversation_id"], user["id"]),
+                    "UPDATE decks SET title = ?, title_source = 'manual', "
+                    "title_locked = 1, title_updated_at = ? "
+                    "WHERE conversation_id = ? AND user_id = ?",
+                    (title, int(time.time()), row["conversation_id"], user["id"]),
                 )
             else:
-                con.execute("UPDATE decks SET title = ? WHERE id = ?", (title, deck_id))
+                con.execute(
+                    "UPDATE decks SET title = ?, title_source = 'manual', "
+                    "title_locked = 1, title_updated_at = ? WHERE id = ?",
+                    (title, int(time.time()), deck_id),
+                )
     else:
         if not dynamic._valid_conv(item_id) or not dynamic.runtime._conv_dir(item_id).is_dir():
             raise HTTPException(status_code=404, detail="演示不存在")
@@ -1235,6 +1425,8 @@ def update_history_item(
         if title is not None:
             meta = dynamic.runtime._read_meta(item_id)
             meta["title"] = title
+            meta["title_source"] = "manual"
+            meta["title_locked"] = True
             meta["updated"] = time.strftime("%Y-%m-%d %H:%M:%S")
             dynamic.runtime._write_meta(item_id, meta)
 
@@ -1257,13 +1449,72 @@ def get_deck(deck_id: int, user=Depends(require_user), con=Depends(get_db)):
     return dict(row)
 
 
-@app.post("/api/decks/{deck_id}/retry")
-async def retry_deck(deck_id: int, user=Depends(require_user), con=Depends(get_db)):
-    """失败/中断的任务重新排队跑(引擎不支持断点续作,等价从头重新生成)。"""
+# Human-facing (Chinese) labels for each resolution_kind. TEXT labels, not
+# colour-only, so the result page stays accessible.
+_FONT_RESOLUTION_LABELS = {
+    "exact_builtin": "精确",
+    "exact_alias": "精确",
+    "exact_user_upload": "用户字体",
+    "audited_substitute": "已审核替代",
+    "route_default": "Route默认",
+    "portable_fallback": "未审核fallback",
+    "system_fallback": "系统依赖-错误",
+    "unresolved": "系统依赖-错误",
+}
+
+
+@app.get("/api/decks/{deck_id}/font-resolution")
+def get_deck_font_resolution(deck_id: int, user=Depends(require_user), con=Depends(get_db)):
+    """Per-role font resolution (requested / resolved / status / license).
+
+    Reads the workspace font manifest (v5). Never exposes local absolute paths
+    or font binaries; only the resolution records the manifest already scrubs.
+    """
     row = _own_deck(con, deck_id, user["id"])
     if not row:
         raise HTTPException(status_code=404, detail="deck 不存在")
-    if row["status"] not in ("failed", "rejected", "interrupted"):
+    run_dir = row["run_dir"]
+    if not run_dir:
+        return {"ready": False, "resolutions": [], "coverage": {}}
+    manifest_path = next((Path(_safe_target(row, relative)) for relative in (
+        "_trace/font-resolution.json", "_runtime/tmp/fonts/manifest.json"
+    ) if Path(_safe_target(row, relative)).is_file()), None)
+    if manifest_path is None:
+        return {"ready": False, "resolutions": [], "coverage": {}}
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {"ready": False, "resolutions": [], "coverage": {}}
+    resolutions = []
+    for record in manifest.get("resolutions") or []:
+        kind = str(record.get("resolution_kind") or "")
+        resolutions.append(
+            {
+                "role": record.get("role"),
+                "requested": record.get("requested_family") or "",
+                "resolved": record.get("resolved_family") or "",
+                "kind": kind,
+                "label": _FONT_RESOLUTION_LABELS.get(kind, kind),
+                "license": record.get("license") or "",
+                "mapping_id": record.get("mapping_id") or "",
+            }
+        )
+    return {
+        "ready": bool(resolutions),
+        "resolutions": resolutions,
+        "coverage": manifest.get("coverage") or {},
+    }
+
+
+@app.post("/api/decks/{deck_id}/retry")
+async def retry_deck(deck_id: int, user=Depends(require_user), con=Depends(get_db)):
+    """Archive the failed attempt and start a genuinely fresh generation."""
+    row = _own_deck(con, deck_id, user["id"])
+    if not row:
+        raise HTTPException(status_code=404, detail="deck 不存在")
+    if row["status"] not in (
+        "failed", "rejected", "interrupted", "paused_recoverable",
+    ):
         raise HTTPException(status_code=409, detail="仅失败的任务可以重新生成")
     is_custom = custom_models.id_from_key(row["model"]) is not None
     custom_row = custom_models.get_owned(
@@ -1273,12 +1524,76 @@ async def retry_deck(deck_id: int, user=Depends(require_user), con=Depends(get_d
         raise HTTPException(status_code=409, detail="该任务使用的模型已下线，请使用当前可选模型新建任务")
     if jobs._engine_alive(deck_id):
         raise HTTPException(status_code=409, detail="该任务的引擎仍在运行")
+    try:
+        seed = json.loads(row["seed_json"] or "{}")
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise HTTPException(status_code=409, detail="任务输入记录损坏") from exc
+    seed.pop("_resume_workspace", None)
+    jobs.archive_for_fresh_retry(deck_id, row["run_dir"])
     con.execute(
-        "UPDATE decks SET status='queued', error=NULL, started_at=NULL, finished_at=NULL "
-        "WHERE id = ?", (deck_id,))
+        "UPDATE decks SET seed_json=?,status='queued',error=NULL,started_at=NULL,"
+        "finished_at=NULL WHERE id=?",
+        (json.dumps(seed, ensure_ascii=False), deck_id),
+    )
     con.commit()
     jobs.enqueue(deck_id)
     return {"ok": True, "status": "queued"}
+
+
+@app.post("/api/decks/{deck_id}/resume")
+async def resume_deck(deck_id: int, user=Depends(require_user), con=Depends(get_db)):
+    """Continue a recoverable static Deck from its last durable checkpoint."""
+    row = _own_deck(con, deck_id, user["id"])
+    if not row:
+        raise HTTPException(status_code=404, detail="deck 不存在")
+    if row["status"] not in (
+        "paused_recoverable",
+        "failed",
+        "interrupted",
+    ):
+        raise HTTPException(status_code=409, detail="当前任务状态不允许断点续跑")
+    is_custom = custom_models.id_from_key(row["model"]) is not None
+    custom_row = custom_models.get_owned(
+        con, user["id"], row["model"], active_only=False
+    ) if is_custom else None
+    if (
+        (is_custom and not custom_row)
+        or (not is_custom and engine.canon(row["model"]) is None)
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="该任务使用的模型已下线，不能在同一轨迹中恢复",
+        )
+    if jobs._engine_alive(deck_id):
+        raise HTTPException(status_code=409, detail="该任务的引擎仍在运行")
+    recovery = jobs.resume_info(deck_id, row["run_dir"])
+    if not recovery["eligible"]:
+        raise HTTPException(
+            status_code=409,
+            detail="该任务没有可用的安全检查点，或失败属于配置/认证错误",
+        )
+    try:
+        seed = json.loads(row["seed_json"] or "{}")
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise HTTPException(status_code=409, detail="任务输入记录损坏") from exc
+    seed["_resume_workspace"] = {
+        "requested_at": int(time.time()),
+        "trace_source": recovery.get("trace_source"),
+        "exit_reason": recovery.get("exit_reason"),
+    }
+    con.execute(
+        "UPDATE decks SET seed_json=?,status='queued',error=NULL,"
+        "started_at=NULL,finished_at=NULL WHERE id=?",
+        (json.dumps(seed, ensure_ascii=False), deck_id),
+    )
+    con.commit()
+    jobs.enqueue(deck_id)
+    return {
+        "ok": True,
+        "status": "queued",
+        "resume": True,
+        "trace_source": recovery.get("trace_source"),
+    }
 
 
 def _regenerated_seed(source_seed: dict, source_deck_id: int, new_deck_id: int) -> dict:
@@ -1297,6 +1612,7 @@ def _regenerated_seed(source_seed: dict, source_deck_id: int, new_deck_id: int) 
     serialized = serialized.replace(str(source_uploads), str(new_uploads))
     seed = json.loads(serialized)
     seed.pop("_revision", None)
+    seed.pop("_resume_workspace", None)
     seed["_dry"] = False
     return seed
 
@@ -1324,8 +1640,9 @@ def regenerate_deck(deck_id: int, user=Depends(require_user), con=Depends(get_db
         style=str(source_seed.get("style") or ""),
         scheme=str(source_seed.get("scheme") or ""),
         thinking=bool(source_seed.get("requested_thinking", source_seed.get("thinking", True))),
+        effort=str(source_seed.get("requested_effort") or ""),
         ppt_output=str(source_seed.get("ppt_output") or "static_html"),
-        now=now,
+        now=now, lang=str(source_seed.get("lang") or source_seed.get("language") or ""),
     )
     try:
         cloned_seed = _regenerated_seed(source_seed, deck_id, new_id)
@@ -1333,8 +1650,12 @@ def regenerate_deck(deck_id: int, user=Depends(require_user), con=Depends(get_db
         shutil.rmtree(engine.deck_uploads_dir(new_id), ignore_errors=True)
         raise
     con.execute(
-        "UPDATE decks SET title=?,seed_json=? WHERE id=?",
-        (row["title"], json.dumps(cloned_seed, ensure_ascii=False), new_id),
+        "UPDATE decks SET title=?,title_source=?,title_locked=?,title_updated_at=?,"
+        "seed_json=? WHERE id=?",
+        (
+            row["title"], row["title_source"], row["title_locked"], now,
+            json.dumps(cloned_seed, ensure_ascii=False), new_id,
+        ),
     )
     con.execute(
         "UPDATE conversations SET title=? WHERE id=?",
@@ -1370,6 +1691,11 @@ def _own_deck(con, deck_id, uid):
 
 @app.delete("/api/decks/{deck_id}")
 async def delete_deck(deck_id: int, user=Depends(require_user), con=Depends(get_db)):
+    with page_editor.saving(deck_id):
+        return await _delete_deck(deck_id, user, con)
+
+
+async def _delete_deck(deck_id, user, con):
     row = _own_deck(con, deck_id, user["id"])
     if not row:
         raise HTTPException(status_code=404, detail="记录不存在")
@@ -1421,7 +1747,8 @@ def _spec_prefs(seed: dict) -> dict:
         for k in (
             "slide_count", "theme", "style", "scheme", "thinking",
             "requested_thinking", "effective_thinking", "thinking_mode",
-            "thinking_transport", "thinking_effort", "runtime_limits",
+            "thinking_transport", "requested_effort", "effective_effort",
+            "thinking_effort", "runtime_limits",
         )
     }
 
@@ -1437,17 +1764,15 @@ def _progress_seed_payload(seed: dict) -> dict:
             user_query = user_query.split(marker, 1)[0]
     payload["user_query"] = user_query
     payload["attachments"] = []
-    attachment_mode = str(seed.get("attachment_mode") or "")
     for index, item in enumerate(seed.get("attachments") or []):
         if not isinstance(item, dict):
             continue
         stored_name = Path(str(item.get("stored_name") or "")).name
         preview_rel = ""
-        # Parsed image inputs are staged directly into the workspace. Raw-mode
-        # inputs preserve the original under attachments/raw/. Exposing only
-        # this safe relative path lets the live UI preview attachments through
-        # the existing deck-file endpoint even before a backend process reloads
-        # the newer dedicated attachment route.
+        # Parsed image inputs may expose a real workspace preview.  Raw
+        # pipeline attachments, however, are not guaranteed to remain under
+        # ``attachments/raw`` after staging; their canonical preview is the
+        # dedicated attachment endpoint assembled by the frontend.
         for image in item.get("images") or []:
             if not isinstance(image, dict):
                 continue
@@ -1455,17 +1780,30 @@ def _progress_seed_payload(seed: dict) -> dict:
             if candidate.startswith("attachments/"):
                 preview_rel = candidate
                 break
-        if not preview_rel and attachment_mode == attachments.MODE_PIPELINE_AGENT and stored_name:
-            preview_rel = f"attachments/raw/{stored_name}"
-        payload["attachments"].append({
+        attachment = {
             "index": index,
             "name": item.get("name") or stored_name or "附件",
             "stored_name": stored_name,
             "type": item.get("type") or "file",
             "size": int(item.get("size") or 0),
             "preview_rel": preview_rel,
-        })
+        }
+        if item.get("source_sha256"):
+            attachment["source_sha256"] = item["source_sha256"]
+            attachment["upload_status"] = "saved" if item.get("path") else "not_saved"
+        payload["attachments"].append(attachment)
     return payload
+
+
+def _canvas_spec_payload(run_dir: str | None, seed: dict) -> dict:
+    """只展示实际产物尺寸，不从 Query、历史 manifest 或默认值推断。"""
+    if not run_dir:
+        return {"status": "pending", "message": "画布尚未生成"}
+    try:
+        geometry = WorkspaceLayout.load(run_dir).geometry()
+    except (ValueError, OSError) as exc:
+        return {"status": "unavailable", "message": str(exc)}
+    return geometry or {"status": "pending", "message": "画布尚未生成"}
 
 
 def _deck_conversation_turns(con, row, seed: dict) -> list[dict]:
@@ -1565,6 +1903,146 @@ def _deck_conversation_turns(con, row, seed: dict) -> list[dict]:
     return turns
 
 
+def _agent_failure_payload(run_dir: str) -> dict | None:
+    """Read the structured agent_failed fields the harness wrote on failure.
+
+    The MURAL v1 harness persists rich failure context (error_type/error_summary,
+    last failed tool, args summary, repeat count) into _state/skill-runtime.json so
+    the WebUI can surface more than a bare "exited with code 1".
+    """
+    try:
+        state = json.loads(
+            (Path(run_dir) / "_state" / "skill-runtime.json").read_text(
+                encoding="utf-8"
+            )
+        )
+    except (OSError, ValueError, TypeError):
+        return None
+    failed = state.get("agent_failed") if isinstance(state, dict) else None
+    return failed if isinstance(failed, dict) and failed else None
+
+
+# Signature the v1 release guard prints when the frozen skill/harness/pair/
+# integration hashes drift from the immutable manifest. The harness rejects the
+# task in ``verify_runtime_release`` BEFORE the first model request, so this is a
+# release/provenance rejection, not a Provider/API failure.
+_RELEASE_MISMATCH_MARKERS = (
+    "frozen MURAL release hash mismatch",
+    "verify_runtime_release",
+)
+# Markers the runner/harness leave behind on a genuine Provider/API failure.
+_API_FAILURE_MARKERS = (
+    "api_failed",
+    "[api failed]",
+    "[api 400]",
+    "[api auth]",
+)
+
+
+def _classify_deck_error(run_dir: str, deck_id: int, error: str | None) -> str | None:
+    """Classify a failed deck into an explicit error kind for the WebUI.
+
+    Distinguishes a release-guard rejection (``release_hash_mismatch``) from a
+    genuine Provider failure (``api_failed``) instead of mapping every non-zero
+    exit to ``api_failed``. Evidence is read from the deck's result.json error
+    and a bounded tail of its job log; only the terminal episode matters.
+    """
+    haystack = f"{error or ''}\n{_job_log_tail(run_dir, deck_id)}".lower()
+    if any(marker.lower() in haystack for marker in _RELEASE_MISMATCH_MARKERS):
+        return "release_hash_mismatch"
+    if any(marker.lower() in haystack for marker in _API_FAILURE_MARKERS):
+        return "api_failed"
+    return None
+
+
+def _job_log_tail(run_dir: str, deck_id: int, limit: int = 16000) -> str:
+    """Return a bounded tail of the deck's job log for error classification."""
+    try:
+        path = engine.log_path(deck_id)
+        with open(path, "rb") as fh:
+            fh.seek(0, os.SEEK_END)
+            size = fh.tell()
+            fh.seek(max(0, size - limit))
+            return fh.read().decode("utf-8", "replace")
+    except (OSError, ValueError):
+        return ""
+
+
+# Only these provenance fields are safe to surface: logical names, load source,
+# and hash prefixes. Never the full system prompt, thinking, signatures or keys.
+def _skill_provenance_payload(run_dir: str) -> dict | None:
+    """Read _trace/skill-provenance.json and project safe metadata only.
+
+    Real on-disk loading facts written by the harness. The main SKILL.md and
+    role cards are injected directly as system prompt (no model read_file), so
+    this is the only faithful record that the WebUI can show for main-skill
+    loading. Old workspaces without the file degrade to ``None`` (no card).
+    """
+    try:
+        data = json.loads(
+            (Path(run_dir) / "_trace" / "skill-provenance.json").read_text(
+                encoding="utf-8"
+            )
+        )
+    except (OSError, ValueError, TypeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+
+    def _prefix(value) -> str | None:
+        return value[:12] if isinstance(value, str) and value else None
+
+    main_sha = _prefix(data.get("main_sha256"))
+    skill_name = data.get("skill_name") if isinstance(data.get("skill_name"), str) else None
+    workspace_path = (
+        data.get("workspace_path")
+        if isinstance(data.get("workspace_path"), str)
+        else None
+    )
+    logical = f"{workspace_path or skill_name or 'skill'}/SKILL.md"
+    roles = []
+    role_sha = data.get("role_sha256")
+    if isinstance(role_sha, dict):
+        for role, sha in sorted(role_sha.items()):
+            prefix = _prefix(sha)
+            if isinstance(role, str) and prefix:
+                roles.append({"role": role, "path": f"roles/{role}.md", "sha256": prefix})
+    if not main_sha and not roles:
+        return None
+    return {
+        "skill_name": skill_name,
+        "main_path": logical,
+        "main_sha256": main_sha,
+        "tree_sha256": _prefix(data.get("tree_sha256")),
+        "roles": roles,
+        "source": "trace/skill-provenance.json",
+    }
+
+
+def _apply_recovery_info(prog: dict, recovery: dict) -> None:
+    """统一 HTTP/SSE 恢复展示；纠正旧暂停投影，不改写历史结果或轨迹。"""
+    prog["resume_eligible"] = bool(recovery.get("eligible"))
+    prog["resume_exit_reason"] = recovery.get("exit_reason")
+    if prog.get("status") in {"waiting", "queued", "running"}:
+        prog["resume_eligible"] = False
+        return
+    if recovery.get("provider_access_disabled"):
+        prog["error_kind"] = "provider_access_disabled"
+        if recovery.get("provider_channel_retired") and recovery.get("eligible"):
+            prog["status"] = "paused_recoverable"
+            prog["error"] = (
+                "故障账号已由运维从共享通道池移除。工作区与检查点已保留，"
+                "可手动继续使用当前授权通道池；不会再请求已停用账号。"
+            )
+            return
+        prog["status"] = "failed"
+        prog["error"] = (
+            "上游已禁用当前账号访问（Usage Policy），不是暂时故障。"
+            "工作区与检查点已保留，请联系供应商处理，或由运维移除故障账号后手动继续；"
+            "不会自动重试该账号。"
+        )
+
+
 @app.get("/api/decks/{deck_id}/progress")
 def deck_progress(deck_id: int, user=Depends(require_user), con=Depends(get_db)):
     row = _own_deck(con, deck_id, user["id"])
@@ -1575,14 +2053,30 @@ def deck_progress(deck_id: int, user=Depends(require_user), con=Depends(get_db))
     prog = trace.snapshot(row["run_dir"], seed=seed, status=row["status"],
                           started_at=row["started_at"], finished_at=row["finished_at"],
                           log_path=str(engine.log_path(deck_id)))
-    if row["status"] in ("failed", "rejected", "interrupted"):
+    if row["status"] in ("failed", "rejected", "interrupted", "paused_recoverable"):
         prog["error"] = row["error"]
+        agent_failed = _agent_failure_payload(row["run_dir"])
+        if agent_failed is not None:
+            prog["agent_failed"] = agent_failed
+        if row["status"] == "failed":
+            error_kind = _classify_deck_error(row["run_dir"], deck_id, row["error"])
+            if error_kind is not None:
+                prog["error_kind"] = error_kind
+    recovery = (
+        jobs.resume_info(deck_id, row["run_dir"])
+        if row["status"] in {
+            "failed", "rejected", "interrupted", "paused_recoverable",
+        }
+        else {"eligible": False, "exit_reason": None}
+    )
+    _apply_recovery_info(prog, recovery)
     prog["deck_id"] = deck_id
     prog["title"] = row["title"]
     prog["model"] = row["model"] if "model" in row.keys() else None
     prog["model_label"] = _model_label(con, row["user_id"], row["model"])
     prog["pipeline"] = row["pipeline"] if "pipeline" in row.keys() else None
     prog["skill_version"] = row["skill_version"] if "skill_version" in row.keys() else None
+    prog["verified_delivery_download"] = prog["skill_version"] == "mural-presenter-v1"
     prog["parent_deck_id"] = row["parent_deck_id"] if "parent_deck_id" in row.keys() else None
     prog["revision_no"] = row["revision_no"] if "revision_no" in row.keys() else 0
     prog["revision_instruction"] = (
@@ -1593,12 +2087,17 @@ def deck_progress(deck_id: int, user=Depends(require_user), con=Depends(get_db))
     prog["revision_supported"] = bool(
         pipeline and "revision" in pipeline.get("caps", [])
     )
-    html_preview = _static_html_preview_state(row["run_dir"])
+    html_preview = _static_html_preview_for_status(row["run_dir"], row["status"])
     prog["html_ready"] = html_preview["ready"]
     prog["html_final"] = html_preview["final"]
+    prog["html_failed_intermediate"] = html_preview["failed_intermediate"]
     prog["html_stamp"] = html_preview["stamp"]
     prog["html_entry"] = html_preview.get("entry", "present.html")
     prog["ppt_output"] = seed.get("ppt_output", "static_html")
+    prog["canvas_spec"] = _canvas_spec_payload(row["run_dir"], seed)
+    provenance = _skill_provenance_payload(row["run_dir"])
+    if provenance is not None:
+        prog["skill_provenance"] = provenance
     prog.update(_progress_seed_payload(seed))
     return prog
 
@@ -1634,6 +2133,7 @@ async def deck_events(deck_id: int, request: Request, user=Depends(require_user)
         "model_label": model_label,
         "pipeline": row["pipeline"] if "pipeline" in row.keys() else None,
         "skill_version": row["skill_version"] if "skill_version" in row.keys() else None,
+        "verified_delivery_download": row["skill_version"] == "mural-presenter-v1",
         "parent_deck_id": row["parent_deck_id"] if "parent_deck_id" in row.keys() else None,
         "revision_no": row["revision_no"] if "revision_no" in row.keys() else 0,
         "revision_instruction": (
@@ -1656,7 +2156,7 @@ async def deck_events(deck_id: int, request: Request, user=Depends(require_user)
             if await request.is_disconnected():
                 break
             con = connect()
-            r = con.execute("SELECT status, started_at, finished_at, error FROM decks WHERE id = ?",
+            r = con.execute("SELECT status, started_at, finished_at, error, title, title_source FROM decks WHERE id = ?",
                             (deck_id,)).fetchone()
             con.close()
             status = r["status"] if r else "failed"
@@ -1664,18 +2164,37 @@ async def deck_events(deck_id: int, request: Request, user=Depends(require_user)
                                   started_at=r["started_at"] if r else None,
                                   finished_at=r["finished_at"] if r else None,
                                   log_path=str(engine.log_path(deck_id)))
-            if status in ("failed", "rejected", "interrupted"):
+            if status in ("failed", "rejected", "interrupted", "paused_recoverable"):
                 prog["error"] = r["error"] if r else "missing"
-            html_preview = _static_html_preview_state(run_dir)
+            recovery = (
+                jobs.resume_info(deck_id, run_dir)
+                if status in {
+                    "failed", "rejected", "interrupted", "paused_recoverable",
+                }
+                else {"eligible": False, "exit_reason": None}
+            )
+            _apply_recovery_info(prog, recovery)
+            html_preview = _static_html_preview_for_status(run_dir, status)
             prog["html_ready"] = html_preview["ready"]
             prog["html_final"] = html_preview["final"]
+            prog["html_failed_intermediate"] = html_preview["failed_intermediate"]
             prog["html_stamp"] = html_preview["stamp"]
             prog.update(meta)                       # 右上角标签(model/pipeline/skill)每帧都在
+            if r:
+                prog["title"] = r["title"]
+                prog["title_source"] = r["title_source"]
+                prog["display_title"] = titles.display_title(
+                    r["title"], seed.get("user_query") or seed.get("query") or "", r["title_source"],
+                )
+            prog["canvas_spec"] = _canvas_spec_payload(run_dir, seed)
             payload = json.dumps(prog, ensure_ascii=False)
             if payload != last:
                 yield f"data: {payload}\n\n"
                 last = payload
-            if status in ("completed", "failed", "rejected", "interrupted"):
+            if status in (
+                "completed", "failed", "rejected", "interrupted",
+                "paused_recoverable",
+            ):
                 break
             await asyncio.sleep(1.5)
         yield "event: end\ndata: {}\n\n"
@@ -1686,12 +2205,85 @@ async def deck_events(deck_id: int, request: Request, user=Depends(require_user)
     )
 
 
-def _safe_target(row, rel):
+def _safe_target(row, rel, *, allow_state=False):
+    try:
+        WorkspaceLayout.load(row["run_dir"])
+    except (ValueError, OSError) as exc:
+        raise HTTPException(status_code=409, detail="unsupported_workspace_layout") from exc
     base = os.path.realpath(row["run_dir"])
     target = os.path.realpath(os.path.join(base, rel))
     if target != base and not target.startswith(base + os.sep):
         raise HTTPException(status_code=403, detail="非法路径")
+    for relative in (("_state/owner-context" if allow_state else "_state"), "_trace/raw"):
+        private = os.path.realpath(os.path.join(base, relative))
+        if target == private or target.startswith(private + os.sep):
+            raise HTTPException(status_code=403, detail="私有上下文及 Raw Trace 不可通过文件接口下载")
     return target
+
+
+def _editable_deck(con, deck_id, user):
+    row = _own_deck(con, deck_id, user["id"])
+    if not row:
+        raise HTTPException(status_code=404, detail="deck 不存在")
+    if row["status"] != "completed" or jobs._engine_alive(deck_id):
+        raise HTTPException(status_code=409, detail="请等制作完成后再编辑页面。")
+    return row
+
+
+@app.get("/api/decks/{deck_id}/pages/{page}/edit")
+def page_edit_source(deck_id: int, page: int, user=Depends(require_user), con=Depends(get_db)):
+    page_editor.require_idle(deck_id)
+    row = _editable_deck(con, deck_id, user)
+    try:
+        layout, source, css = page_editor.source_payload(row, page)
+        annotated = page_editor.SourceDocument(source).annotated()
+        standalone = bool(re.search(r"(?is)<!doctype\s+html|<html\b|<head\b|<body\b", source))
+        base = f'/api/decks/{deck_id}/files/' + ("slides/" if standalone else "")
+        if standalone:
+            html = annotated
+            if re.search(r"<head\b[^>]*>", html, re.I):
+                html = re.sub(r"(<head\b[^>]*>)", rf'\1<base href="{base}">', html, count=1, flags=re.I)
+            else:
+                html = f'<head><base href="{base}"></head>' + html
+        else:
+            geometry = layout.geometry()
+            if geometry is None:
+                raise page_editor.EditError("当前页面没有已渲染的画布尺寸。", 409)
+            html = _inline_fragment_present_html(css, [(page, annotated)], geometry["width_px"], geometry["height_px"])
+            html = html.replace("<head>", f'<head><base href="{base}">', 1)
+        html = _v1_preview_response(row, html).body.decode("utf-8")
+    except (ValueError, OSError) as exc:
+        if isinstance(exc, page_editor.EditError):
+            raise
+        raise HTTPException(status_code=409, detail="页面源码或工作区映射不可用。") from exc
+    return JSONResponse({"version": page_editor.version(source, css), "html": html},
+                        headers={"Cache-Control": "no-store"})
+
+
+@app.post("/api/decks/{deck_id}/pages/{page}/edit")
+async def save_page_edit(deck_id: int, page: int, request: Request,
+                         user=Depends(require_user), con=Depends(get_db)):
+    origin = request.headers.get("origin")
+    if origin and urllib.parse.urlsplit(origin).netloc != request.headers.get("host"):
+        raise HTTPException(status_code=403, detail="不接受跨站页面修改。")
+    if request.headers.get("content-type", "").split(";", 1)[0].strip() != "application/json":
+        raise HTTPException(status_code=415, detail="页面修改需要 JSON 请求。")
+    body = bytearray()
+    async for chunk in request.stream():
+        body.extend(chunk)
+        if len(body) > page_editor.MAX_REQUEST_BYTES:
+            raise HTTPException(status_code=413, detail="页面修改数据过大。")
+    try:
+        payload = json.loads(body)
+        if not isinstance(payload, dict):
+            raise ValueError("object required")
+    except (ValueError, UnicodeError) as exc:
+        raise HTTPException(status_code=400, detail="页面修改参数无效。") from exc
+    with page_editor.saving(deck_id):
+        row = dict(_editable_deck(con, deck_id, user))
+        result = await asyncio.to_thread(page_editor.run_save, row, page, payload, user["id"])
+    result["error"] = str(result.get("error") or "")[:1000]
+    return JSONResponse(result, headers={"Cache-Control": "no-store"})
 
 
 _SLIDE_FRAGMENT_RE = re.compile(r"^slide_(\d+)\.html$")
@@ -1701,19 +2293,13 @@ def _static_html_preview_state(run_dir: str | None) -> dict:
     """Report whether a formal or fragment-backed live HTML preview is available."""
     if not run_dir:
         return {"ready": False, "final": False, "stamp": 0}
-    root = Path(run_dir)
-    present = root / "present.html"
-    css_path = root / "base.css"
-    # SenseNova PPT v2 dynamic output uses the same Studio deck shell but its
-    # canonical player is deck.html.  It implements ?slide=N and slidechange.
-    dynamic_deck = root / "deck.html"
-    if dynamic_deck.is_file() and not present.is_file():
-        try:
-            stamp = dynamic_deck.stat().st_mtime_ns // 1_000_000
-        except OSError:
-            stamp = 0
-        return {"ready": True, "final": True, "stamp": stamp, "entry": "deck.html"}
-    slides_dir = root / "slides"
+    try:
+        layout = WorkspaceLayout.load(run_dir)
+    except ValueError as exc:
+        return {"ready": False, "final": False, "stamp": 0, "workspace_error": str(exc)}
+    present = layout.path("present")
+    css_path = layout.path("base_css")
+    slides_dir = layout.path("slides")
     try:
         fragments = sorted(
             path for path in slides_dir.glob("slide_*.html")
@@ -1751,6 +2337,35 @@ def _static_html_preview_state(run_dir: str | None) -> dict:
     return {"ready": True, "final": False, "stamp": live_stamp}
 
 
+def _static_html_preview_for_status(run_dir: str | None, status: str | None) -> dict:
+    """Never promote an unsuccessful run's mutable workspace as final output."""
+    preview = dict(_static_html_preview_state(run_dir))
+    failed = str(status or "") in {
+        "failed", "rejected", "interrupted", "api_failed", "paused_recoverable",
+    }
+    preview["failed_intermediate"] = bool(failed and preview.get("ready"))
+    if failed:
+        preview["ready"] = False
+        preview["final"] = False
+    return preview
+
+
+def _preview_fragment(text: str) -> str:
+    """片段从 slides/ 内联到根播放器，按渲染合同调整素材路径，不写回源文件。"""
+    text = re.sub(
+        r'''<link\b(?=[^>]*\bhref=["']\.\./base\.css["'])[^>]*>''',
+        "", text, flags=re.I,
+    )
+    text = re.sub(
+        r'''((?:src|href|poster)\s*=\s*["'])(?:\.\./)+(assets|fonts)/''',
+        r"\1\2/", text, flags=re.I,
+    )
+    return re.sub(
+        r'''(url\(\s*["']?)(?:\.\./)+(assets|fonts)/''',
+        r"\1\2/", text, flags=re.I,
+    )
+
+
 def _inline_fragment_present_html(
     css: str,
     rows: list[tuple[int, str]],
@@ -1763,15 +2378,7 @@ def _inline_fragment_present_html(
     fonts, and visibility all come from ``base.css``. Loading such a fragment in
     an iframe drops that contract and collapses the slide to its content size.
     """
-    sections = "\n\n".join(
-        re.sub(
-            r'''<link\b(?=[^>]*\bhref=["']\.\./base\.css["'])[^>]*>''',
-            "",
-            text,
-            flags=re.I,
-        )
-        for _, text in rows
-    )
+    sections = "\n\n".join(_preview_fragment(text) for _, text in rows)
     return f"""<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -1856,12 +2463,7 @@ def _hybrid_fragment_present_html(
             )
             kind = "standalone"
         else:
-            content = re.sub(
-                r'''<link\b(?=[^>]*\bhref=["']\.\./base\.css["'])[^>]*>''',
-                "",
-                text,
-                flags=re.I,
-            )
+            content = _preview_fragment(text)
             kind = "fragment"
         shells.append(
             f'<div class="slide-shell" data-slide="{number}" '
@@ -2093,6 +2695,21 @@ def _provisional_present_html(run_dir: str) -> str:
 </html>"""
 
 
+@app.get("/api/decks/{deck_id}/trace-images/{digest}")
+def deck_trace_image(deck_id: int, digest: str, user=Depends(require_user), con=Depends(get_db)):
+    row = _own_deck(con, deck_id, user["id"])
+    if not row:
+        raise HTTPException(status_code=404, detail="deck 不存在")
+    _safe_target(row, ".")
+    try:
+        content, media_type = trace.workflow_trace_image(row["run_dir"], digest)
+    except OSError as exc:
+        raise HTTPException(status_code=404, detail="历史画面不存在或校验未通过") from exc
+    return Response(content, media_type=media_type, headers={
+        "Cache-Control": "private, max-age=31536000, immutable", "X-Content-Type-Options": "nosniff",
+    })
+
+
 @app.get("/api/decks/{deck_id}/file")
 def deck_file(deck_id: int, rel: str, user=Depends(require_user), con=Depends(get_db)):
     row = _own_deck(con, deck_id, user["id"])
@@ -2101,7 +2718,73 @@ def deck_file(deck_id: int, rel: str, user=Depends(require_user), con=Depends(ge
     target = _safe_target(row, rel)
     if not os.path.isfile(target):
         raise HTTPException(status_code=404, detail="文件不存在")
+    if row["skill_version"] == "mural-presenter-v1" and Path(target).suffix.lower() in {".css", ".html"}:
+        return _v1_preview_response(row, Path(target).read_text(encoding="utf-8"), Path(target).suffix.lower())
     return FileResponse(target)
+
+
+def _pinned_font_references(row) -> dict[str, str]:
+    """枚举公共与当前 Deck 用户的私有引用；二进制读取仍由固定 Skill 校验。"""
+    try:
+        manifest = json.loads(Path(_safe_target(row, "_state/font-manifest.json", allow_state=True)).read_text(encoding="utf-8"))
+        if not isinstance(manifest, dict) or manifest.get("schema") != "mural.font-manifest.v2":
+            raise ValueError("unsupported font manifest")
+        root = Path(manifest["studio_data_root"])
+        if not root.is_absolute():
+            raise ValueError("font root must be absolute")
+        references = {}
+        for face in manifest.get("source_faces") or []:
+            if not isinstance(face, dict):
+                raise ValueError("invalid font face")
+            relative = PurePosixPath(str(face.get("object_ref") or ""))
+            name = relative.name
+            if (face.get("scope") == "public" and re.fullmatch(r"[0-9a-f]{64}\.(?:ttf|otf|woff2?)", name)
+                    and relative == PurePosixPath("shared/fonts/objects") / name
+                    and relative.stem == face.get("sha256")):
+                references[name] = (root / relative).resolve().as_uri()
+        for face in manifest.get("custom_fonts") or []:
+            relative = PurePosixPath(str(face.get("object_ref") or ""))
+            name = relative.name
+            if (face.get("scope") == "user" and str(face.get("owner_user_id")) == str(row["user_id"])
+                    and re.fullmatch(r"[0-9a-f]{64}\.(?:ttf|otf|woff2?)", name)
+                    and relative == PurePosixPath("users") / str(row["user_id"]) / "_shared/fonts/objects" / name
+                    and relative.stem == face.get("sha256")):
+                references["user-" + name] = (root / relative).resolve().as_uri()
+        return references
+    except (OSError, KeyError, TypeError, ValueError) as exc:
+        raise HTTPException(status_code=409, detail="workspace 固定字体清单不可用") from exc
+
+
+def _v1_preview_response(row, content: str, suffix: str = ".html", *, headers=None):
+    font_url = r"url\(\s*(['\"]?)(file:[^'\")\s]+\.(?:ttf|otf|woff2?))\1\s*\)"
+    if re.search(font_url, content):
+        references = {uri: name for name, uri in _pinned_font_references(row).items()}
+        def rewrite(match):
+            name = references.get(match.group(2))
+            if name is None:
+                raise HTTPException(status_code=409, detail="页面包含未授权的本地字体引用")
+            return f'url("/api/decks/{int(row["id"])}/shared-fonts/{name}")'
+        content = re.sub(font_url, rewrite, content)
+    return Response(content, media_type="text/css" if suffix == ".css" else "text/html",
+                    headers={"Cache-Control": "no-store", **(headers or {})})
+
+
+@app.get("/api/decks/{deck_id}/shared-fonts/{font_object}")
+def deck_shared_font(deck_id: int, font_object: str, user=Depends(require_user), con=Depends(get_db)):
+    row = _own_deck(con, deck_id, user["id"])
+    if not row or row["skill_version"] != "mural-presenter-v1":
+        raise HTTPException(status_code=404, detail="deck 不存在")
+    reference = _pinned_font_references(row).get(font_object)
+    if reference is None:
+        raise HTTPException(status_code=404, detail="该字体未被 workspace 固定引用")
+    try:
+        target, digest = jobs.resolve_shared_font(Path(row["run_dir"]).resolve(), reference)
+        if target.as_uri() != reference or digest != target.stem:
+            raise jobs.DeliveryExportError("固定字体回执不匹配")
+    except jobs.DeliveryExportError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    return FileResponse(target, media_type=mimetypes.guess_type(font_object)[0] or "font/ttf",
+        headers={"Cache-Control": "private, max-age=31536000, immutable"})
 
 
 @app.get("/api/decks/{deck_id}/attachments/{attachment_index}")
@@ -2282,37 +2965,160 @@ def deck_file_path(deck_id: int, rel: str, user=Depends(require_user), con=Depen
     row = _own_deck(con, deck_id, user["id"])
     if not row:
         raise HTTPException(status_code=404, detail="deck 不存在")
+    row_status = row["status"] if "status" in row.keys() else ""
+    if (
+        rel in {"present.html", "deck.html"}
+        and str(row_status or "")
+        in {"failed", "rejected", "interrupted", "api_failed", "paused_recoverable"}
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="任务未成功完成；该 HTML 是失败中间态，仅保留 PNG/trace 用于诊断。",
+        )
     target = _safe_target(row, rel)
+    # 所有 mural-presenter 系 skill 共用同一套 base.css 字体栈(Noto/Smiley/LXGW…),
+    # 且这些字体只装在 render worker 上、浏览器预览看不到。因此凡是 mural deck 的
+    # present.html 预览都要注入共享 @font-face,不能只对 v0.4 生效(旧写法写死
+    # == "mural-presenter-v0.4",导致 v0.5/thin/guard/lite 等全部漏注入 → 预览字体
+    # 回退、与 render PNG 不一致)。用 skill_version 原值判断,兼容未在 SKILLS 注册、
+    # canon_skill 返回 None 的实验变体(v0.5-guard / v0.5-lite)。inject 幂等且对
+    # catalog 缺失的字体自动跳过,放开无副作用。
+    use_shared_preview_fonts = (
+        rel == "present.html"
+        and (row["skill_version"] or "").startswith("mural-presenter")
+        and row["skill_version"] != "mural-presenter-v1"
+    )
     if rel == "present.html":
         preview = _static_html_preview_state(row["run_dir"])
         if preview["ready"] and not preview["final"]:
+            html = _provisional_present_html(row["run_dir"])
+            if row["skill_version"] == "mural-presenter-v1":
+                return _v1_preview_response(row, html, headers={"X-SenseNova-Preview": "provisional"})
             return HTMLResponse(
-                _provisional_present_html(row["run_dir"]),
+                preview_fonts.inject(html) if use_shared_preview_fonts else html,
                 headers={"Cache-Control": "no-store", "X-SenseNova-Preview": "provisional"},
             )
     if not os.path.isfile(target):
         if rel == "present.html" and _static_html_preview_state(row["run_dir"])["ready"]:
+            html = _provisional_present_html(row["run_dir"])
+            if row["skill_version"] == "mural-presenter-v1":
+                return _v1_preview_response(row, html, headers={"X-SenseNova-Preview": "provisional"})
             return HTMLResponse(
-                _provisional_present_html(row["run_dir"]),
+                preview_fonts.inject(html) if use_shared_preview_fonts else html,
                 headers={"Cache-Control": "no-store", "X-SenseNova-Preview": "provisional"},
             )
         raise HTTPException(status_code=404, detail="文件不存在")
+    if row["skill_version"] == "mural-presenter-v1" and Path(target).suffix.lower() in {".css", ".html"}:
+        return _v1_preview_response(row, Path(target).read_text(encoding="utf-8"), Path(target).suffix.lower())
+    if use_shared_preview_fonts:
+        try:
+            html = Path(target).read_text(encoding="utf-8")
+        except (OSError, UnicodeError) as exc:
+            raise HTTPException(status_code=500, detail=f"预览文件读取失败：{exc}") from exc
+        return HTMLResponse(
+            preview_fonts.inject(html),
+            headers={"Cache-Control": "no-store", "X-SenseNova-Preview-Fonts": "shared"},
+        )
     return FileResponse(target)
 
 
 # 实时输出流(大小框直播模型输出用):tail runner 日志按 agent 分组
 @app.get("/api/decks/{deck_id}/livefeed")
-def deck_livefeed(deck_id: int, user=Depends(require_user), con=Depends(get_db)):
+def deck_livefeed(
+    deck_id: int,
+    cursor: int = 0,
+    user=Depends(require_user),
+    con=Depends(get_db),
+):
     row = _own_deck(con, deck_id, user["id"])
     if not row:
         raise HTTPException(status_code=404, detail="deck 不存在")
-    payload = trace.livefeed(str(engine.log_path(deck_id)), run_dir=row["run_dir"])
+    payload = trace.livefeed(
+        str(engine.log_path(deck_id)),
+        run_dir=row["run_dir"],
+        deck_status=row["status"],
+        deck_started_at=row["started_at"],
+        deck_finished_at=row["finished_at"],
+        live_cursor=max(0, cursor),
+    )
     # A workspace is reused by in-place revisions. Keep this turn's process
     # feed scoped to the Agents that actually appear in its current job log.
     payload["specialist_artifacts"] = trace.scoped_specialist_artifacts(
-        row["run_dir"], payload.get("agents", {}).keys()
+        row["run_dir"], payload.get("agent_keys") or payload.get("agents", {}).keys()
     )
     return payload
+
+
+@app.get("/api/decks/{deck_id}/live-events")
+def deck_live_events(
+    deck_id: int,
+    cursor: int = 0,
+    limit: int = 500,
+    user=Depends(require_user),
+    con=Depends(get_db),
+):
+    """Return complete public journal rows after a durable sequence cursor."""
+    row = _own_deck(con, deck_id, user["id"])
+    if not row:
+        raise HTTPException(status_code=404, detail="deck 不存在")
+    return trace.live_events(
+        row["run_dir"], cursor=max(0, cursor), limit=max(1, limit)
+    )
+
+
+@app.get("/api/decks/{deck_id}/tool-output/{tool_use_id}")
+def deck_tool_output(deck_id: int, tool_use_id: str, cursor: int = 0, limit: int = 100,
+                     user=Depends(require_user), con=Depends(get_db)):
+    row = _own_deck(con, deck_id, user["id"])
+    if not row:
+        raise HTTPException(status_code=404, detail="deck 不存在")
+    try:
+        return trace.tool_output_payload(row["run_dir"], tool_use_id, cursor=cursor, limit=limit)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="工具事务不存在") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/decks/{deck_id}/provider-trace/{attempt_id}/{source}")
+def deck_provider_trace(deck_id: int, attempt_id: str, source: str, cursor: int = 0,
+                        limit: int = 65536, user=Depends(require_user), con=Depends(get_db)):
+    row = _own_deck(con, deck_id, user["id"])
+    if not row:
+        raise HTTPException(status_code=404, detail="deck 不存在")
+    try:
+        return trace.provider_trace_payload(row["run_dir"], attempt_id, source, cursor=cursor, limit=limit)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Provider Trace 尚未记录") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/decks/{deck_id}/agent-trace/{agent_key}")
+def deck_agent_trace(
+    deck_id: int,
+    agent_key: str,
+    segment: str = "",
+    source: str = "messages",
+    include_workflow: bool = False,
+    user=Depends(require_user),
+    con=Depends(get_db),
+):
+    """Return one owned Agent's trace; connection credentials never belong in Agent content."""
+    row = _own_deck(con, deck_id, user["id"])
+    if not row:
+        raise HTTPException(status_code=404, detail="deck 不存在")
+    if not row["run_dir"]:
+        raise HTTPException(status_code=409, detail="Agent Trace 尚未创建")
+    try:
+        return trace.agent_trace_payload(
+            row["run_dir"], agent_key, segment=segment, source=source,
+            include_workflow=include_workflow,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Agent Trace 不存在") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.get("/api/decks/{deck_id}/turn-feed")
@@ -2340,7 +3146,13 @@ def deck_turn_feed(
         raise HTTPException(status_code=404, detail="修订轮次不存在")
 
     if revision_no == current_revision:
-        payload = trace.livefeed(str(engine.log_path(deck_id)), run_dir=row["run_dir"])
+        payload = trace.livefeed(
+            str(engine.log_path(deck_id)),
+            run_dir=row["run_dir"],
+            deck_status=row["status"],
+            deck_started_at=row["started_at"],
+            deck_finished_at=row["finished_at"],
+        )
         payload["specialist_artifacts"] = trace.scoped_specialist_artifacts(
             row["run_dir"], payload.get("agents", {}).keys()
         )
@@ -2404,35 +3216,56 @@ def deck_slideinfo(deck_id: int, n: int, user=Depends(require_user), con=Depends
     if not row:
         raise HTTPException(status_code=404, detail="deck 不存在")
     base = row["run_dir"]
-    # n=0 = 全局大纲(deck.md);n>=1 = 单页规划
-    md_path = os.path.join(base, "plan", "deck.md" if n == 0 else f"slide_{n:02d}.md")
-    if not os.path.isfile(md_path):
+    if n < 0:
+        raise HTTPException(status_code=400, detail="页码不能小于 0")
+    try:
+        layout = WorkspaceLayout.load(base)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    try:
+        text = layout.plan_text(n)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if not text:
         return {"exists": False}
-    text = open(md_path, encoding="utf-8", errors="replace").read()
     assets = sorted({
         a for a in _re.findall(r"assets/[A-Za-z0-9_\-.]+\.(?:png|jpe?g|webp|gif)", text)
         if os.path.isfile(os.path.join(base, a))
     })
-    html_rel = None
-    if n >= 1 and os.path.isfile(os.path.join(base, f"slides/slide_{n:02d}.html")):
-        html_rel = f"slides/slide_{n:02d}.html"
-    elif n == 0 and os.path.isfile(os.path.join(base, "base.css")):
-        html_rel = "base.css"
+    source = layout.path("base_css") if n == 0 else layout.path("slide_pattern", page=n)
+    html_rel = layout.relative(source) if source.is_file() else None
     return {"exists": True, "html": mdrender.render(text), "assets": assets, "html_rel": html_rel}
 
 
 def _ensure_deck_pptx(row):
-    from . import pptx_export
-    deck_id = row["id"]
-    base = row["run_dir"]
-    out = os.path.join(base, f"deck_{deck_id}.pptx")
-    pngs = pptx_export.renders_of(base)
-    if not pngs:
-        raise HTTPException(status_code=409, detail="该 deck 没有成稿图")
-    newest = max(os.path.getmtime(p) for p in pngs)
-    if not os.path.exists(out) or os.path.getmtime(out) < newest:   # 缓存:渲染图没变就复用
-        pptx_export.build_pptx(base, out)
-    return out
+    return _export_delivery(row, "pptx")["path"]
+
+
+def _export_delivery(row, output_format):
+    with page_editor.saving(int(row["id"])):
+        try:
+            return jobs.export_delivery(row, output_format)
+        except jobs.DeliveryExportError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+
+
+def _export_response(row, output_format):
+    exported = _export_delivery(row, output_format)
+    headers = {}
+    if output_format == "pptx-editable":
+        headers["X-Mural-Editability-Report"] = urllib.parse.quote(exported["editability_report"]["path"], safe="")
+        headers["X-Mural-Editable-Text"] = str(exported["summary"]["native_text"])
+        headers["X-Mural-Raster-Fallbacks"] = str(exported["summary"]["local_raster_fallbacks"])
+    return FileResponse(exported["path"], filename=exported["filename"],
+                        media_type=exported["media_type"], headers=headers)
+
+
+@app.post("/api/decks/{deck_id}/export/{output_format}")
+def deck_export(deck_id: int, output_format: str, user=Depends(require_user), con=Depends(get_db)):
+    row = _own_deck(con, deck_id, user["id"])
+    if not row:
+        raise HTTPException(status_code=404, detail="deck 不存在")
+    return _export_response(row, output_format)
 
 
 @app.get("/api/decks/{deck_id}/pptx")
@@ -2518,31 +3351,97 @@ def deck_download(deck_id: int, user=Depends(require_user), con=Depends(get_db))
         raise HTTPException(status_code=404, detail="deck 不存在")
     if row["status"] != "completed":
         raise HTTPException(status_code=409, detail="deck 尚未完成")
-    base = row["run_dir"]
-    seed = json.loads(row["seed_json"] or "{}")
-    delivery_error = jobs._ensure_static_delivery(row, Path(base))
-    if delivery_error:
-        raise HTTPException(status_code=409, detail=delivery_error)
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
-        # Root delivery files are part of the presentation, not implementation
-        # metadata.  In particular present.html is the canonical portable
-        # player and must travel with slides/ plus the subset fonts in assets/.
-        for name in (
-            "present.html", "deck.html", "deck_manifest.json", "task_pack.json",
-            "info_pack.json", "outline.md", "base.css", "speech.md",
-        ):
-            path = os.path.join(base, name)
-            if os.path.isfile(path):
-                z.write(path, name)
-        for sub in ("renders", "shots", "slides", "pages", "plan", "research", "assets"):
-            d = os.path.join(base, sub)
-            for root, _, files in os.walk(d):
-                for fn in files:
-                    fp = os.path.join(root, fn)
-                    z.write(fp, os.path.relpath(fp, base))
+    return _export_response(row, "zip")
+
+
+@app.get("/api/decks/{deck_id}/project-download")
+def deck_project_download(deck_id: int, user=Depends(require_user), con=Depends(get_db)):
+    row = _own_deck(con, deck_id, user["id"])
+    if not row:
+        raise HTTPException(status_code=404, detail="deck 不存在")
+    if row["status"] != "completed":
+        raise HTTPException(status_code=409, detail="deck 尚未完成")
+    with page_editor.saving(deck_id):
+        return _deck_project_archive(row)
+
+
+def _deck_project_archive(row):
+    deck_id = row["id"]
+    base = Path(row["run_dir"]).resolve() if row["run_dir"] else None
+    if base is None or not base.is_dir():
+        raise HTTPException(status_code=409, detail="作者工程目录不存在")
+    if row["skill_version"] != "mural-presenter-v1":
+        raise HTTPException(status_code=409, detail="unsupported_workspace_layout: historical Skill is disabled")
+    try:
+        layout = WorkspaceLayout.load(base)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    def project_source(path: Path) -> Path:
+        if path.is_symlink():
+            raise HTTPException(status_code=409, detail="v1 作者工程导出不支持软链接")
+        try:
+            source = path.resolve(strict=True)
+            source.relative_to(base)
+        except (OSError, RuntimeError, ValueError) as exc:
+            raise HTTPException(status_code=409, detail="作者工程资源缺失或超出 workspace") from exc
+        return source
+
+    root_names = tuple(layout.paths[key] for key in (
+        "present", "base_css", "speech", "deck", "knowledge",
+    ))
+    staging_subdirs = tuple(layout.paths[key] for key in (
+        "renders", "slides", "assets",
+    ))
+    scratch = DATA_DIR / "tmp"
+    scratch.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix=f"mural-export-{deck_id}-", dir=scratch) as temporary:
+        export_root = Path(temporary)
+        for name in root_names:
+            source = base / name
+            if source.exists() or source.is_symlink():
+                source = project_source(source)
+            if source.is_file():
+                shutil.copy2(source, export_root / name)
+
+        def ignore_runtime_artifacts(directory: str, names: list[str]) -> set[str]:
+            ignored = {name for name in names if name.startswith(".")}
+            if Path(directory).name == "assets":
+                # 工程包不携带运行态字体和图片验收缩略图。
+                ignored.update({"fonts", "contact-sheet.png"} & set(names))
+            for name in set(names) - ignored:
+                project_source(Path(directory) / name)
+            return ignored
+
+        for sub in staging_subdirs:
+            source = base / sub
+            if source.exists() or source.is_symlink():
+                source = project_source(source)
+            if source.is_dir():
+                shutil.copytree(
+                    source,
+                    export_root / sub,
+                    ignore=ignore_runtime_artifacts,
+                    dirs_exist_ok=True,
+                )
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+            for name in root_names:
+                path = export_root / name
+                if path.is_file():
+                    z.write(path, name)
+            for sub in staging_subdirs:
+                directory = export_root / sub
+                for current, dirs, files in os.walk(directory):
+                    dirs[:] = [name for name in dirs if not name.startswith(".")]
+                    for filename in files:
+                        if filename.startswith("."):
+                            continue
+                        path = Path(current) / filename
+                        z.write(path, path.relative_to(export_root))
     buf.seek(0)
+    filename = f"deck_{deck_id}_project.zip"
     return Response(
         buf.read(), media_type="application/zip",
-        headers={"Content-Disposition": f'attachment; filename="deck_{deck_id}.zip"'},
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )

@@ -7,49 +7,78 @@ so one user's credentials never become process-global defaults for another.
 from __future__ import annotations
 
 import json
+import importlib.util
 import os
+import sys
 import tempfile
 from pathlib import Path
 
-from . import custom_models
 from .db import DATA_DIR
 
-CONFIG_VERSION = 4
+CONFIG_VERSION = 5
 CONFIG_DIR = DATA_DIR / "user_configs"
-DEFAULT_MAX_TOKENS = 65536
-DEFAULT_STATIC_MAX_TURNS = 4096
-DEFAULT_STATIC_SUBAGENT_MAX_TURNS = 200
+DEFAULT_MAX_TOKENS = 40960
+DEFAULT_ORCHESTRATOR_MAX_TOKENS = 16384
+DEFAULT_SLIDE_OWNER_MAX_TOKENS = 20000
+DEFAULT_RESEARCH_OWNER_MAX_TOKENS = 12000
+DEFAULT_IMAGE_OWNER_MAX_TOKENS = 8192
+DEFAULT_CRITIC_MAX_TOKENS = 8192
+DEFAULT_STATIC_MAX_TURNS = 240
+DEFAULT_STATIC_SUBAGENT_MAX_TURNS = 240
 DEFAULT_DYNAMIC_MAX_TURNS = 4096
-DEFAULT_STREAMING_ENABLED = True
+# 默认非流式:opus-5 超长 adaptive thinking 下流式会从网关拿到畸形分块(空 thinking/空参
+# tool),非流式返回完整消息更稳(大 max_tokens 的 SDK 10min 守卫由 harness 调用处显式
+# timeout 绕过)。需要实时预览时用户可在生成设置里单独开流式。
+DEFAULT_STREAMING_ENABLED = False
+DEFAULT_TITLE_TASK_MODEL = (
+    os.environ.get("STUDIO_TITLE_TASK_MODEL_KEY", "").strip()
+    or os.environ.get("STUDIO_TASK_MODEL_KEY", "").strip()
+    or "deployment-model"
+)
 IMAGE_PROVIDERS = {"openai_images", "sensenova_u1"}
 DEFAULT_IMAGE_PROVIDER = "openai_images"
+REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
+_runtime_spec = importlib.util.spec_from_file_location(
+    "mural_studio_runtime_config",
+    REPOSITORY_ROOT / "harnesses/mural-presenter-v1/runtime/config.py",
+)
+_runtime_config = importlib.util.module_from_spec(_runtime_spec)
+sys.modules[_runtime_spec.name] = _runtime_config
+_runtime_spec.loader.exec_module(_runtime_config)
+load_runtime_config = _runtime_config.load_runtime_config
+EFFORT_LEVELS = _runtime_config.EFFORT_LEVELS
+model_effort_capability = _runtime_config.model_effort_capability
+resolve_api_format = _runtime_config.resolve_api_format
+validate_reasoning_effort = _runtime_config.validate_reasoning_effort
+PROVIDER_ENV_PATH = Path(os.environ.get(
+    "MURAL_SECRETS_ENV_PATH", REPOSITORY_ROOT / ".secrets" / ".env"
+)).expanduser().resolve()
 
 
-def _deployment_value(*names: str) -> str:
-    """Return the first explicitly configured deployment environment value."""
-    for name in names:
-        value = str(os.environ.get(name) or "").strip()
-        if value:
-            return value
-    return ""
+def read_env_file(path: str | Path) -> dict[str, str]:
+    """读取部署配置，不把凭证合并进进程全局环境。"""
+    try:
+        lines = Path(path).read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return {}
+    values = {}
+    for raw in lines:
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, candidate = line.split("=", 1)
+        values[key.strip()] = candidate.strip().strip('"').strip("'")
+    return values
 
 
 def system_runtime_env() -> dict[str, str]:
-    """External service defaults supplied by the deployment environment.
-
-    Namespaced variables are intentional: generic OPENAI/ANTHROPIC variables
-    are often injected by an outer Agent shell and may point at an unrelated
-    provider.  Per-user WebUI settings are layered on top of this mapping.
-    """
+    """系统 Provider 只读共享文件；用户显式配置仅覆盖自己的任务。"""
+    shared = read_env_file(PROVIDER_ENV_PATH)
     env: dict[str, str] = {}
-    image_url = _deployment_value(
-        "SENSENOVA_IMAGE_BASE_URL", "SENSENOVA_OPENAI_BASE_URL"
-    )
-    image_key = _deployment_value(
-        "SENSENOVA_IMAGE_API_KEY", "SENSENOVA_OPENAI_API_KEY"
-    )
-    image_model = _deployment_value("SENSENOVA_IMAGE_MODEL")
-    image_provider = _deployment_value("SENSENOVA_IMAGE_PROVIDER") or DEFAULT_IMAGE_PROVIDER
+    image_url = shared.get("IMAGE_BASE_URL", "")
+    image_key = shared.get("IMAGE_API_KEY", "")
+    image_model = shared.get("IMAGE_MODEL", "")
+    image_provider = shared.get("IMAGE_PROVIDER") or DEFAULT_IMAGE_PROVIDER
     if image_provider not in IMAGE_PROVIDERS:
         image_provider = DEFAULT_IMAGE_PROVIDER
     if image_url:
@@ -61,8 +90,8 @@ def system_runtime_env() -> dict[str, str]:
     if image_url or image_key or image_model:
         env["IMAGE_PROVIDER"] = image_provider
 
-    search_url = _deployment_value("SENSENOVA_SEARCH_BASE_URL")
-    search_key = _deployment_value("SENSENOVA_SEARCH_API_KEY")
+    search_url = shared.get("SERPER_BASE_URL", "")
+    search_key = shared.get("SERPER_API_KEY", "")
     if search_url:
         env["SERPER_BASE_URL"] = search_url.rstrip("/")
     if search_key:
@@ -92,6 +121,8 @@ def _blank() -> dict:
         "generation": {
             "max_tokens": DEFAULT_MAX_TOKENS,
             "streaming_enabled": DEFAULT_STREAMING_ENABLED,
+            "enable_visual_critic": False,
+            "title_task_model": DEFAULT_TITLE_TASK_MODEL,
             # Keep static and dynamic runtimes aligned by default.  An explicit
             # zero remains available as an expert escape hatch that restores
             # each static Harness's own reviewed fallback.
@@ -150,6 +181,7 @@ def _atomic_write(path: Path, payload: dict) -> None:
 
 
 def _normalize_optional_url(value: str) -> str:
+    from . import custom_models
     value = str(value or "").strip()
     return custom_models.normalize_base_url(value) if value else ""
 
@@ -181,10 +213,13 @@ def update(
     clear_search_api_key: bool,
     max_tokens: int | None = None,
     streaming_enabled: bool | None = None,
+    enable_visual_critic: bool | None = None,
     static_max_turns: int | None = None,
     static_subagent_max_turns: int | None = None,
     dynamic_max_turns: int | None = None,
+    title_task_model: str | None = None,
 ) -> dict:
+    from . import custom_models
     data = load(user_id)
     image = data["image_generation"]
     search = data["web_search"]
@@ -211,6 +246,8 @@ def update(
         )
     if streaming_enabled is not None:
         generation["streaming_enabled"] = bool(streaming_enabled)
+    if enable_visual_critic is not None:
+        generation["enable_visual_critic"] = bool(enable_visual_critic)
     if static_max_turns is not None:
         generation["static_max_turns"] = _bounded_int(
             static_max_turns, label="静态主 Agent 最大轮次", minimum=1, maximum=8192, allow_zero=True
@@ -227,6 +264,11 @@ def update(
         generation["dynamic_max_turns"] = _bounded_int(
             dynamic_max_turns, label="动态最大轮次", minimum=1, maximum=16384
         )
+    if title_task_model is not None:
+        task_model = str(title_task_model or "").strip()
+        if not task_model or len(task_model) > 180:
+            raise ValueError("侧栏标题 Task Model 无效")
+        generation["title_task_model"] = task_model
 
     image.update({
         "enabled": bool(image_enabled),
@@ -258,7 +300,6 @@ def public_payload(user_id: int) -> dict:
     system = system_runtime_env()
     image = data["image_generation"]
     search = data["web_search"]
-    generation = data["generation"]
     personal_image_available = bool(
         image.get("enabled") and image.get("base_url")
         and image.get("model") and image.get("api_key_enc")
@@ -290,35 +331,61 @@ def public_payload(user_id: int) -> dict:
             "available": personal_search_available or system_search_available,
             "source": "personal" if personal_search_available else ("deployment" if system_search_available else "none"),
         },
-        "generation": {
-            "max_tokens": int(generation.get("max_tokens") or DEFAULT_MAX_TOKENS),
-            "streaming_enabled": bool(
-                generation.get("streaming_enabled", DEFAULT_STREAMING_ENABLED)
-            ),
-            "static_max_turns": int(
-                generation.get("static_max_turns")
-                if generation.get("static_max_turns") is not None
-                else DEFAULT_STATIC_MAX_TURNS
-            ),
-            "static_subagent_max_turns": int(
-                generation.get("static_subagent_max_turns")
-                if generation.get("static_subagent_max_turns") is not None
-                else DEFAULT_STATIC_SUBAGENT_MAX_TURNS
-            ),
-            "dynamic_max_turns": int(
-                generation.get("dynamic_max_turns") or DEFAULT_DYNAMIC_MAX_TURNS
-            ),
-        },
+        "generation": generation_limits(user_id),
     }
 
 
-def generation_limits(user_id: int) -> dict[str, int | bool]:
+def generation_limits(user_id: int) -> dict[str, int | bool | str]:
     """Return validated, non-secret generation limits for one account."""
-    return dict(public_payload(user_id)["generation"])
+    generation = load(user_id)["generation"]
+    return {
+        "max_tokens": int(generation.get("max_tokens") or DEFAULT_MAX_TOKENS),
+        "streaming_enabled": bool(
+            generation.get("streaming_enabled", DEFAULT_STREAMING_ENABLED)
+        ),
+        "enable_visual_critic": bool(generation.get("enable_visual_critic", False)),
+        "title_task_model": str(
+            generation.get("title_task_model") or DEFAULT_TITLE_TASK_MODEL
+        ),
+        "static_max_turns": int(
+            generation.get("static_max_turns")
+            if generation.get("static_max_turns") is not None
+            else DEFAULT_STATIC_MAX_TURNS
+        ),
+        "static_subagent_max_turns": int(
+            generation.get("static_subagent_max_turns")
+            if generation.get("static_subagent_max_turns") is not None
+            else DEFAULT_STATIC_SUBAGENT_MAX_TURNS
+        ),
+        "dynamic_max_turns": int(
+            generation.get("dynamic_max_turns") or DEFAULT_DYNAMIC_MAX_TURNS
+        ),
+    }
+
+
+def role_token_env(max_tokens: int | str) -> dict[str, str]:
+    """Static v1 role budgets."""
+    budget = max(1, int(max_tokens))
+    return {
+        "ORCHESTRATOR_MAX_TOKENS": str(min(budget, DEFAULT_ORCHESTRATOR_MAX_TOKENS)),
+        "SLIDE_OWNER_MAX_TOKENS": str(min(budget, DEFAULT_SLIDE_OWNER_MAX_TOKENS)),
+        "RESEARCH_OWNER_MAX_TOKENS": str(min(budget, DEFAULT_RESEARCH_OWNER_MAX_TOKENS)),
+        "IMAGE_OWNER_MAX_TOKENS": str(min(budget, DEFAULT_IMAGE_OWNER_MAX_TOKENS)),
+        "CRITIC_MAX_TOKENS": str(min(budget, DEFAULT_CRITIC_MAX_TOKENS)),
+    }
+
+
+def title_task_model_key(user_id: int) -> str:
+    """Return the account-level model used only for WebUI navigation titles."""
+    return str(
+        generation_limits(user_id).get("title_task_model")
+        or DEFAULT_TITLE_TASK_MODEL
+    )
 
 
 def runtime_payload(user_id: int) -> dict:
     """Return decrypted per-job values.  Empty sections mean system fallback."""
+    from . import custom_models
     data = load(user_id)
     out: dict[str, dict] = {"generation": generation_limits(user_id)}
     image = data["image_generation"]
@@ -349,9 +416,12 @@ def runtime_env(user_id: int) -> dict[str, str]:
         "SUBAGENT_MAX_TOKENS": token_budget,
         "CLEAN_MAX_TOKENS": token_budget,
         "STUDIO_MAX_TOKENS": token_budget,
+        "AGENT_MAX_TOKENS": token_budget,
+        "OWNER_MAX_TOKENS": token_budget,
         "STUDIO_MAX_TURNS": str(generation["dynamic_max_turns"]),
         "MODEL_STREAMING": "1" if generation["streaming_enabled"] else "0",
     })
+    env.update(role_token_env(token_budget))
     if generation["static_max_turns"]:
         turns = str(generation["static_max_turns"])
         env.update({
@@ -363,6 +433,7 @@ def runtime_env(user_id: int) -> dict[str, str]:
         env.update({
             "SUBAGENT_MAX_TURNS": child_turns,
             "CLEAN_CHILD_MAX_TURNS": child_turns,
+            "OWNER_MAX_TURNS": child_turns,
         })
     image = payload.get("image_generation")
     if image:

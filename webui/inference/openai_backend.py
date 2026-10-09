@@ -92,17 +92,24 @@ def to_openai_messages(system, messages):
         if not isinstance(content, list):
             continue
         if role == "assistant":
-            texts, calls = [], []
+            texts, calls, reasoning = [], [], []
             for b in content:
                 t = b.get("type")
                 if t == "text":
                     texts.append(b.get("text", ""))
+                elif t == "thinking" and b.get("thinking"):
+                    # This adapter is used only for OpenAI-compatible backends.
+                    # Their reasoning has no Anthropic signature, but it is still
+                    # valid provider history and must round-trip in its native
+                    # field.  Never fold it into user-visible ``content``.
+                    reasoning.append(str(b.get("thinking")))
                 elif t == "tool_use":
                     calls.append({"id": b.get("id"), "type": "function",
                                   "function": {"name": b.get("name"),
                                                "arguments": json.dumps(b.get("input", {}), ensure_ascii=False)}})
-                # thinking 块:输入侧不回灌
             msg = {"role": "assistant", "content": ("\n".join(t for t in texts if t) or None)}
+            if reasoning:
+                msg["reasoning_content"] = "\n".join(reasoning)
             if calls:
                 msg["tool_calls"] = calls
             out.append(msg)

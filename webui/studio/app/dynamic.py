@@ -29,7 +29,7 @@ except ModuleNotFoundError:
     # dynamic routes are never registered while STUDIO_DYNAMIC_ENABLED=0.
     runtime = None
 
-from . import auth, custom_models, engine, service_config, titles, trace
+from . import auth, custom_models, engine, features, service_config, titles, trace
 from .db import connect
 
 router = APIRouter()
@@ -49,7 +49,7 @@ def _get_db():
 
 
 def _current_user(request: Request, con=Depends(_get_db)):
-    return auth.user_from_request(request, con)
+    return features.user_for_request(request, con, auth)
 
 
 def _require_user(user=Depends(_current_user)):
@@ -83,10 +83,10 @@ def _model_registry(user=None) -> dict[str, dict]:
             "model": model.get("engine_model") or key,
             "api_key": api_key,
             "api_style": "openai",
-            "thinking_transport": bool(
-                engine.thinking_capability(key).get("toggle")
+            "thinking_transport": str(
+                engine.thinking_capability(key).get("transport") or ""
             ),
-            "img_mode": "openai_url",
+            "img_mode": "openai_url" if model.get("multimodal", True) else "text",
             "custom": False,
         }
     if user:
@@ -102,8 +102,8 @@ def _model_registry(user=None) -> dict[str, dict]:
                     "model": cfg["engine_model"],
                     "api_key": cfg["api_key"],
                     "api_style": "openai",
-                    "thinking_transport": False,
-                    "img_mode": "openai_url",
+                    "thinking_transport": str(cfg.get("thinking_transport") or ""),
+                    "img_mode": "openai_url" if cfg.get("multimodal") else "text",
                     "custom": True,
                 }
         finally:
@@ -185,7 +185,11 @@ def conversations(user=Depends(_require_user), con=Depends(_get_db)):
     }
     for item in items:
         meta = runtime._read_meta(item["conv_id"])
-        item["display_title"] = titles.display_title(item.get("title"), meta.get("user_query") or "")
+        item["display_title"] = titles.display_title(
+            item.get("title"),
+            meta.get("user_query") or "",
+            meta.get("title_source") or "",
+        )
         item["model"] = meta.get("model_key") or meta.get("model") or ""
         item["model_label"] = meta.get("model_label") or item["model"]
         item["skill_version"] = meta.get("skill_version") or "dazzle-deck"
@@ -340,8 +344,8 @@ async def send(request: Request, user=Depends(_require_user)):
     existing_meta = runtime._read_meta(conv_id) if continuing else {}
     raw_thinking = body.get("thinking") if "thinking" in body else existing_meta.get("requested_thinking", True)
     requested_thinking = raw_thinking is True or str(raw_thinking).strip().lower() in {"1", "true", "yes", "on"}
-    thinking_transport = bool(model.get("thinking_transport"))
-    effective_thinking = requested_thinking and thinking_transport
+    thinking_transport = str(model.get("thinking_transport") or "")
+    effective_thinking = requested_thinking and bool(thinking_transport)
     message = (body.get("message") or "").strip()
     user_message = message
     style = (body.get("style") if "style" in body else existing_meta.get("style", "") or "").strip()
@@ -366,9 +370,10 @@ async def send(request: Request, user=Depends(_require_user)):
         services = service_config.runtime_payload(user["id"])
         generation_limits = services["generation"]
         image_service = services.get("image_generation")
+        _deploy_image_key = os.environ.get("OPENAI_API_KEY") or os.environ.get("SENSENOVA_IMAGE_API_KEY")
         enable_image_gen = bool(image_service) or bool(
             shared_env.get("IMAGE_API_KEY") or shared_env.get("OPENAI_API_KEY")
-        )
+        ) or (os.environ.get("ENABLE_IMAGE_GEN", "1") != "0" and bool(_deploy_image_key))
         new_id = runtime.send_message(
             conv_id,
             message,
@@ -393,6 +398,8 @@ async def send(request: Request, user=Depends(_require_user)):
         if not continuing:
             meta["user_query"] = user_message
             meta["title"] = titles.fallback_title(user_message)
+            meta["title_source"] = "fallback"
+            meta["title_locked"] = False
         meta.update({
             "slide_count": slide_count,
             "theme": theme,
@@ -401,16 +408,33 @@ async def send(request: Request, user=Depends(_require_user)):
             "thinking": effective_thinking,
             "requested_thinking": requested_thinking,
             "effective_thinking": effective_thinking,
-            "thinking_transport": "chat_template_kwargs" if thinking_transport else "",
+            "thinking_transport": thinking_transport,
             "generation_preferences": generation_preferences,
             "runtime_limits": generation_limits,
             "skill_version": "dazzle-deck",
         })
         runtime._write_meta(new_id, meta)
         if not continuing:
+            expected_title = titles.fallback_title(user_message)
+
+            def apply_task_title(title):
+                current = runtime._read_meta(new_id)
+                if current.get("title_locked"):
+                    return
+                if current.get("title_source") != "fallback":
+                    return
+                if current.get("title") != expected_title:
+                    return
+                runtime.update_meta_fields(
+                    new_id, title=title, title_source="task_model"
+                )
+
             titles.schedule_summary(
-                user_message, model,
-                lambda title: runtime.update_meta_fields(new_id, title=title),
+                user_message,
+                titles.select_task_model(
+                    registry, service_config.title_task_model_key(user["id"])
+                ),
+                apply_task_title,
             )
     except (RuntimeError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

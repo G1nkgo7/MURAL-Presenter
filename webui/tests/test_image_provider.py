@@ -8,7 +8,10 @@ from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
-TOOLS_PATH = ROOT.parent / "harnesses/mural-presenter/core/tools.py"
+TOOLS_PATH = (
+    ROOT.parent
+    / "archive/mural-presenter-pre-v0.6/harnesses/mural-presenter/core/tools.py"
+)
 SPEC = importlib.util.spec_from_file_location("presenter_tools_for_test", TOOLS_PATH)
 TOOLS = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader is not None

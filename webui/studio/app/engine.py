@@ -8,6 +8,7 @@ import json
 import hashlib
 import os
 import shutil
+import subprocess
 import threading
 import time
 import urllib.error
@@ -15,6 +16,8 @@ import urllib.request
 from pathlib import Path
 
 from .db import DATA_DIR, WORKSPACES_DIR
+from . import service_config
+from .service_config import read_env_file as _read_env_file
 
 STUDIO_DIR = Path(__file__).resolve().parent.parent          # .../studio
 INFERENCE_DIR = Path(os.environ.get(
@@ -61,6 +64,73 @@ _BUNDLED_SN_PPT_WEB_SUITE_ROOT = (
 )
 _MURAL_REPOSITORY_ROOT = PROJECT_ROOT.parent
 _MURAL_RESEARCH_ROOT = PROJECT_ROOT.parent / "research" / "mural-next"
+MURAL_V1_RUNTIME_ENV_PATH = Path(
+    os.environ.get(
+        "MURAL_V1_RUNTIME_ENV_PATH",
+        _MURAL_REPOSITORY_ROOT
+        / "harnesses"
+        / "mural-presenter-v1"
+        / "runtime.env",
+    )
+).expanduser().resolve()
+MURAL_V10_RUNTIME_ENV_PATH = Path(
+    os.environ.get(
+        "MURAL_V10_RUNTIME_ENV_PATH",
+        _MURAL_REPOSITORY_ROOT
+        / "harnesses"
+        / "mural-presenter-v1.0"
+        / "runtime.env",
+    )
+).expanduser().resolve()
+MURAL_V1_RELEASE_MANIFEST_PATH = Path(
+    os.environ.get(
+        "MURAL_V1_RELEASE_MANIFEST_PATH",
+        _MURAL_REPOSITORY_ROOT / "configs" / "releases" / "mural-paper-v1.json",
+    )
+).expanduser().resolve()
+MURAL_V10_RELEASE_MANIFEST_PATH = Path(
+    os.environ.get(
+        "MURAL_V10_RELEASE_MANIFEST_PATH",
+        _MURAL_REPOSITORY_ROOT
+        / "configs"
+        / "releases"
+        / "mural-paper-v1.0-rollback-20260903-r43.json",
+    )
+).expanduser().resolve()
+MURAL_LEGACY_ARCHIVE_ROOT = (
+    _MURAL_REPOSITORY_ROOT / "archive" / "mural-presenter-pre-v0.6"
+)
+
+
+# --- external visual critic switch (mural-presenter-v1) ---
+# The v1 harness gates the independent visual critic behind
+# ENABLE_EXTERNAL_VISUAL_CRITIC ("1"/"0"), read by
+# harnesses/mural-presenter-v1/runtime/production.py. Both inference and
+# synthesis honor the same explicit opt-in (default off).
+def external_visual_critic_env(requested: bool, run_mode: str) -> dict:
+    """Return the child-env fragment toggling the independent visual critic.
+
+    ``run_mode`` remains in the signature for callers that pin it in run metadata.
+    """
+    return {"ENABLE_EXTERNAL_VISUAL_CRITIC": "1" if bool(requested) else "0"}
+
+
+def _mural_v1_runtime_defaults(
+    path: Path = MURAL_V1_RUNTIME_ENV_PATH,
+) -> dict[str, str]:
+    """Read the canonical non-secret v1 behavior profile."""
+    values: dict[str, str] = {}
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return values
+    for raw in lines:
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        values[key.strip()] = value.strip().strip('"').strip("'")
+    return values
 SENSE_PRESENT_SUITE_ROOT = Path(
     os.environ.get(
         "PPTAGENT_SENSE_PRESENT_SUITE_ROOT",
@@ -122,13 +192,13 @@ SN_PPT_WEB_HARNESS_ENTRY = os.environ.get(
 MURAL_PRESENTER_SKILL_ROOT = Path(
     os.environ.get(
         "PPTAGENT_MURAL_PRESENTER_SKILL_ROOT",
-        _MURAL_REPOSITORY_ROOT / "skills" / "mural-presenter",
+        MURAL_LEGACY_ARCHIVE_ROOT / "skills" / "mural-presenter",
     )
 )
 MURAL_PRESENTER_HARNESS_ROOT = Path(
     os.environ.get(
         "PPTAGENT_MURAL_PRESENTER_HARNESS_ROOT",
-        _MURAL_REPOSITORY_ROOT / "harnesses" / "mural-presenter",
+        MURAL_LEGACY_ARCHIVE_ROOT / "harnesses" / "mural-presenter",
     )
 )
 MURAL_PRESENTER_HARNESS_ENTRY = os.environ.get(
@@ -137,13 +207,13 @@ MURAL_PRESENTER_HARNESS_ENTRY = os.environ.get(
 MURAL_V02_SKILLS_ROOT = Path(
     os.environ.get(
         "PPTAGENT_MURAL_V02_SKILLS_ROOT",
-        _MURAL_REPOSITORY_ROOT / "skills" / "mural-presenter-v0.2",
+        MURAL_LEGACY_ARCHIVE_ROOT / "skills" / "mural-presenter-v0.2",
     )
 )
 MURAL_V02_HARNESS_ROOT = Path(
     os.environ.get(
         "PPTAGENT_MURAL_V02_HARNESS_ROOT",
-        _MURAL_REPOSITORY_ROOT / "harnesses" / "mural-presenter-v0.2",
+        MURAL_LEGACY_ARCHIVE_ROOT / "harnesses" / "mural-presenter-v0.2",
     )
 )
 MURAL_V02_HARNESS_ENTRY = os.environ.get(
@@ -152,13 +222,13 @@ MURAL_V02_HARNESS_ENTRY = os.environ.get(
 MURAL_V03_SKILLS_ROOT = Path(
     os.environ.get(
         "PPTAGENT_MURAL_V03_SKILLS_ROOT",
-        _MURAL_REPOSITORY_ROOT / "skills" / "mural-presenter-v0.3",
+        MURAL_LEGACY_ARCHIVE_ROOT / "skills" / "mural-presenter-v0.3",
     )
 )
 MURAL_V03_HARNESS_ROOT = Path(
     os.environ.get(
         "PPTAGENT_MURAL_V03_HARNESS_ROOT",
-        _MURAL_REPOSITORY_ROOT / "harnesses" / "mural-presenter-v0.3",
+        MURAL_LEGACY_ARCHIVE_ROOT / "harnesses" / "mural-presenter-v0.3",
     )
 )
 MURAL_V03_HARNESS_ENTRY = os.environ.get(
@@ -167,17 +237,91 @@ MURAL_V03_HARNESS_ENTRY = os.environ.get(
 MURAL_V04_SKILLS_ROOT = Path(
     os.environ.get(
         "PPTAGENT_MURAL_V04_SKILLS_ROOT",
-        _MURAL_REPOSITORY_ROOT / "skills" / "mural-presenter-v0.4",
+        MURAL_LEGACY_ARCHIVE_ROOT / "skills" / "mural-presenter-v0.4",
     )
 )
 MURAL_V04_HARNESS_ROOT = Path(
     os.environ.get(
         "PPTAGENT_MURAL_V04_HARNESS_ROOT",
-        _MURAL_REPOSITORY_ROOT / "harnesses" / "mural-presenter-v0.4",
+        MURAL_LEGACY_ARCHIVE_ROOT / "harnesses" / "mural-presenter-v0.4",
     )
 )
 MURAL_V04_HARNESS_ENTRY = os.environ.get(
     "PPTAGENT_MURAL_V04_HARNESS_ENTRY", "infer.py"
+)
+# v0.4-thin: fork of v0.4 with every in-flight process gate stripped
+# (20+ tools.py gates + 13 pre-dispatch elif branches + review_required_view_gap
+# stale-hash branch). Skill package is unchanged — the thin harness reuses the
+# same v0.4 skill, only the harness behavior differs. Data synthesis (student
+# distillation, seed generation) should default here; the v0.4 main harness is
+# kept as the historical baseline for regression comparisons.
+MURAL_V04_THIN_HARNESS_ROOT = Path(
+    os.environ.get(
+        "PPTAGENT_MURAL_V04_THIN_HARNESS_ROOT",
+        MURAL_LEGACY_ARCHIVE_ROOT / "harnesses" / "mural-presenter-v0.4-thin",
+    )
+)
+# v0.5: visual-first iteration. New skill package (flex-column base.css, arch-*
+# layout primitives, Style Lock, higher slide autonomy) but REUSES the v0.4
+# harness verbatim — the harness's current-variant gating derives from
+# CLEAN_SKILL_NAME, so pointing it at mural-presenter-v0-5 auto-follows.
+MURAL_V05_SKILLS_ROOT = Path(
+    os.environ.get(
+        "PPTAGENT_MURAL_V05_SKILLS_ROOT",
+        MURAL_LEGACY_ARCHIVE_ROOT / "skills" / "mural-presenter-v0.5",
+    )
+)
+MURAL_V05_HARNESS_ROOT = Path(
+    os.environ.get(
+        "PPTAGENT_MURAL_V05_HARNESS_ROOT",
+        MURAL_LEGACY_ARCHIVE_ROOT / "harnesses" / "mural-presenter-v0.4",
+    )
+)
+# v1.0 — paper/data-synthesis release with thin runtime policy, native
+# in-context vision, persistent semantic Owners, and complete synthesis traces.
+# The previous v0.6 pair remains on disk as an immutable rollback snapshot.
+MURAL_V10_SKILLS_ROOT = Path(
+    os.environ.get("PPTAGENT_MURAL_V10_SKILLS_ROOT")
+    or os.environ.get("PPTAGENT_MURAL_V06_SKILLS_ROOT")
+    or _MURAL_REPOSITORY_ROOT / "skills"
+)
+MURAL_V10_HARNESS_ROOT = Path(
+    os.environ.get("PPTAGENT_MURAL_V10_HARNESS_ROOT")
+    or os.environ.get("PPTAGENT_MURAL_V06_HARNESS_ROOT")
+    or _MURAL_REPOSITORY_ROOT / "harnesses" / "mural-presenter-v1.0"
+)
+MURAL_V1_HARNESS_ROOT = Path(
+    os.environ.get("PPTAGENT_MURAL_V1_HARNESS_ROOT")
+    or _MURAL_REPOSITORY_ROOT / "harnesses" / "mural-presenter-v1"
+)
+MURAL_V05_HARNESS_ENTRY = os.environ.get(
+    "PPTAGENT_MURAL_V05_HARNESS_ENTRY", "infer.py"
+)
+MURAL_V10_HARNESS_ENTRY = os.environ.get(
+    "PPTAGENT_MURAL_V10_HARNESS_ENTRY",
+    os.environ.get("PPTAGENT_MURAL_V06_HARNESS_ENTRY", "infer.py"),
+)
+MURAL_V1_HARNESS_ENTRY = os.environ.get(
+    "PPTAGENT_MURAL_V1_HARNESS_ENTRY", "infer.py"
+)
+
+# Ablation: single-agent (solo) skill. Same harness + same references as v0.4;
+# only SKILL.md/roles differ (no delegation). Solo behaviour is driven by
+# CLEAN_SOLO_MODE=1 in its runtime_env.
+MURAL_V04_SOLO_SKILLS_ROOT = Path(
+    os.environ.get(
+        "PPTAGENT_MURAL_V04_SOLO_SKILLS_ROOT",
+        MURAL_LEGACY_ARCHIVE_ROOT / "skills" / "mural-presenter-v0.4-solo",
+    )
+)
+# Ablation: no-skill (nk) — same harness + files present for readiness, but the
+# SKILL.md forbids reading design references. Used as the second axis of a 2×2
+# matrix (with-skill vs no-skill) × (multi-agent vs single-agent solo).
+MURAL_V04_NK_SKILLS_ROOT = Path(
+    os.environ.get(
+        "PPTAGENT_MURAL_V04_NK_SKILLS_ROOT",
+        MURAL_LEGACY_ARCHIVE_ROOT / "skills" / "mural-presenter-v0.4-nk",
+    )
 )
 LONG_HORIZON_PRESENTER_SKILL_ROOT = Path(
     os.environ.get(
@@ -227,8 +371,27 @@ SERVE_SENTINEL_DIR = Path(
 
 
 def _hash_runtime_tree(digest: "hashlib._Hash", root: Path, *, prefix: str = "") -> None:
-    """Hash runtime sources while pruning virtualenvs and test/cache trees."""
-    ignored_dirs = {".git", ".pytest_cache", ".venv", "__pycache__", "tests"}
+    """Hash runtime sources without walking generated runs or caches.
+
+    Harness roots contain large synthesis workspaces.  They are outputs, not
+    executable inputs; hashing them on every catalog refresh both changes the
+    source revision for the wrong reason and can block Studio requests on AFS.
+    """
+    ignored_dirs = {
+        ".git",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".venv",
+        "__pycache__",
+        "artifacts",
+        "canary",
+        "logs",
+        "node_modules",
+        "outputs",
+        "runs",
+        "tests",
+    }
     files: list[Path] = []
     for current, directories, names in os.walk(root, topdown=True):
         directories[:] = sorted(name for name in directories if name not in ignored_dirs)
@@ -236,7 +399,7 @@ def _hash_runtime_tree(digest: "hashlib._Hash", root: Path, *, prefix: str = "")
         files.extend(
             base / name
             for name in sorted(names)
-            if not name.endswith(".pyc")
+            if name not in ignored_dirs and not name.endswith(".pyc")
         )
     for path in sorted(files, key=lambda item: item.relative_to(root).as_posix()):
         digest.update(prefix.encode("utf-8"))
@@ -1131,34 +1294,51 @@ def _mural_v03_skill(
 def _mural_v04_skill(
     skills_root: Path = MURAL_V04_SKILLS_ROOT,
     harness_root: Path = MURAL_V04_HARNESS_ROOT,
+    name: str = "mural-presenter-v0-4",
+    reference_files: tuple[str, ...] | None = None,
+    include_review_role: bool = True,
 ) -> dict:
-    """Register the v0.4 quality/stability iteration of adaptive MURAL."""
-    name = "mural-presenter-v0-4"
+    """Register the v0.4 quality/stability iteration of adaptive MURAL.
+
+    ``reference_files`` overrides the ``references/*.md`` contract for iterations
+    whose reference set differs (e.g. v0.5 merged design-styles/aesthetic-recipes/
+    creative-direction into visual-system.md). Defaults to the v0.4 file set.
+    """
+    if reference_files is None:
+        reference_files = (
+            "references/aesthetic-recipes.md",
+            "references/charts-and-diagrams.md",
+            "references/creative-direction.md",
+            "references/design-rules.md",
+            "references/design-styles.md",
+            "references/layout-patterns.md",
+            "references/quality-checklist.md",
+            "references/plan-contract.md",
+            "references/materials-and-images.md",
+            "references/html-contract.md",
+        )
+    role_files = (
+        "roles/image.md",
+        "roles/material.md",
+        "roles/research.md",
+        "roles/slide.md",
+    )
+    script_files = (
+        "scripts/orchestrator.py",
+        "scripts/image.py",
+        "scripts/slide.py",
+    )
+    if include_review_role:
+        role_files = (*role_files, "roles/review.md")
+        script_files = (*script_files, "scripts/review.py")
     required = (
         "SKILL.md",
         "agents/openai.yaml",
         "assets/base.css",
         "assets/vendor/echarts.min.js",
-        "references/aesthetic-recipes.md",
-        "references/charts-and-diagrams.md",
-        "references/creative-direction.md",
-        "references/design-rules.md",
-        "references/design-styles.md",
-        "references/layout-patterns.md",
-        "references/quality-checklist.md",
-        "references/plan-contract.md",
-        "references/materials-and-images.md",
-        "references/html-contract.md",
-        "roles/image.md",
-        "roles/material.md",
-        "roles/orchestrator.md",
-        "roles/research.md",
-        "roles/review.md",
-        "roles/slide.md",
-        "scripts/orchestrator.py",
-        "scripts/image.py",
-        "scripts/slide.py",
-        "scripts/review.py",
+        *reference_files,
+        *role_files,
+        *script_files,
         "scripts/_internal/__init__.py",
         "scripts/_internal/cli.py",
         "scripts/_internal/bootstrap.py",
@@ -1208,7 +1388,7 @@ def _mural_v04_skill(
         _hash_runtime_tree(digest, harness_root, prefix="harness/")
     ready = not missing_skill and not missing_harness
     return {
-        "label": "MURAL Presenter v0.4 · Adaptive Quality",
+        "label": "MURAL Presenter v0.4 · Adaptive Quality (archived baseline)",
         "path": str(skills_root / name),
         "instruction_paths": {
             "zh": str(skills_root / name),
@@ -1252,6 +1432,307 @@ def _mural_v04_skill(
             "CLEAN_DOCTOR_CACHE_DIR": str(DATA_DIR / "environment-doctor"),
         },
     }
+
+
+def _mural_v04_thin_skill() -> dict:
+    """Thin-harness variant paired with the v0.5 skill package.
+
+    Data synthesis (student distillation, seed generation) defaults here — the
+    thin harness gives the model full autonomy over ordering / repair / timing
+    decisions and only enforces file-existence acceptance. v0.4 skill is kept
+    on disk as an archived baseline; going forward this variant pairs with
+    the v0.5 skill package (Master 2026-08-18)."""
+    skill = _mural_v04_skill(
+        skills_root=MURAL_V05_SKILLS_ROOT,
+        harness_root=MURAL_V04_THIN_HARNESS_ROOT,
+        name="mural-presenter-v0-5",
+    )
+    skill["label"] = "MURAL Presenter · Thin harness + v0.5 skill (data synthesis)"
+    skill["mode"] = "mural-presenter-v0.4-thin"
+    skill["pipeline"] = "mural-presenter-v0.4-thin-harness"
+    skill["pairing"] = "mural-presenter-v0.4-thin"
+    skill["harness_path"] = str(MURAL_V04_THIN_HARNESS_ROOT)
+    return skill
+
+
+def _mural_v05_skill() -> dict:
+    """Register the v0.5 visual-first iteration of adaptive MURAL.
+
+    v0.5 is a new skill package (flex-column base.css, arch-* layout primitives,
+    Style Lock, higher slide autonomy, real/generated image-source separation)
+    that reuses the v0.4 harness verbatim. Built by delegating to
+    ``_mural_v04_skill`` with the v0.5 root+name, then relabelling — so the
+    required-file contract and runtime_env stay in lockstep with v0.4.
+    """
+    skill = _mural_v04_skill(
+        skills_root=MURAL_V05_SKILLS_ROOT,
+        harness_root=MURAL_V05_HARNESS_ROOT,
+        name="mural-presenter-v0-5",
+        # v0.5 merged design-styles + aesthetic-recipes + creative-direction into
+        # a single visual-system.md; the reference contract reflects that.
+        reference_files=(
+            "references/visual-system.md",
+            "references/charts-and-diagrams.md",
+            "references/design-rules.md",
+            "references/layout-patterns.md",
+            "references/motion.md",
+            "references/quality-checklist.md",
+            "references/plan-contract.md",
+            "references/materials-and-images.md",
+            "references/html-contract.md",
+        ),
+    )
+    skill["label"] = "MURAL Presenter v0.5 · Visual-First"
+    skill["mode"] = "mural-presenter-v0.5-adaptive"
+    skill["pipeline"] = "mural-presenter-v0.5-harness"
+    skill["pairing"] = "mural-presenter-v0.5-adaptive"
+    # v0.5 gives each slide a slightly larger self-repair budget so a messy
+    # first draft gets 1-2 more iterations before the hard stop (base 3 pixel
+    # states × 1.5 ≈ 4-5). Keeps refine load on the slide agent instead of
+    # spilling to Review. Only v0.5; v0.4 baseline stays at 1.0.
+    runtime_env = dict(skill.get("runtime_env", {}))
+    runtime_env["CLEAN_SLIDE_BUDGET_MULT"] = "1.5"
+    skill["runtime_env"] = runtime_env
+    return skill
+
+
+
+
+def _mural_v10_skill() -> dict:
+    """Register the paper v1.0 lifecycle contract and thin runtime Harness.
+
+    The active roles are Orchestrator, optional evidence/image Owners, and
+    Single/Group Slide Owners. Whole-deck semantic and pixel closure stays in
+    the persistent Orchestrator; ``review.md`` remains snapshot compatibility
+    only and is absent from the v1.0 delegation schema.
+    """
+    skill = _mural_v04_skill(
+        skills_root=MURAL_V10_SKILLS_ROOT,
+        harness_root=MURAL_V10_HARNESS_ROOT,
+        name="mural-presenter-v1",
+        include_review_role=False,
+        # These are readiness files, not an instruction to read them all.
+        reference_files=(
+            "references/design-routing.md",
+            "references/authoring-profiles.md",
+            "references/style-index.md",
+            "references/style-lenses-editorial.md",
+            "references/style-lenses-institutional.md",
+            "references/style-lenses-technical.md",
+            "references/style-lenses-cultural.md",
+            "references/style-lenses-experimental.md",
+            "references/typography-routing.md",
+            "references/typography-routes.json",
+            "references/visual-system.md",
+            "references/layout-patterns.md",
+            "references/special-pages.md",
+            "references/quality-rubric.md",
+            "references/html-contract.md",
+            "references/materials-and-images.md",
+            "references/motion.md",
+        ),
+    )
+    skill["label"] = "MURAL Presenter v1.0 · Rollback"
+    skill["mode"] = "mural-presenter-v1.0-adaptive"
+    skill["pipeline"] = "mural-presenter-v1.0-harness"
+    skill["pairing"] = "mural-presenter-v1.0-adaptive"
+    runtime_defaults = _mural_v1_runtime_defaults(MURAL_V10_RUNTIME_ENV_PATH)
+    if "runtime.env" not in skill["harness_required_files"]:
+        skill["harness_required_files"].append("runtime.env")
+    if not runtime_defaults:
+        skill["ready"] = False
+        reason = f"MURAL Presenter v1.0 Harness 缺少：{MURAL_V10_RUNTIME_ENV_PATH}"
+        skill["unavailable_reason"] = "；".join(
+            value for value in (skill.get("unavailable_reason", ""), reason) if value
+        )
+    skill["status"] = "rollback" if skill.get("ready") else "unavailable"
+    runtime_env = dict(skill.get("runtime_env", {}))
+    runtime_env.update(runtime_defaults)
+    runtime_env["MURAL_RELEASE_MANIFEST"] = str(MURAL_V10_RELEASE_MANIFEST_PATH)
+    # All shared v1 authoring behavior comes from runtime.env. The WebUI only
+    # adds deployment/model capacity and per-user service overrides later.
+    skill["runtime_env"] = runtime_env
+    return skill
+
+
+def _mural_v1_skill(*, pinned_skill: dict | None = None) -> dict:
+    """从唯一具体 Skill 根目录注册当前共享运行时。"""
+    skill_root = Path(
+        pinned_skill["object_root"] if pinned_skill is not None else (
+            os.environ.get("MURAL_SKILL_DIR")
+            or _MURAL_REPOSITORY_ROOT / "skills" / "mural-presenter-v1"
+        )
+    ).expanduser().resolve()
+    required = (
+        "SKILL.md",
+        "roles/image.md",
+        "roles/research.md",
+        "roles/slide.md",
+        "assets/base.css",
+        "assets/vendor/echarts.min.js",
+        "scripts/orchestrator.py",
+        "scripts/image.py",
+        "scripts/slide.py",
+        "scripts/_internal/__init__.py",
+        "scripts/_internal/cli.py",
+        "scripts/_internal/bootstrap.py",
+        "scripts/_internal/planning.py",
+        "scripts/_internal/delivery.py",
+        "scripts/_internal/assets.py",
+        "scripts/_internal/renderer.py",
+        "scripts/_internal/deck_core.py",
+        "scripts/_internal/font_bundle.py",
+        "scripts/_internal/image_background.py",
+        "scripts/_internal/render_deck.py",
+        "scripts/_internal/workspace_policy.py",
+    )
+    harness_required = (
+        MURAL_V1_HARNESS_ENTRY,
+        "runtime.env",
+        "runtime/config.py",
+        "runtime/session.py",
+        "runtime/agent.py",
+        "runtime/live_trace.py",
+        "runtime/attachments.py",
+        "runtime/production.py",
+        "runtime/skill_runtime.py",
+        "orchestration/manager.py",
+        "owner/context.py",
+        "state/workspace.py",
+        "export/delivery.py",
+    )
+    missing_harness = [
+        relative
+        for relative in harness_required
+        if not (MURAL_V1_HARNESS_ROOT / relative).is_file()
+    ]
+    missing_skill = [
+        relative
+        for relative in required
+        if not (skill_root / relative).is_file()
+    ]
+    runtime_defaults = _mural_v1_runtime_defaults()
+    reasons = []
+    if missing_skill:
+        reasons.append("MURAL Presenter v1 Skill 缺少：" + ", ".join(missing_skill))
+    if missing_harness:
+        reasons.append("MURAL Presenter v1 Harness 缺少：" + ", ".join(missing_harness))
+    if not runtime_defaults:
+        reasons.append(f"MURAL Presenter v1 Harness 缺少：{MURAL_V1_RUNTIME_ENV_PATH}")
+    digest = hashlib.sha256()
+    if not missing_skill:
+        _hash_runtime_tree(digest, skill_root, prefix="skills/")
+        # 当前 Skill 可共享这两个目录；摘要仍覆盖实际脚本和资源内容。
+        for directory in ("scripts", "assets"):
+            if (skill_root / directory).is_symlink():
+                _hash_runtime_tree(
+                    digest, skill_root / directory, prefix=f"skills/{directory}/"
+                )
+    if not missing_harness:
+        _hash_runtime_tree(digest, MURAL_V1_HARNESS_ROOT, prefix="harness/")
+    ready = not reasons
+    runtime_env = dict(runtime_defaults)
+    runtime_env["MURAL_SKILL_DIR"] = str(skill_root)
+    runtime_env["MURAL_RUNTIME_CONFIG"] = os.environ.get(
+        "MURAL_RUNTIME_CONFIG", str(_MURAL_REPOSITORY_ROOT / "configs/runtime.local.json")
+    )
+    runtime_env["MURAL_RELEASE_MANIFEST"] = str(MURAL_V1_RELEASE_MANIFEST_PATH)
+    return {
+        "label": "MURAL Presenter v1 · Shared Runtime",
+        "path": str(skill_root),
+        "instruction_paths": {"zh": str(skill_root), "en": str(skill_root)},
+        "name": pinned_skill["skill_name"] if pinned_skill is not None else skill_root.name,
+        "language": "auto",
+        "supported_languages": ["zh", "en"],
+        "agent_language_routing": "resolved-deck-brief",
+        "deck_language": "auto",
+        "force_skill_language": "",
+        "required_files": list(required),
+        "mode": "mural-presenter-v1",
+        "pipeline": "mural-presenter-v1-harness",
+        "pairing": "mural-presenter-v1",
+        "harness_path": str(MURAL_V1_HARNESS_ROOT),
+        "harness_entry": MURAL_V1_HARNESS_ENTRY,
+        "harness_required_files": list(harness_required),
+        "source_revision": digest.hexdigest()[:12] if ready else "",
+        "ready": ready,
+        "status": "current" if ready else "unavailable",
+        "unavailable_reason": "；".join(reasons),
+        "caps": [
+            "attachments",
+            "revision",
+            "resume",
+            "static_html",
+            "custom_fonts",
+        ],
+        "runtime_env": runtime_env,
+    }
+
+
+
+
+def _mural_v04_solo_skill() -> dict:
+    """Single-agent (solo) ablation of v0.4.
+
+    Reuses the v0.4 harness and (symlinked) references verbatim; only SKILL.md
+    and roles/orchestrator.md differ so one Orchestrator does everything with no
+    delegation. Solo behaviour is switched on by CLEAN_SOLO_MODE=1 in runtime_env.
+    """
+    skill = _mural_v04_skill(
+        skills_root=MURAL_V04_SOLO_SKILLS_ROOT,
+        name="mural-presenter-v0-4-solo",
+    )
+    skill["label"] = "MURAL v0.4 · Solo（single-agent 消融）"
+    skill["mode"] = "mural-presenter-v0.4-solo"
+    skill["pipeline"] = "mural-presenter-v0.4-solo-harness"
+    skill["pairing"] = "mural-presenter-v0.4-solo"
+    # Ablation: one agent does plan+write+render+review+finalize, no delegation.
+    runtime_env = dict(skill.get("runtime_env", {}))
+    runtime_env["CLEAN_SOLO_MODE"] = "1"
+    runtime_env["CLEAN_SKILL_NAME"] = "mural-presenter-v0-4-solo"
+    runtime_env["CLEAN_SKILL_NAME_ZH"] = "mural-presenter-v0-4-solo"
+    runtime_env["CLEAN_SKILL_NAME_EN"] = "mural-presenter-v0-4-solo"
+    skill["runtime_env"] = runtime_env
+    return skill
+
+
+def _mural_v04_nk_skill() -> dict:
+    """No-Skill (nk) ablation: multi-agent path, but SKILL.md forbids reading
+    the design references. Files stay symlinked so harness readiness passes;
+    the model is instructed not to consume the design knowledge."""
+    skill = _mural_v04_skill(
+        skills_root=MURAL_V04_NK_SKILLS_ROOT,
+        name="mural-presenter-v0-4-nk",
+    )
+    skill["label"] = "MURAL v0.4 · No-Skill（multi-agent 消融）"
+    skill["mode"] = "mural-presenter-v0.4-nk"
+    skill["pipeline"] = "mural-presenter-v0.4-nk-harness"
+    skill["pairing"] = "mural-presenter-v0.4-nk"
+    runtime_env = dict(skill.get("runtime_env", {}))
+    runtime_env["CLEAN_SKILL_NAME"] = "mural-presenter-v0-4-nk"
+    runtime_env["CLEAN_SKILL_NAME_ZH"] = "mural-presenter-v0-4-nk"
+    runtime_env["CLEAN_SKILL_NAME_EN"] = "mural-presenter-v0-4-nk"
+    skill["runtime_env"] = runtime_env
+    return skill
+
+
+def _mural_v04_nk_solo_skill() -> dict:
+    """No-Skill × Solo cell of the 2×2 ablation matrix."""
+    skill = _mural_v04_skill(
+        skills_root=MURAL_V04_NK_SKILLS_ROOT,
+        name="mural-presenter-v0-4-nk",
+    )
+    skill["label"] = "MURAL v0.4 · No-Skill · Solo（single-agent 消融）"
+    skill["mode"] = "mural-presenter-v0.4-nk-solo"
+    skill["pipeline"] = "mural-presenter-v0.4-nk-solo-harness"
+    skill["pairing"] = "mural-presenter-v0.4-nk-solo"
+    runtime_env = dict(skill.get("runtime_env", {}))
+    runtime_env["CLEAN_SOLO_MODE"] = "1"
+    runtime_env["CLEAN_SKILL_NAME"] = "mural-presenter-v0-4-nk"
+    runtime_env["CLEAN_SKILL_NAME_ZH"] = "mural-presenter-v0-4-nk"
+    runtime_env["CLEAN_SKILL_NAME_EN"] = "mural-presenter-v0-4-nk"
+    skill["runtime_env"] = runtime_env
+    return skill
 
 
 def _mural_next_skill(
@@ -1442,73 +1923,10 @@ def _sense_present_suite_skill() -> dict:
 
 # 顺序同时决定 UI 顺序。普通 Long-horizon 从 Pipeline 热加载；Grouped 版本在
 # Web Demo vendor 中维护独立副本。两者都在任务启动时快照进对应 deck 工作区。
-SKILLS = {
-    "sense-present-ppt-skill": _sense_present_suite_skill(),
-    "sense-present-standard": _sense_present_skill(
-        "sn-ppt-standard", "SenseNova Static HTML", "sense-present-standard-harness",
-        "sense_present_standard.py",
-    ),
-    "sense-present-dazzle": _sense_present_skill(
-        "sn-ppt-dazzle", "SenseNova Dynamic HTML", "sense-present-dazzle-harness",
-        "sense_present_dazzle.py",
-    ),
-    "auto": _auto_skill(),
-    "zh": _clean_skill("zh", "中文 Skill"),
-    "en": _clean_skill("en", "English Skill"),
-    "long-horizon": _long_horizon_skill(),
-    "long-horizon-grouped": _long_horizon_skill(
-        name="long-horizon-html-ppt-grouped",
-        label="Long-horizon HTML PPT Grouped",
-        pairing="long-horizon-grouped-current",
-        skills_root=CLEAN_SKILLS_ROOT,
-    ),
-    "long-horizon-grouped-inline-image": _long_horizon_skill(
-        name="long-horizon-html-ppt-grouped-inline-image",
-        label="Long-horizon Grouped · Inline Image",
-        pairing="long-horizon-grouped-inline-image-ab",
-        skills_root=CLEAN_SKILLS_ROOT,
-        inline_image=True,
-    ),
-    "visual-craft": _visual_craft_skill(),
-    "visual-craft-v3-pre-speech": _visual_craft_v3_skill(speech=False),
-    "visual-craft-v3-speech": _visual_craft_v3_skill(speech=True),
-    "sn-ppt-web": _sn_ppt_web_skill(),
-    "long-horizon-presenter": _long_horizon_presenter_skill(),
-    "mural-presenter": _mural_presenter_skill(),
-    "mural-presenter-creative": _mural_presenter_creative_skill(),
-    "mural-presenter-v0.2": _mural_v02_skill(),
-    "mural-presenter-v0.2-grouped": _mural_v02_skill(grouped=True),
-    "mural-presenter-v0.3": _mural_v03_skill(),
-    "mural-presenter-v0.4": _mural_v04_skill(),
-}
-if ENABLE_EXPERIMENTAL_SKILLS:
-    SKILLS["mural-next"] = _mural_next_skill()
-# The public V1 release exposes one stable workflow. Other catalog entries stay
-# registered only so existing development data can still be inspected when a
-# maintainer explicitly opts into them through PPTAGENT_PUBLIC_SKILL_KEYS.
-_DEFAULT_PUBLIC_SKILL_KEYS = (
-    "sense-present-ppt-skill",
-    "mural-presenter",
-    "mural-presenter-creative",
-    "mural-presenter-v0.2",
-    "mural-presenter-v0.2-grouped",
-    "mural-presenter-v0.3",
-    "mural-presenter-v0.4",
-    "visual-craft-v3-pre-speech",
-    "visual-craft-v3-speech",
-)
-_configured_public_skill_keys = tuple(
-    key.strip()
-    for key in os.environ.get("PPTAGENT_PUBLIC_SKILL_KEYS", "").split(",")
-    if key.strip() in SKILLS
-)
-PUBLIC_SKILL_KEYS = _configured_public_skill_keys or _DEFAULT_PUBLIC_SKILL_KEYS
-_configured_default_skill = os.environ.get("PPTAGENT_DEFAULT_SKILL", "").strip()
-DEFAULT_SKILL = (
-    _configured_default_skill
-    if _configured_default_skill in PUBLIC_SKILL_KEYS
-    else PUBLIC_SKILL_KEYS[0]
-)
+SKILLS = {"mural-presenter-v1": _mural_v1_skill()}
+PUBLIC_SKILL_KEYS = ("mural-presenter-v1",)
+DEFAULT_SKILL = "mural-presenter-v1"
+
 _SKILL_CATALOG_LOCK = threading.Lock()
 try:
     _SKILL_CATALOG_REFRESH_TTL_S = max(
@@ -1523,96 +1941,20 @@ _SKILL_CATALOG_REFRESHED_AT = time.monotonic()
 
 
 def refresh_external_skills(*, force: bool = False) -> dict:
-    """Refresh externally owned Skills without restarting Studio.
-
-    Replacing catalog entries atomically keeps page rendering and job creation
-    on one coherent snapshot of each Skill's readiness and content revision.
-    Homepage rendering uses a short cache because hashing every Skill tree on
-    AFS dominates its latency; job construction forces a refresh below.
-    """
+    """仅刷新正式 v1 配对；历史注册表不能重新成为运行入口。"""
     global _SKILL_CATALOG_REFRESHED_AT
     with _SKILL_CATALOG_LOCK:
         now = time.monotonic()
-        if (
-            not force
-            and now - _SKILL_CATALOG_REFRESHED_AT < _SKILL_CATALOG_REFRESH_TTL_S
-        ):
-            return SKILLS["long-horizon"]
-        refreshed = _long_horizon_skill()
-        grouped = _long_horizon_skill(
-            name="long-horizon-html-ppt-grouped",
-            label="Long-horizon HTML PPT Grouped",
-            pairing="long-horizon-grouped-current",
-            skills_root=CLEAN_SKILLS_ROOT,
-        )
-        grouped_inline_image = _long_horizon_skill(
-            name="long-horizon-html-ppt-grouped-inline-image",
-            label="Long-horizon Grouped · Inline Image",
-            pairing="long-horizon-grouped-inline-image-ab",
-            skills_root=CLEAN_SKILLS_ROOT,
-            inline_image=True,
-        )
-        visual_craft = _visual_craft_skill()
-        visual_craft_v3_pre_speech = _visual_craft_v3_skill(speech=False)
-        visual_craft_v3_speech = _visual_craft_v3_skill(speech=True)
-        sn_ppt_web = _sn_ppt_web_skill()
-        long_horizon_presenter = _long_horizon_presenter_skill()
-        mural_presenter = _mural_presenter_skill()
-        mural_presenter_creative = _mural_presenter_creative_skill()
-        mural_v02 = _mural_v02_skill()
-        mural_v02_grouped = _mural_v02_skill(grouped=True)
-        mural_v03 = _mural_v03_skill()
-        mural_v04 = _mural_v04_skill()
-        mural_next = _mural_next_skill() if ENABLE_EXPERIMENTAL_SKILLS else None
-        SKILLS["long-horizon"] = refreshed
-        SKILLS["long-horizon-grouped"] = grouped
-        SKILLS["long-horizon-grouped-inline-image"] = grouped_inline_image
-        SKILLS["visual-craft"] = visual_craft
-        SKILLS["visual-craft-v3-pre-speech"] = visual_craft_v3_pre_speech
-        SKILLS["visual-craft-v3-speech"] = visual_craft_v3_speech
-        SKILLS["sn-ppt-web"] = sn_ppt_web
-        SKILLS["long-horizon-presenter"] = long_horizon_presenter
-        SKILLS["mural-presenter"] = mural_presenter
-        SKILLS["mural-presenter-creative"] = mural_presenter_creative
-        SKILLS["mural-presenter-v0.2"] = mural_v02
-        SKILLS["mural-presenter-v0.2-grouped"] = mural_v02_grouped
-        SKILLS["mural-presenter-v0.3"] = mural_v03
-        SKILLS["mural-presenter-v0.4"] = mural_v04
-        if mural_next is not None:
-            SKILLS["mural-next"] = mural_next
+        if not force and now - _SKILL_CATALOG_REFRESHED_AT < _SKILL_CATALOG_REFRESH_TTL_S:
+            return SKILLS["mural-presenter-v1"]
+        refreshed = _mural_v1_skill()
+        SKILLS.clear()
+        SKILLS["mural-presenter-v1"] = refreshed
         if "PIPELINES" in globals():
-            PIPELINES["visual-craft-harness"] = _visual_craft_pipeline(visual_craft)
-            PIPELINES["visual-craft-v3-pre-speech-harness"] = (
-                _visual_craft_v3_pipeline(visual_craft_v3_pre_speech)
-            )
-            PIPELINES["visual-craft-v3-speech-harness"] = (
-                _visual_craft_v3_pipeline(visual_craft_v3_speech)
-            )
-            PIPELINES["sn-ppt-web-harness"] = _sn_ppt_web_pipeline(
-                sn_ppt_web
-            )
-            PIPELINES["long-horizon-presenter-harness"] = (
-                _long_horizon_presenter_pipeline(long_horizon_presenter)
-            )
-            PIPELINES["mural-presenter-harness"] = _mural_presenter_pipeline(
-                mural_presenter
-            )
-            PIPELINES["mural-presenter-v0.2-harness"] = _mural_v02_pipeline(
-                mural_v02
-            )
-            PIPELINES["mural-presenter-v0.2-grouped-harness"] = (
-                _mural_v02_pipeline(mural_v02_grouped, grouped=True)
-            )
-            PIPELINES["mural-presenter-v0.3-harness"] = _mural_v03_pipeline(
-                mural_v03
-            )
-            PIPELINES["mural-presenter-v0.4-harness"] = _mural_v04_pipeline(
-                mural_v04
-            )
-            if mural_next is not None:
-                PIPELINES["mural-next-harness"] = _mural_next_pipeline(mural_next)
+            PIPELINES.clear()
+            PIPELINES["mural-presenter-v1-harness"] = _mural_v1_pipeline(refreshed)
         _SKILL_CATALOG_REFRESHED_AT = time.monotonic()
-    return refreshed
+        return refreshed
 
 
 # zh/en 共用同一套 clean Harness；语言选择只决定 Skill，不复制 Pipeline。
@@ -1745,13 +2087,120 @@ def _mural_v03_pipeline(skill: dict | None = None) -> dict:
 def _mural_v04_pipeline(skill: dict | None = None) -> dict:
     skill = skill or SKILLS.get("mural-presenter-v0.4") or _mural_v04_skill()
     return {
-        "label": "MURAL Presenter v0.4 · Adaptive Quality",
+        "label": "MURAL Presenter v0.4 · Adaptive Quality (archived baseline)",
         "path": str(MURAL_V04_HARNESS_ROOT),
         "entry": MURAL_V04_HARNESS_ENTRY,
         "supports": ["anthropic", "openai"],
         "skill_mode": "mural-presenter-v0.4-adaptive",
         "caps": ["attachments", "revision", "static_html", "custom_fonts"],
         "pairing": "mural-presenter-v0.4-adaptive",
+        "ready": bool(skill.get("ready")),
+        "unavailable_reason": skill.get("unavailable_reason", ""),
+    }
+
+
+def _mural_v05_pipeline(skill: dict | None = None) -> dict:
+    skill = skill or SKILLS.get("mural-presenter-v0.5") or _mural_v05_skill()
+    return {
+        "label": "MURAL Presenter v0.5 · Visual-First",
+        "path": str(MURAL_V05_HARNESS_ROOT),
+        "entry": MURAL_V05_HARNESS_ENTRY,
+        "supports": ["anthropic", "openai"],
+        "skill_mode": "mural-presenter-v0.5-adaptive",
+        "caps": ["attachments", "revision", "static_html", "custom_fonts"],
+        "pairing": "mural-presenter-v0.5-adaptive",
+        "ready": bool(skill.get("ready")),
+        "unavailable_reason": skill.get("unavailable_reason", ""),
+    }
+
+
+def _mural_v10_pipeline(skill: dict | None = None) -> dict:
+    skill = skill or SKILLS.get("mural-presenter-v1.0") or _mural_v10_skill()
+    return {
+        "label": "MURAL Presenter v1.0 · Thin / Opus-First",
+        "path": str(MURAL_V10_HARNESS_ROOT),
+        "entry": MURAL_V10_HARNESS_ENTRY,
+        "supports": ["anthropic", "openai"],
+        "skill_mode": "mural-presenter-v1.0-adaptive",
+        "caps": ["attachments", "revision", "static_html", "custom_fonts"],
+        "pairing": "mural-presenter-v1.0-adaptive",
+        "ready": bool(skill.get("ready")),
+        "unavailable_reason": skill.get("unavailable_reason", ""),
+    }
+
+
+def _mural_v1_pipeline(skill: dict | None = None) -> dict:
+    skill = skill or SKILLS.get("mural-presenter-v1") or _mural_v1_skill()
+    return {
+        "label": "MURAL Presenter v1 · Shared Runtime",
+        "path": str(MURAL_V1_HARNESS_ROOT),
+        "entry": MURAL_V1_HARNESS_ENTRY,
+        "supports": ["anthropic", "openai"],
+        "skill_mode": "mural-presenter-v1",
+        "caps": list(skill.get("caps") or []),
+        "pairing": "mural-presenter-v1",
+        "ready": bool(skill.get("ready")),
+        "unavailable_reason": skill.get("unavailable_reason", ""),
+    }
+
+
+
+
+def _mural_v04_solo_pipeline(skill: dict | None = None) -> dict:
+    skill = skill or SKILLS.get("mural-presenter-v0.4-solo") or _mural_v04_solo_skill()
+    return {
+        "label": "MURAL v0.4 · Solo（single-agent 消融）",
+        "path": str(MURAL_V04_HARNESS_ROOT),
+        "entry": MURAL_V04_HARNESS_ENTRY,
+        "supports": ["anthropic", "openai"],
+        "skill_mode": "mural-presenter-v0.4-solo",
+        "caps": ["attachments", "revision", "static_html", "custom_fonts"],
+        "pairing": "mural-presenter-v0.4-solo",
+        "ready": bool(skill.get("ready")),
+        "unavailable_reason": skill.get("unavailable_reason", ""),
+    }
+
+
+def _mural_v04_nk_pipeline(skill: dict | None = None) -> dict:
+    skill = skill or SKILLS.get("mural-presenter-v0.4-nk") or _mural_v04_nk_skill()
+    return {
+        "label": "MURAL v0.4 · No-Skill（multi-agent 消融）",
+        "path": str(MURAL_V04_HARNESS_ROOT),
+        "entry": MURAL_V04_HARNESS_ENTRY,
+        "supports": ["anthropic", "openai"],
+        "skill_mode": "mural-presenter-v0.4-nk",
+        "caps": ["attachments", "revision", "static_html", "custom_fonts"],
+        "pairing": "mural-presenter-v0.4-nk",
+        "ready": bool(skill.get("ready")),
+        "unavailable_reason": skill.get("unavailable_reason", ""),
+    }
+
+
+def _mural_v04_nk_solo_pipeline(skill: dict | None = None) -> dict:
+    skill = skill or SKILLS.get("mural-presenter-v0.4-nk-solo") or _mural_v04_nk_solo_skill()
+    return {
+        "label": "MURAL v0.4 · No-Skill · Solo（single-agent 消融）",
+        "path": str(MURAL_V04_HARNESS_ROOT),
+        "entry": MURAL_V04_HARNESS_ENTRY,
+        "supports": ["anthropic", "openai"],
+        "skill_mode": "mural-presenter-v0.4-nk-solo",
+        "caps": ["attachments", "revision", "static_html", "custom_fonts"],
+        "pairing": "mural-presenter-v0.4-nk-solo",
+        "ready": bool(skill.get("ready")),
+        "unavailable_reason": skill.get("unavailable_reason", ""),
+    }
+
+
+def _mural_v04_thin_pipeline(skill: dict | None = None) -> dict:
+    skill = skill or SKILLS.get("mural-presenter-v0.4-thin") or _mural_v04_thin_skill()
+    return {
+        "label": "MURAL Presenter v0.4 · Thin (data synthesis)",
+        "path": str(MURAL_V04_THIN_HARNESS_ROOT),
+        "entry": MURAL_V04_HARNESS_ENTRY,
+        "supports": ["anthropic", "openai"],
+        "skill_mode": "mural-presenter-v0.4-thin",
+        "caps": ["attachments", "revision", "static_html", "custom_fonts"],
+        "pairing": "mural-presenter-v0.4-thin",
         "ready": bool(skill.get("ready")),
         "unavailable_reason": skill.get("unavailable_reason", ""),
     }
@@ -1772,80 +2221,9 @@ def _mural_next_pipeline(skill: dict | None = None) -> dict:
     }
 
 
-PIPELINES = {
-    "sense-present-ppt-skill-harness": {
-        "label": "Sense Present PPT Skill Suite Harness",
-        "path": str(INFERENCE_DIR),
-        "entry": SENSE_PRESENT_SUITE_HARNESS_ENTRY,
-        "supports": ["anthropic", "openai"],
-        "skill_mode": "sense-present-suite",
-        "caps": ["attachments", "static_html"],
-        "pairing": "sense-present-ppt-skill-suite",
-        "ready": bool(SKILLS["sense-present-ppt-skill"].get("ready")),
-        "unavailable_reason": SKILLS["sense-present-ppt-skill"].get("unavailable_reason", ""),
-    },
-    "sense-present-standard-harness": {
-        "label": "SenseNova Static HTML Harness",
-        "path": str(INFERENCE_DIR),
-        "entry": "sense_present_standard.py",
-        "supports": ["anthropic", "openai"],
-        "skill_mode": "sn-ppt-standard",
-        "caps": ["attachments", "revision", "static_html"],
-        "pairing": "sn-ppt-standard-alpha.1",
-        "ready": bool(SKILLS["sense-present-standard"].get("ready")),
-        "unavailable_reason": SKILLS["sense-present-standard"].get("unavailable_reason", ""),
-    },
-    "sense-present-dazzle-harness": {
-        "label": "SenseNova Dynamic HTML Harness",
-        "path": str(INFERENCE_DIR),
-        "entry": "sense_present_dazzle.py",
-        "supports": ["anthropic", "openai"],
-        "skill_mode": "sn-ppt-dazzle",
-        "caps": ["attachments", "revision", "dynamic_html"],
-        "pairing": "sn-ppt-dazzle-alpha.1",
-        "ready": bool(SKILLS["sense-present-dazzle"].get("ready")),
-        "unavailable_reason": SKILLS["sense-present-dazzle"].get("unavailable_reason", ""),
-    },
-    "infer": {
-        "label": "Clean infer harness",
-        "path": str(CLEAN_PIPELINE_ROOT),
-        "entry": "infer.py",
-        "supports": ["anthropic", "openai"],
-        "skill_mode": "clean-bilingual",
-        "caps": ["attachments", "revision"],
-        "pairing": "clean-current",
-        "ready": True,
-    },
-    "visual-craft-harness": _visual_craft_pipeline(),
-    "visual-craft-v3-pre-speech-harness": _visual_craft_v3_pipeline(
-        SKILLS["visual-craft-v3-pre-speech"]
-    ),
-    "visual-craft-v3-speech-harness": _visual_craft_v3_pipeline(
-        SKILLS["visual-craft-v3-speech"]
-    ),
-    "sn-ppt-web-harness": _sn_ppt_web_pipeline(),
-    "long-horizon-presenter-harness": _long_horizon_presenter_pipeline(),
-    "mural-presenter-harness": _mural_presenter_pipeline(),
-    "mural-presenter-v0.2-harness": _mural_v02_pipeline(),
-    "mural-presenter-v0.2-grouped-harness": _mural_v02_pipeline(grouped=True),
-    "mural-presenter-v0.3-harness": _mural_v03_pipeline(),
-    "mural-presenter-v0.4-harness": _mural_v04_pipeline(),
-}
-if ENABLE_EXPERIMENTAL_SKILLS:
-    PIPELINES["mural-next-harness"] = _mural_next_pipeline()
-DEFAULT_PIPELINE = SKILLS[DEFAULT_SKILL].get("pipeline", "mural-presenter-harness")
-
-# 历史 deck 仍可重试，但旧 key 不再注册、也不会出现在前端选项中。
-LEGACY_SKILL_ALIASES = {
-    "long-horizon-presenter": "mural-presenter",
-    "sense-present-v2": "sense-present-standard",
-    "current": "zh",
-    "v5": "zh",
-    "v4": "zh",
-    "v3": "zh",
-    "v2": "zh",
-    "v1": "zh",
-}
+PIPELINES = {"mural-presenter-v1-harness": _mural_v1_pipeline()}
+DEFAULT_PIPELINE = "mural-presenter-v1-harness"
+PUBLIC_PIPELINE_KEYS = ("mural-presenter-v1-harness",)
 
 # 可选模型注册表:anthropic 走引擎默认 teacher 路径;openai 走引擎的 student shim
 # (agent_loop 按 MODEL_BACKEND=openai + STUDENT_BASE_URL/STUDENT_MODEL 切换)。
@@ -1856,12 +2234,47 @@ MODELS = {}
 DEFAULT_MODEL = "deployment-model"
 ENVIRONMENT_MODEL_KEY = "deployment-model"
 ENVIRONMENT_MODEL2_KEY = "deployment-model-2"
+ENVIRONMENT_MODEL3_KEY = "deployment-model-3"
+ENVIRONMENT_MODEL4_KEY = "deployment-model-4"
+ENVIRONMENT_MODEL5_KEY = "deployment-model-5"
 
 
 def _normalize_thinking_transport(value: str | None) -> str:
     """Normalize legacy deployment transport names to the chat API contract."""
-    transport = str(value or "").strip().lower()
-    return "chat_template_kwargs" if transport == "openai" else transport
+    transport = str(value or "").strip().lower().replace("-", "_")
+    aliases = {
+        "openai": "chat_template_kwargs",
+        "qwen": "chat_template_kwargs",
+        "vllm": "chat_template_kwargs",
+        "openai_chat": "reasoning_effort",
+    }
+    return aliases.get(transport, transport)
+
+
+def _effort_levels(value=None) -> tuple[str, ...]:
+    """Return the supported graded effort values in stable UI order."""
+    raw = value if value is not None else ()
+    if isinstance(raw, str):
+        raw = raw.split(",")
+    requested = {str(item).strip().lower() for item in raw if str(item or "").strip()}
+    unknown = requested - set(service_config.EFFORT_LEVELS)
+    if unknown:
+        raise ValueError(f"Unsupported effort levels: {sorted(unknown)}")
+    return tuple(level for level in service_config.EFFORT_LEVELS if level in requested)
+
+
+def _default_openai_thinking_transport(model_name: str) -> str:
+    """Infer only well-known Chat Completions reasoning contracts."""
+    model_l = str(model_name or "").strip().lower()
+    if "deepseek-v4" in model_l:
+        return "deepseek"
+    if "qwen" in model_l or "qwq" in model_l:
+        return "chat_template_kwargs"
+    if model_l == "kimi-k3":
+        return "reasoning_effort"
+    if model_l.startswith(("gpt-5", "gpt-6", "o1", "o3", "o4")):
+        return "reasoning_effort"
+    return ""
 
 
 def _environment_model(prefix: str = "SENSENOVA_MODEL") -> dict | None:
@@ -1877,7 +2290,27 @@ def _environment_model(prefix: str = "SENSENOVA_MODEL") -> dict | None:
     model_name = os.environ.get(f"{prefix}_NAME", "").strip()
     if not base_url or not model_name:
         return None
-    return {
+    configured_api_format = os.environ.get(f"{prefix}_API_FORMAT", "").strip()
+    api_format = (
+        service_config.resolve_api_format(configured_api_format)
+        if configured_api_format else ""
+    )
+    configured_transport = os.environ.get(f"{prefix}_THINKING_TRANSPORT", "").strip()
+    thinking_transport = _normalize_thinking_transport(configured_transport) if (
+        configured_transport
+    ) else _default_openai_thinking_transport(model_name)
+    capability = service_config.model_effort_capability(model_name)
+    if model_name.strip().lower() == "kimi-k3":
+        thinking_transport = "reasoning_effort"
+    if capability["transport"] == "chat_template_kwargs" and thinking_transport != "chat_template_kwargs":
+        raise ValueError(f"{model_name} requires chat_template_kwargs plus reasoning_effort")
+    effort_levels = _effort_levels(
+        os.environ.get(
+            f"{prefix}_EFFORT_LEVELS",
+            ",".join(capability["levels"]) or ("low,medium,high" if thinking_transport == "reasoning_effort" else ""),
+        )
+    )
+    model = {
         "label": (
             os.environ.get(f"{prefix}_DISPLAY_NAME", "").strip()
             or model_name
@@ -1886,19 +2319,101 @@ def _environment_model(prefix: str = "SENSENOVA_MODEL") -> dict | None:
         "engine_model": model_name,
         "base_url": base_url,
         "api_key": os.environ.get(f"{prefix}_API_KEY", "").strip(),
+        "api_key_env": os.environ.get(f"{prefix}_API_KEY_ENV", "").strip(),
         "slide_concurrency": int(
             os.environ.get(f"{prefix}_SLIDE_CONCURRENCY", "4") or "4"
         ),
-        "thinking_mode": "toggle",
-        "thinking_transport": _normalize_thinking_transport(
-            os.environ.get(
-                f"{prefix}_THINKING_TRANSPORT",
-                "chat_template_kwargs",
-            )
+        "thinking_mode": (
+            "always" if thinking_transport == "reasoning_effort"
+            else "toggle" if thinking_transport else "none"
         ),
+        "thinking_transport": thinking_transport,
+        "thinking_effort": (
+            os.environ.get(f"{prefix}_THINKING_EFFORT", "").strip().lower()
+            or ((capability["default"] or "medium") if effort_levels else "")
+        ),
+        "thinking_effort_levels": effort_levels,
         "deployment_managed": True,
     }
+    if api_format:
+        model["api_format"] = api_format
+    route_pool = os.environ.get(f"{prefix}_ROUTE_POOL_PATH", "").strip()
+    if route_pool:
+        if api_format != "openai_responses" or not model_name.startswith("gpt-6-astra/"):
+            raise ValueError("route pools are only supported for GPT-6 Responses models")
+        model["route_pool_path"] = str(Path(route_pool).expanduser().resolve())
+    # Optional per-model multimodal flag. A multimodal openai student gets
+    # VISION_BACKEND=same_model_aux (which the v0.6 harness reinterprets as
+    # native in-context vision); the openai shim already serialises image
+    # blocks to image_url. Absent -> harness/skill default applies.
+    multimodal_env = os.environ.get(f"{prefix}_MULTIMODAL", "").strip().lower()
+    if multimodal_env in {"1", "true", "yes", "on"}:
+        model["multimodal"] = True
+    elif multimodal_env in {"0", "false", "no", "off"}:
+        model["multimodal"] = False
+    return model
 
+
+def _anthropic_env_model(
+    prefix: str = "SENSENOVA_ANTHROPIC",
+    default_name: str = "claude-opus-4-7-thinking",
+    default_label: str = "Opus 4.7",
+    default_enable: bool = False,
+    api_key_env: str = "",
+    base_url: str = "",
+) -> dict | None:
+    """Build the optional anthropic teacher model (e.g. Opus 4.7) as a registry item.
+
+    Unlike ``_environment_model`` (which always emits an OpenAI student shim),
+    this registers a native ``anthropic`` backend model that runs the engine's
+    default teacher path.  By default base_url / API keys are NOT stored on the
+    model — they come from the shared anthropic pool (``_anthropic_pool`` +
+    ``resolve_anthropic_key``, with C4 fallback), same as the built-in default.
+
+    ``api_key_env`` / ``base_url`` may still pin one deployment to a specific
+    gateway when an operator explicitly configures it. When set, the dispatcher
+    resolves the key from that env var and overrides ANTHROPIC_BASE_URL, bypassing
+    the shared pool / C4 failover for this model only.
+
+    Enabled when ``<prefix>_ENABLE`` is truthy, a model name is given, or
+    ``default_enable`` is True; deployments can still disable a default-on model
+    by setting ``<prefix>_ENABLE=0``.
+    """
+    enable_raw = os.environ.get(f"{prefix}_ENABLE", "").strip().lower()
+    if enable_raw:
+        enable = enable_raw in {"1", "true", "yes", "on"}
+    else:
+        enable = default_enable
+    model_name = os.environ.get(f"{prefix}_NAME", "").strip()
+    if not enable and not model_name:
+        return None
+    model_name = model_name or default_name
+    return {
+        "label": (
+            os.environ.get(f"{prefix}_DISPLAY_NAME", "").strip() or default_label
+        ),
+        "backend": "anthropic",
+        "engine_model": model_name,
+        # vision uses the main model itself (same_model_aux); no external critic.
+        "multimodal": True,
+        # user-controllable Think switch; transport must be non-empty for
+        # thinking_capability() to report toggle=True.
+        "thinking_mode": "toggle",
+        "thinking_transport": "anthropic",
+        "thinking_effort": os.environ.get(
+            f"{prefix}_THINKING_EFFORT", "high"
+        ).strip() or "high",
+        "thinking_effort_levels": service_config.model_effort_capability(model_name)["levels"] or ("low", "medium", "high"),
+        "deployment_managed": True,
+        # 独立模型凭证入口；可为单 Key 或逗号分隔号池，不混入其他模型的共享账号。
+        "api_key_env": os.environ.get(f"{prefix}_API_KEY_ENV", "").strip() or api_key_env,
+        "base_url": os.environ.get(f"{prefix}_BASE_URL", "").strip() or base_url,
+    }
+
+
+ANTHROPIC_MODEL_KEY = "opus-4-7"
+ANTHROPIC_MODEL2_KEY = "opus-5"
+ANTHROPIC_MODEL3_KEY = "opus-4-8"
 
 _ENVIRONMENT_MODEL = _environment_model()
 if _ENVIRONMENT_MODEL:
@@ -1906,6 +2421,62 @@ if _ENVIRONMENT_MODEL:
 _ENVIRONMENT_MODEL2 = _environment_model("SENSENOVA_MODEL2")
 if _ENVIRONMENT_MODEL2:
     MODELS[ENVIRONMENT_MODEL2_KEY] = _ENVIRONMENT_MODEL2
+_ENVIRONMENT_MODEL3 = _environment_model("SENSENOVA_MODEL3")
+if _ENVIRONMENT_MODEL3:
+    MODELS[ENVIRONMENT_MODEL3_KEY] = _ENVIRONMENT_MODEL3
+_ENVIRONMENT_MODEL4 = _environment_model("SENSENOVA_MODEL4")
+if _ENVIRONMENT_MODEL4:
+    MODELS[ENVIRONMENT_MODEL4_KEY] = _ENVIRONMENT_MODEL4
+_ENVIRONMENT_MODEL5 = _environment_model("SENSENOVA_MODEL5")
+if _ENVIRONMENT_MODEL5:
+    MODELS[ENVIRONMENT_MODEL5_KEY] = _ENVIRONMENT_MODEL5
+
+# Stable deployment keys for the three DPO 823 replicas.  Keep the
+# human-readable name as the actual registry key; unlike a per-user custom
+# model this never leaks an implementation identifier such as ``custom:7``.
+DPO823_MODELS = {
+    "dpo823-1": "http://10.119.20.24:28027/v1",
+    "dpo823-2": "http://10.119.20.24:28029/v1",
+    "dpo823-3": "http://10.119.20.24:28038/v1",
+}
+for _dpo823_key, _dpo823_base_url in DPO823_MODELS.items():
+    MODELS[_dpo823_key] = {
+        "label": _dpo823_key,
+        "backend": "openai",
+        "engine_model": "dpskopd160dpo87v1_0823_27",
+        "base_url": _dpo823_base_url,
+        "api_key": "",
+        "slide_concurrency": 4,
+        "multimodal": True,
+        "thinking_mode": "none",
+        "thinking_transport": "",
+        "deployment_managed": True,
+    }
+_ANTHROPIC_MODEL = _anthropic_env_model()
+if _ANTHROPIC_MODEL:
+    MODELS[ANTHROPIC_MODEL_KEY] = _ANTHROPIC_MODEL
+# All Opus variants use the same health-checked, load-balanced teacher pool.
+# A deployment may still set SENSENOVA_ANTHROPIC2_API_KEY_ENV explicitly.
+_ANTHROPIC_MODEL2 = _anthropic_env_model(
+    prefix="SENSENOVA_ANTHROPIC2",
+    default_name="claude-opus-5",
+    default_label="Opus 5",
+    default_enable=True,
+)
+if _ANTHROPIC_MODEL2:
+    MODELS[ANTHROPIC_MODEL2_KEY] = _ANTHROPIC_MODEL2
+
+# Opus 4.8 Thinking is exposed by TokenHub under the API model name below.
+# Claude Code's bracketed ``[1m]`` selector is a client-side spelling and is
+# not accepted by the gateway's Messages API.
+_ANTHROPIC_MODEL3 = _anthropic_env_model(
+    prefix="SENSENOVA_ANTHROPIC3",
+    default_name="claude-opus-4-8-thinking",
+    default_label="Opus 4.8 Thinking",
+    default_enable=True,
+)
+if _ANTHROPIC_MODEL3:
+    MODELS[ANTHROPIC_MODEL3_KEY] = _ANTHROPIC_MODEL3
 
 # 老 deck 的 DB 里可能存了历史 model key(label/id 漂移期或旧版本留下的),映射到现行注册表 key,
 # 保证老 deck 仍可解析、不报「未知模型」。新建 deck 一律存归一后的现行 key。
@@ -1936,20 +2507,44 @@ def thinking_capability(model_key: str = "", model_config: dict | None = None) -
         key = canon(model_key)
         model = MODELS.get(key or "", {})
     mode = str(model.get("thinking_mode") or "none")
-    transport = str(model.get("thinking_transport") or "")
-    effort = str(model.get("thinking_effort") or "")
+    transport = _normalize_thinking_transport(model.get("thinking_transport"))
+    if transport not in {
+        "anthropic", "deepseek", "chat_template_kwargs", "reasoning_effort",
+    }:
+        transport = ""
+    model_capability = service_config.model_effort_capability(model.get("engine_model", ""))
+    kimi = str(model.get("engine_model") or "").strip().lower() == "kimi-k3"
+    if kimi:
+        mode, transport = "always", "reasoning_effort"
+    effort_levels = (model_capability["levels"] if kimi
+                     else _effort_levels(model.get("thinking_effort_levels")))
+    if model_capability["levels"] and any(level not in model_capability["levels"] for level in effort_levels):
+        raise ValueError(f"Unsupported effort levels for {model.get('engine_model')}: {effort_levels}")
+    effort = str(model.get("thinking_effort") or "").strip().lower()
     if mode not in {"toggle", "always", "none"}:
         mode = "none"
+    if mode in {"toggle", "always"} and not transport:
+        mode = "none"
+    if effort_levels and effort and effort not in effort_levels:
+        raise ValueError(f"Default effort {effort!r} is not in {effort_levels}")
+    if not effort and effort_levels:
+        preferred = model_capability["default"] or "medium"
+        effort = preferred if preferred in effort_levels else effort_levels[0]
     return {
         "mode": mode,
         "toggle": mode == "toggle" and bool(transport),
-        "transport": transport if mode == "toggle" else "",
+        "transport": transport if mode in {"toggle", "always"} else "",
         "effort": effort if mode in {"toggle", "always"} else "",
+        "effort_levels": effort_levels if mode in {"toggle", "always"} else (),
+        "effort_levels_without_thinking": tuple(level for level in effort_levels
+            if level in model_capability["without_thinking"]) if mode == "toggle" else (),
+        "effort_select": bool(effort_levels) and mode in {"toggle", "always"},
     }
 
 
 def resolve_thinking(model_key: str, requested: bool,
-                     model_config: dict | None = None) -> dict:
+                     model_config: dict | None = None,
+                     requested_effort: str = "") -> dict:
     """Resolve the UI choice into the behavior the backend will actually use."""
     capability = thinking_capability(model_key, model_config=model_config)
     if capability["mode"] == "always":
@@ -1958,10 +2553,21 @@ def resolve_thinking(model_key: str, requested: bool,
         effective = bool(requested)
     else:
         effective = False
+    raw_effort = str(requested_effort or "").strip().lower()
+    if raw_effort and raw_effort not in capability["effort_levels"]:
+        raise ValueError(f"Unsupported effort {raw_effort!r}; supported levels: {', '.join(capability['effort_levels']) or 'none'}")
+    levels = capability["effort_levels"] if effective else capability["effort_levels_without_thinking"]
+    if raw_effort and levels and raw_effort not in levels:
+        raise ValueError(f"effort={raw_effort} requires thinking enabled for this model")
+    effective_effort = (raw_effort or capability["effort"]) if levels else ""
+    if effective_effort and effective_effort not in levels:
+        raise ValueError(f"effort={effective_effort} requires thinking enabled for this model")
     return {
         **capability,
         "requested": bool(requested),
         "effective": effective,
+        "requested_effort": raw_effort,
+        "effective_effort": effective_effort,
     }
 
 
@@ -1987,6 +2593,12 @@ def user_selectable_models():
     for key, model in (
         (ENVIRONMENT_MODEL_KEY, _ENVIRONMENT_MODEL),
         (ENVIRONMENT_MODEL2_KEY, _ENVIRONMENT_MODEL2),
+        (ENVIRONMENT_MODEL3_KEY, _ENVIRONMENT_MODEL3),
+        (ENVIRONMENT_MODEL4_KEY, _ENVIRONMENT_MODEL4),
+        (ENVIRONMENT_MODEL5_KEY, _ENVIRONMENT_MODEL5),
+        (ANTHROPIC_MODEL_KEY, _ANTHROPIC_MODEL),
+        (ANTHROPIC_MODEL2_KEY, _ANTHROPIC_MODEL2),
+        (ANTHROPIC_MODEL3_KEY, _ANTHROPIC_MODEL3),
     ):
         if model and key not in keys:
             keys.append(key)
@@ -2009,17 +2621,13 @@ def canon_pipeline(pipeline_key: str, model_key: str = None, skill_key: str = No
         return pipeline_for_skill(skill_key)
     if not pipeline_key:
         return DEFAULT_PIPELINE
-    if pipeline_key in LEGACY_SKILL_ALIASES:
-        return DEFAULT_PIPELINE
     return pipeline_key if pipeline_key in PIPELINES else None
 
 
 def canon_skill(skill_key: str, pipeline_key: str = None):
-    """空 skill 使用 Auto；历史版本静默迁移到 zh，未知返回 None。"""
+    """空选择使用正式 v1；历史或未知版本明确不可运行。"""
     if not skill_key:
         return DEFAULT_SKILL
-    if skill_key in LEGACY_SKILL_ALIASES:
-        return LEGACY_SKILL_ALIASES[skill_key]
     return skill_key if skill_key in SKILLS else None
 
 
@@ -2061,11 +2669,13 @@ def validate_selection(model_key: str, pipeline_key: str, skill_key: str,
         return pipe.get("unavailable_reason") or "该 Harness 当前不可用"
     if model["backend"] not in set(pipe["supports"]):
         return f"{pipe['label']} 暂不支持 {model['backend']} 模型"
+    # v0.4 can decouple authoring from pixel inspection: a text-only main
+    # model uses the deployment's isolated Gemini Vision Critic.  Older MURAL
+    # snapshots still require the selected main model itself to be multimodal.
     if skill_key in {
         "mural-presenter-v0.2",
         "mural-presenter-v0.2-grouped",
         "mural-presenter-v0.3",
-        "mural-presenter-v0.4",
     } and (
         model.get("multimodal") is False
     ):
@@ -2077,32 +2687,138 @@ def validate_selection(model_key: str, pipeline_key: str, skill_key: str,
     return None
 
 
-# ---- Anthropic key 自动失败转移 ------------------------------------------
-# 引擎子进程自读 .env(load_dotenv 用 setdefault,不覆盖已设的)→ studio 在 child_env 里
-# 注入探活后的 ANTHROPIC_API_KEY 即可覆盖引擎默认 key。key 池 + base_url 从 INFERENCE_DIR/.env
-# 读(studio 自身 environ 的 ANTHROPIC_* 已被 jobs.py 剔除,故直接读文件):
-#   ANTHROPIC_API_KEY            主 key
-#   ANTHROPIC_API_KEY_FALLBACKS  备用 key(逗号分隔,主挂了按序探活切过去)
-_ANTHROPIC_ENV_FILE = INFERENCE_DIR / ".env"
-_KEY_CACHE = {"key": None, "ts": 0.0}
-_KEY_CACHE_TTL = 120.0            # 探活结果缓存;deck 派发不是高频路径,120s 足够且省探活开销
-_REFRESH_LOCK = threading.Lock()
-_REFRESHING = {"on": False}
+# Provider 配置由 service_config 指定唯一来源；v1 在真实请求中执行主备切换。
 
 
-def _read_env_file(path) -> dict:
-    out = {}
+def _write_anthropic_override_dotenv(
+    key_env_name: str,
+    key: str,
+    base_url: str,
+    model: str,
+    *,
+    pool_keys: tuple[str, ...] | list[str] = (),
+    channel_labels: tuple[str, ...] | list[str] = (),
+) -> str:
+    """Write a per-model anthropic dotenv and return its path.
+
+    The v0.4/v0.5 harness's run_batch.load_dotenv() OVERRIDES process env from
+    CLEAN_DOTENV_PATH. For a per-model key override (Opus 5 on the A-platform
+    key) we point CLEAN_DOTENV_PATH at this file so the harness re-applies the
+    override key/base/model instead of the shared-pool default.  The override
+    must retain the shared tool credentials (search, image generation, judges,
+    etc.); otherwise pinning a teacher model silently disables those lifecycle
+    roles.  Vision routing is intentionally omitted so the process-level native
+    vision setting remains authoritative.  Written 0600 under the git-ignored
+    studio data dir; contents are secret and never committed.
+    """
+    out_dir = DATA_DIR / "anthropic-override"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    safe = "".join(
+        c if c.isalnum() or c in "-_" else "_"
+        for c in (key_env_name or "override")
+    )
+    # Keep concurrently dispatched model/channel selections immutable between
+    # selection and child startup.  The one-way suffix does not expose the key.
+    identity = hashlib.sha256(
+        f"{key}\0{base_url}\0{model}\0{'|'.join(pool_keys)}".encode("utf-8")
+    ).hexdigest()[:12]
+    path = out_dir / f"{safe}-{identity}.env"
+    lines: list[str] = []
     try:
-        with open(path, encoding="utf-8") as f:
+        with open(service_config.PROVIDER_ENV_PATH, encoding="utf-8") as f:
             for line in f:
-                line = line.strip()
-                if not line or line.startswith("#") or "=" not in line:
+                stripped = line.strip()
+                if not stripped or stripped.startswith("#") or "=" not in stripped:
                     continue
-                k, v = line.split("=", 1)
-                out[k.strip()] = v.strip().strip('"').strip("'")
+                name = stripped.split("=", 1)[0].strip().upper()
+                if (
+                    name == "ANTHROPIC_BASE_URL"
+                    or name == "ANTHROPIC_MODEL"
+                    or name.startswith("ANTHROPIC_API_KEY")
+                    or name == "ANTHROPIC_API_CHANNEL_LABELS"
+                    or name == "ANTHROPIC_CHANNEL_BALANCE"
+                    or name == "VISION_BACKEND"
+                    or name.startswith("VISION_")
+                    or name.startswith("TOKENHUB_VISION")
+                ):
+                    continue
+                lines.append(line.rstrip("\n"))
     except OSError:
         pass
-    return out
+    lines.append(f"ANTHROPIC_API_KEY={key}")
+    ordered_pool: list[str] = []
+    for item in (key, *pool_keys):
+        value = str(item or "").strip()
+        if value and value not in ordered_pool:
+            ordered_pool.append(value)
+    if len(ordered_pool) > 1:
+        lines.append(f"ANTHROPIC_API_KEYS={','.join(ordered_pool)}")
+        lines.append(
+            f"ANTHROPIC_API_KEY_FALLBACKS={','.join(ordered_pool[1:])}"
+        )
+        labels = [str(item or "").strip() for item in channel_labels]
+        if len(labels) == len(ordered_pool) and all(labels):
+            lines.append(f"ANTHROPIC_API_CHANNEL_LABELS={','.join(labels)}")
+        lines.append("ANTHROPIC_CHANNEL_BALANCE=balanced")
+    if base_url:
+        lines.append(f"ANTHROPIC_BASE_URL={base_url}")
+    if model:
+        lines.append(f"ANTHROPIC_MODEL={model}")
+    tmp = path.with_suffix(".env.tmp")
+    tmp.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    try:
+        os.chmod(tmp, 0o600)
+    except OSError:
+        pass
+    os.replace(tmp, path)
+    return str(path)
+
+
+def _write_native_vision_override_dotenv(base_dotenv: str) -> str:
+    """Write a dotenv that mirrors the shared pool but FORCES native vision.
+
+    The harness's run_batch.load_dotenv() reads CLEAN_DOTENV_PATH and OVERRIDES
+    process env, so the shared .secrets/.env line ``VISION_BACKEND=gemini`` (a
+    legacy 27B external-critic default) clobbers the ``same_model_aux`` we inject
+    for a multimodal openai student — routing v0.6 vision to an external gemini
+    critic instead of native in-context. For the native paper profile, copy the
+    base dotenv but strip every VISION_BACKEND/VISION_*/TOKENHUB_VISION* line and
+    pin VISION_BACKEND=native_incontext, so the post-dotenv effective backend is
+    native regardless of model backend. Anthropic key overrides already own their
+    own dotenv path; this one is for the openai / shared-pool case.
+    """
+    out_dir = DATA_DIR / "vision-override"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = out_dir / "native-vision.env"
+    kept: list[str] = []
+    try:
+        with open(base_dotenv, encoding="utf-8") as f:
+            for line in f:
+                stripped = line.strip()
+                if not stripped or stripped.startswith("#") or "=" not in stripped:
+                    continue
+                key = stripped.split("=", 1)[0].strip().upper()
+                if key == "VISION_BACKEND" or key.startswith("VISION_") \
+                        or key.startswith("TOKENHUB_VISION"):
+                    continue
+                kept.append(line.rstrip("\n"))
+    except OSError:
+        pass
+    kept.append("VISION_BACKEND=native_incontext")
+    tmp = path.with_suffix(".env.tmp")
+    tmp.write_text("\n".join(kept) + "\n", encoding="utf-8")
+    try:
+        os.chmod(tmp, 0o600)
+    except OSError:
+        pass
+    os.replace(tmp, path)
+    return str(path)
+
+
+_KEY_CACHE: dict[str, dict[str, object]] = {}
+_KEY_CACHE_TTL = 120.0            # 探活结果缓存;deck 派发不是高频路径,120s 足够且省探活开销
+_REFRESH_LOCK = threading.Lock()
+_REFRESHING: set[str] = set()
 
 
 def _deployment_secret(name: str, file_env: dict | None = None) -> str:
@@ -2110,24 +2826,85 @@ def _deployment_secret(name: str, file_env: dict | None = None) -> str:
     namespaced = str(os.environ.get(f"SENSENOVA_{name}") or "").strip()
     if namespaced:
         return namespaced
-    return str((file_env or _read_env_file(_ANTHROPIC_ENV_FILE)).get(name) or "").strip()
+    return str((file_env or _read_env_file(service_config.PROVIDER_ENV_PATH)).get(name) or "").strip()
+
+
+def _external_vision_runtime_env() -> dict[str, str]:
+    """Resolve the deployment-owned isolated Vision Critic configuration.
+
+    The WebUI historically exposes this service as ``VISION_ONESHOT_*`` while
+    the v0.4 Harness names it ``VISION_CRITIC_*``.  Normalize the aliases in
+    the per-job environment so a text-only authoring model never receives
+    image content and the trace records the effective critic explicitly.
+    """
+    file_env = _read_env_file(PROJECT_ROOT / ".env")
+    file_env.update(_read_env_file(service_config.PROVIDER_ENV_PATH))
+
+    def pick(*names: str, default: str = "") -> str:
+        for name in names:
+            value = str(
+                os.environ.get(f"SENSENOVA_{name}")
+                or os.environ.get(name)
+                or file_env.get(f"SENSENOVA_{name}")
+                or file_env.get(name)
+                or ""
+            ).strip()
+            if value:
+                return value
+        return default
+
+    env = {
+        "VISION_BACKEND": "external_model",
+        "VISION_CRITIC_MODEL": pick(
+            "VISION_CRITIC_MODEL",
+            "VISION_ONESHOT_MODEL",
+            "VISION_GEMINI_MODEL",
+            default="gemini-3.5-flash",
+        ),
+        "VISION_CRITIC_BASE_URL": pick(
+            "VISION_CRITIC_BASE_URL",
+            "VISION_ONESHOT_BASE_URL",
+            "VISION_GEMINI_BASE_URL",
+            default="https://tokenhub.sensetime.com/v1",
+        ).rstrip("/"),
+    }
+    key = pick(
+        "VISION_CRITIC_API_KEY",
+        "VISION_ONESHOT_API_KEY",
+        "GEMINI_API_KEY",
+    )
+    if key:
+        env["VISION_CRITIC_API_KEY"] = key
+    timeout = pick("VISION_CRITIC_TIMEOUT", "VISION_ONESHOT_TIMEOUT")
+    if timeout:
+        env["VISION_CRITIC_TIMEOUT"] = timeout
+    max_tokens = pick("VISION_CRITIC_MAX_TOKENS", "VISION_ONESHOT_MAX_TOKENS")
+    if max_tokens:
+        env["VISION_CRITIC_MAX_TOKENS"] = max_tokens
+    return env
 
 
 def _anthropic_pool():
-    """(base_url, [keys 主→备])。备用 = ANTHROPIC_API_KEY_FALLBACKS(逗号分隔),去重、保序。"""
-    env = _read_env_file(_ANTHROPIC_ENV_FILE)
+    """Return the ordered, deduplicated shared Anthropic channel pool."""
+    channel_env = _read_env_file(service_config.PROVIDER_ENV_PATH)
     base = (
-        os.environ.get("SENSENOVA_ANTHROPIC_BASE_URL")
-        or env.get("ANTHROPIC_BASE_URL")
+        channel_env.get("ANTHROPIC_BASE_URL")
         or "https://tokenhub.sensetime.com"
     ).rstrip("/")
     keys = []
-    primary = _deployment_secret("ANTHROPIC_API_KEY", env)
+    primary = str(channel_env.get("ANTHROPIC_API_KEY") or "").strip()
     if primary:
         keys.append(primary)
+    configured_pool = (
+        channel_env.get("ANTHROPIC_API_KEYS")
+        or ""
+    )
+    for k in configured_pool.replace("\n", ",").split(","):
+        k = k.strip()
+        if k and k not in keys:
+            keys.append(k)
     fallbacks = (
-        os.environ.get("SENSENOVA_ANTHROPIC_API_KEY_FALLBACKS")
-        or env.get("ANTHROPIC_API_KEY_FALLBACKS")
+        channel_env.get("ANTHROPIC_API_KEY_FALLBACKS")
         or ""
     )
     for k in fallbacks.split(","):
@@ -2135,6 +2912,34 @@ def _anthropic_pool():
         if k and k not in keys:
             keys.append(k)
     return base, keys
+
+
+def _anthropic_pool_labels(keys: list[str]) -> list[str]:
+    channel_env = _read_env_file(service_config.PROVIDER_ENV_PATH)
+    raw = (
+        channel_env.get("ANTHROPIC_API_CHANNEL_LABELS")
+        or ""
+    )
+    labels = [item.strip() for item in raw.split(",")]
+    return [
+        labels[index] if index < len(labels) and labels[index] else str(index + 1)
+        for index, _key in enumerate(keys)
+    ]
+
+
+def shared_provider_channel_retired(model_key: str, channel_id: str) -> bool:
+    """仅共享模型池允许在运维移除故障凭证后手动恢复，不替换用户私有账号。"""
+    model = MODELS.get(canon(model_key)) or {}
+    if model.get("backend") != "anthropic" or model.get("api_key_env"):
+        return False
+    fingerprint = channel_id.rsplit("-", 1)[-1]
+    if not channel_id.startswith("ch-") or len(fingerprint) != 8:
+        return False
+    _base, keys = _anthropic_pool()
+    return bool(keys) and all(
+        hashlib.sha256(key.encode("utf-8")).hexdigest()[:8] != fingerprint
+        for key in keys
+    )
 
 
 def _probe_key(base_url, key, model="deployment-model", timeout=4) -> bool:
@@ -2154,42 +2959,59 @@ def _probe_key(base_url, key, model="deployment-model", timeout=4) -> bool:
         return False                  # 超时 / 连不上 = 不可用
 
 
-def _refresh_key(model: str = "deployment-model"):
-    """探活主→备,把首个 200 的 key 写进缓存。探活是真 /v1/messages 调用(秒级、有波动),故只在后台线程跑。"""
+def _refresh_key(model: str = "deployment-model") -> str:
+    """探活主→备，按模型缓存首个可用通道。"""
     base, keys = _anthropic_pool()
     if not keys:
-        return
+        return ""
     chosen = keys[0]                  # 兜底:全挂也用主 key
     for k in keys:
         if _probe_key(base, k, model):
             chosen = k
             break
-    _KEY_CACHE.update(key=chosen, ts=time.time())
+    _KEY_CACHE[model] = {"key": chosen, "ts": time.time()}
+    return chosen
+
+
+def invalidate_anthropic_key(model: str = "deployment-model") -> None:
+    """Forget one model's channel before an explicit task-level resume."""
+    with _REFRESH_LOCK:
+        _KEY_CACHE.pop(model, None)
 
 
 def resolve_anthropic_key(model: str = "deployment-model") -> str:
-    """返回可用的模型 key —— **非阻塞**:命中新鲜缓存直接回;过期/未探活则立刻返回已知值(或主 key)
-    并后台线程刷新。故 deck 派发路径永不卡在探活上(探活可能秒级)。语义保证:最坏也只退回主 key,
-    即『没有 C4 时的原行为』—— C4 只会更好、绝不更糟。"""
+    """Return a model-compatible channel, probing synchronously only once.
+
+    Different gateway keys may expose different model families.  A cold
+    server therefore performs one bounded compatibility probe before its first
+    expensive Deck; later dispatches use the cache and refresh stale entries
+    in the background.
+    """
     now = time.time()
-    cached = _KEY_CACHE["key"]
-    if cached and now - _KEY_CACHE["ts"] < _KEY_CACHE_TTL:
+    record = _KEY_CACHE.get(model) or {}
+    cached = str(record.get("key") or "")
+    _base, keys = _anthropic_pool()
+    if cached not in keys:
+        cached = ""
+    if cached and now - float(record.get("ts") or 0.0) < _KEY_CACHE_TTL:
         return cached
-    if not _REFRESHING["on"]:                  # 过期/未探活:触发一次后台刷新(不重复触发)
+    if not cached:
+        return _refresh_key(model) or (keys[0] if keys else "")
+    if model not in _REFRESHING:                # 过期:每个模型只触发一个后台刷新
         with _REFRESH_LOCK:
-            if not _REFRESHING["on"]:
-                _REFRESHING["on"] = True
+            if model not in _REFRESHING:
+                _REFRESHING.add(model)
 
                 def _bg():
                     try:
                         _refresh_key(model)
                     finally:
-                        _REFRESHING["on"] = False
+                        with _REFRESH_LOCK:
+                            _REFRESHING.discard(model)
 
                 threading.Thread(target=_bg, daemon=True).start()
     if cached:
         return cached                         # 有旧值先用(哪怕刚过期),后台随即更新
-    base, keys = _anthropic_pool()            # 从未探活:先给主 key(=原行为),后台线程随即填好缓存
     return keys[0] if keys else ""
 
 
@@ -2218,13 +3040,15 @@ def resolve_base_url(model: dict) -> str:
 
 
 def selection_env(model_key: str, pipeline_key: str, skill_key: str,
-                  model_config: dict | None = None) -> dict:
+                  model_config: dict | None = None, *, skill_config: dict | None = None) -> dict:
     """该模型/pipeline/skill 在引擎子进程里需要的额外环境变量。"""
     skill_key = canon_skill(skill_key, pipeline_key)
+    if skill_key is None:
+        raise ValueError("unsupported_harness: only mural-presenter-v1 is active")
     pipeline_key = pipeline_for_skill(skill_key)
     m = model_config or MODELS[canon(model_key) or DEFAULT_MODEL]
-    pipe = PIPELINES[pipeline_key]
-    skill = SKILLS[skill_key]
+    skill = skill_config if skill_config is not None else SKILLS[skill_key]
+    pipe = _mural_v1_pipeline(skill)
     env = {}
     effective_model_name = m["engine_model"]
     if m["backend"] == "openai":
@@ -2239,11 +3063,14 @@ def selection_env(model_key: str, pipeline_key: str, skill_key: str,
                     # (Unknown parameter 'cache_control')。vLLM 学生本就忽略它,openai 一律关。
                     "PROMPT_CACHE": "0"})
         if "multimodal" in m:
-            env["VISION_BACKEND"] = (
-                "same_model_aux" if m.get("multimodal") else "disabled"
-            )
+            if m.get("multimodal"):
+                env["VISION_BACKEND"] = "same_model_aux"
+            elif skill_key in ("mural-presenter-v0.4", "mural-presenter-v0.4-thin"):
+                env.update(_external_vision_runtime_env())
+            else:
+                env["VISION_BACKEND"] = "disabled"
         thinking = thinking_capability(model_key, model_config=m)
-        if thinking["toggle"]:
+        if thinking["transport"]:
             env["STUDIO_THINKING_TRANSPORT"] = thinking["transport"]
         if thinking["effort"]:
             env["THINK_EFFORT"] = thinking["effort"]
@@ -2257,32 +3084,203 @@ def selection_env(model_key: str, pipeline_key: str, skill_key: str,
             key = _deployment_secret(key_env)
             if key:
                 env["STUDENT_API_KEY"] = key
-        # 自托管学生可拉高引擎子代理并发(引擎默认 4;SLIDE_CONCURRENCY 每个子进程独立读取)
-        sc = m.get("slide_concurrency")
-        if sc:
-            env["SLIDE_CONCURRENCY"] = str(sc)
     elif m["backend"] == "anthropic":
-        key = resolve_anthropic_key(m["engine_model"])   # C4:主 key 挂了自动切备用
-        if key:
-            env["ANTHROPIC_API_KEY"] = key
+        # An explicit per-model gateway/key override takes precedence; normal
+        # Opus deployments receive the complete shared pool for request-level
+        # balancing and immediate transport failover inside the Harness.
+        override_key_env = m.get("api_key_env")
+        override_key = _deployment_secret(override_key_env) if override_key_env else ""
+        if override_key:
+            override_keys = list(dict.fromkeys(item.strip() for item in override_key.split(",") if item.strip()))
+            override_key = override_keys[0]
+            env["ANTHROPIC_API_KEY"] = override_key
+            if len(override_keys) > 1:
+                env["ANTHROPIC_API_KEYS"] = ",".join(override_keys)
+                env["ANTHROPIC_API_KEY_FALLBACKS"] = ",".join(override_keys[1:])
+                env["ANTHROPIC_API_CHANNEL_LABELS"] = ",".join(str(i + 1) for i in range(len(override_keys)))
+                env["ANTHROPIC_CHANNEL_BALANCE"] = "primary-first"
+            if m.get("base_url"):
+                env["ANTHROPIC_BASE_URL"] = m["base_url"]
+            # The v0.4/v0.5 harness's run_batch.load_dotenv() OVERRIDES env vars
+            # from CLEAN_DOTENV_PATH (shared .secrets/.env → default key). That
+            # would clobber this per-model key back to the shared-pool key and
+            # route Opus 5 to a channel group without opus5 (503). Point
+            # CLEAN_DOTENV_PATH at a per-model override file so the harness's
+            # override re-applies THIS key instead.
+            if skill_key != "mural-presenter-v1":
+                env["_ANTHROPIC_OVERRIDE_DOTENV"] = _write_anthropic_override_dotenv(
+                    override_key_env, override_key,
+                    env.get("ANTHROPIC_BASE_URL", ""), m["engine_model"],
+                    pool_keys=override_keys,
+                )
+            # The env doctor's live multimodal probe sends max_tokens=16 with no
+            # thinking control. A thinking model (Opus 5) spends that budget on an
+            # (empty) thinking block and returns no text → the probe false-negatives
+            # despite HTTP 200. The text probe + real vision (proper budget at
+            # generation) work, so skip the flaky live probe for this model only.
+            env["CLEAN_DOCTOR_LIVE"] = "0"
+        else:
+            pool_base, pool_keys = _anthropic_pool()
+            key = ((pool_keys[0] if pool_keys else "") if skill_key == "mural-presenter-v1"
+                   else resolve_anthropic_key(m["engine_model"]))
+            if key:
+                env["ANTHROPIC_API_KEY"] = key
+                env["ANTHROPIC_BASE_URL"] = pool_base
+                source_labels = _anthropic_pool_labels(pool_keys)
+                label_by_key = dict(zip(pool_keys, source_labels))
+                ordered_keys = [key, *(item for item in pool_keys if item != key)]
+                ordered_labels = [
+                    label_by_key.get(item, str(index + 1))
+                    for index, item in enumerate(ordered_keys)
+                ]
+                env["ANTHROPIC_API_KEYS"] = ",".join(ordered_keys)
+                env["ANTHROPIC_API_KEY_FALLBACKS"] = ",".join(
+                    ordered_keys[1:]
+                )
+                env["ANTHROPIC_API_CHANNEL_LABELS"] = ",".join(ordered_labels)
+                env["ANTHROPIC_CHANNEL_BALANCE"] = (
+                    _read_env_file(service_config.PROVIDER_ENV_PATH).get("ANTHROPIC_CHANNEL_BALANCE")
+                    or "primary-first"
+                )
+                # CLEAN_DOTENV_PATH intentionally overrides process env inside
+                # the Harness.  Persist this health-checked channel selection in
+                # a per-dispatch dotenv; otherwise the shared file would replace
+                # the selected fallback with the unhealthy primary again.
+                if skill_key != "mural-presenter-v1":
+                    env["_ANTHROPIC_OVERRIDE_DOTENV"] = _write_anthropic_override_dotenv(
+                        f"shared-{m['engine_model']}",
+                        key,
+                        pool_base,
+                        m["engine_model"],
+                        pool_keys=ordered_keys,
+                        channel_labels=ordered_labels,
+                    )
+        # anthropic teacher 也支持 selection:vision 用主模型自身、thinking 可控。
+        # engine_model 冗余进 ANTHROPIC_MODEL(取值链 MODEL > ANTHROPIC_MODEL 均命中)。
+        env["ANTHROPIC_MODEL"] = m["engine_model"]
+        if m.get("multimodal"):
+            env["VISION_BACKEND"] = "same_model_aux"
+        elif skill_key in ("mural-presenter-v0.4", "mural-presenter-v0.4-thin"):
+            env.update(_external_vision_runtime_env())
+        thinking = thinking_capability(model_key, model_config=m)
+        if thinking["effort"]:
+            env["THINK_EFFORT"] = thinking["effort"]
     env.update({
         # Keep the generic runtime selector aligned with STUDENT_MODEL when a
         # deployment overrides the built-in default model from .env/shell.
         "MODEL": effective_model_name,
-        "CLEAN_SKILLS_DIR": skill.get("skills_root", str(CLEAN_SKILLS_ROOT)),
         # 空值是 clean infer 的自动语言选择契约。
         "CLEAN_FORCE_SKILL_LANGUAGE": skill.get(
             "force_skill_language",
             "" if skill["language"] == "auto" else skill["language"],
         ),
         # Reuse the Web Demo's credential file; the clean source tree remains
-        # code/Skill/Harness only and never receives copied secrets.
-        "CLEAN_DOTENV_PATH": str(_ANTHROPIC_ENV_FILE),
+        # code/Skill/Harness only and never receives copied secrets. A per-model
+        # anthropic key override (Opus 5 on the A-platform key) supplies its own
+        # dotenv so the harness's load_dotenv override re-applies that key.
+        "CLEAN_DOTENV_PATH": env.pop("_ANTHROPIC_OVERRIDE_DOTENV", None)
+        or str(service_config.PROVIDER_ENV_PATH),
     })
     if skill.get("agent_language_routing") == "first-skill-read-lock":
         env["CLEAN_MODEL_SELECT_SKILL"] = "1"
     env["PPT_CAPABILITY_PROFILE"] = "visual"
     env.update(skill.get("runtime_env", {}))
+    if skill_key == "mural-presenter-v1.0":
+        blind = _external_vision_runtime_env()
+        blind.pop("VISION_BACKEND", None)
+        blind_key = str(blind.get("VISION_CRITIC_API_KEY") or "").strip()
+        for key, value in blind.items():
+            if value:
+                env[key] = value
+        env["CLEAN_INDEPENDENT_VISION_CRITIC"] = (
+            "1" if blind_key else "0"
+        )
+        model_identity = " ".join(
+            str(m.get(field) or "")
+            for field in ("label", "engine_model", "name")
+        ).lower()
+        if m.get("backend") == "openai" and any(
+            marker in model_identity for marker in ("27b", "qwen35", "qwen3.5")
+        ):
+            # Transport/liveness envelope only: semantic grouping, page
+            # contracts and convergence remain identical to teacher runs.
+            env["CLEAN_SLIDE_MAX_TOKENS"] = "16384"
+            env["IMAGE_MAX_TOKENS"] = "32768"
+            env["CLEAN_SLIDE_ACTIVE_RESPONSE_TIMEOUT"] = "240"
+    # Group formation remains semantic and independent of provider capacity;
+    # these values only cap how many already-formed owners execute at once.
+    # 旧 Harness 仍沿用模型级 child 容量；当前 v1 的服务级模型并发只由
+    # runtime JSON 定义，避免模型注册表形成第二个覆盖入口。
+    slide_slots = m.get("slide_concurrency")
+    if slide_slots and skill_key != "mural-presenter-v1":
+        slot_count = max(1, int(slide_slots))
+        env["SLIDE_CONCURRENCY"] = str(slot_count)
+        if skill_key == "mural-presenter-v1.0":
+            env["CLEAN_CHILD_CONCURRENCY"] = str(slot_count)
+            env["CLEAN_CHILD_POOL_MAX_WORKERS"] = str(slot_count)
+    if skill_key == "mural-presenter-v1":
+        env["MODEL_API_FORMAT"] = str(m.get("api_format") or m.get("backend") or "").lower()
+        env["MODEL"] = effective_model_name
+        if m.get("backend") == "openai":
+            env["MODEL_BASE_URL"] = str(env.get("STUDENT_BASE_URL") or "").rstrip("/")
+            env["MODEL_API_KEY"] = str(env.get("STUDENT_API_KEY") or "EMPTY")
+            if m.get("route_pool_path"):
+                if env["MODEL_API_FORMAT"] != "openai_responses" or not effective_model_name.startswith("gpt-6-astra/"):
+                    raise ValueError("route pools are only supported for GPT-6 Responses models")
+                env["MODEL_ROUTE_POOL_PATH"] = str(m["route_pool_path"])
+        else:
+            base_url = str(env.get("ANTHROPIC_BASE_URL") or "").rstrip("/")
+            if not base_url:
+                base_url, _pool_keys = _anthropic_pool()
+            env["MODEL_BASE_URL"] = base_url
+            env["MODEL_API_KEY"] = str(env.get("ANTHROPIC_API_KEY") or "")
+            env["MODEL_CHANNEL_BALANCE"] = str(env.get("ANTHROPIC_CHANNEL_BALANCE") or "primary-first")
+            if env.get("ANTHROPIC_API_KEYS"):
+                env["MODEL_API_KEYS"] = str(env["ANTHROPIC_API_KEYS"])
+            if env.get("ANTHROPIC_API_KEY_FALLBACKS"):
+                env["MODEL_API_KEY_FALLBACKS"] = str(
+                    env["ANTHROPIC_API_KEY_FALLBACKS"]
+                )
+            if env.get("ANTHROPIC_API_CHANNEL_LABELS"):
+                env["MODEL_CHANNEL_LABELS"] = str(
+                    env["ANTHROPIC_API_CHANNEL_LABELS"]
+                )
+    # Native-vision paper profile: the shared .secrets/.env pins
+    # VISION_BACKEND=gemini (legacy external critic), and the harness's
+    # load_dotenv() OVERRIDES process env from CLEAN_DOTENV_PATH after we set
+    # same_model_aux — so without this a multimodal openai student (deepseek)
+    # silently routes vision to gemini instead of native in-context. When the
+    # skill declares the native paper profile, repoint CLEAN_DOTENV_PATH at a
+    # sanitized copy that strips VISION_* and pins native, so the post-dotenv
+    # effective backend is native for EVERY backend. Anthropic key overrides
+    # already own their own dotenv (which carries no VISION_* line), so only
+    # step in when CLEAN_DOTENV_PATH still points at the shared pool file.
+    if str(env.get("CLEAN_VISION_PAPER_PROFILE", "")).strip().lower() in {
+        "1", "true", "yes", "on"
+    } and env.get("CLEAN_DOTENV_PATH") == str(service_config.PROVIDER_ENV_PATH):
+        env["CLEAN_DOTENV_PATH"] = _write_native_vision_override_dotenv(
+            str(service_config.PROVIDER_ENV_PATH)
+        )
+        env["VISION_BACKEND"] = "native_incontext"
+    # Re-apply the per-model doctor-live override AFTER the skill runtime_env merge
+    # (the v0.4 skill hardcodes CLEAN_DOCTOR_LIVE=1, which would otherwise clobber
+    # the opus5 skip set in the anthropic branch above). A thinking model on a
+    # per-key gateway false-negatives the live 16-token multimodal probe.
+    if m["backend"] == "anthropic" and m.get("api_key_env"):
+        env["CLEAN_DOCTOR_LIVE"] = "0"
+    # Same false-negative for a multimodal openai student that reasons before
+    # answering (e.g. deepseek-v4-flash-vision-exp): the doctor's max_tokens=16
+    # colour probe gets consumed by reasoning_content and returns empty text
+    # even though the model genuinely sees images (verified out-of-band). Skip
+    # the flaky live probe for multimodal openai students under the native paper
+    # profile; the config-only check still validates endpoint/model/key.
+    if (
+        m["backend"] == "openai"
+        and m.get("multimodal")
+        and str(env.get("CLEAN_VISION_PAPER_PROFILE", "")).strip().lower()
+        in {"1", "true", "yes", "on"}
+    ):
+        env["CLEAN_DOCTOR_LIVE"] = "0"
     env.update({
         "PIPELINE_VERSION": pipeline_key,
         "PPT_SKILL_VERSION": skill_key,
@@ -2304,56 +3302,59 @@ def deck_uploads_dir(deck_id) -> Path:
     return UPLOADS_DIR / str(deck_id)
 
 
-def skill_mount_dir(skill_key: str, mode: str) -> str:
-    """Return the selected Harness-compatible Skill root."""
-    skill = SKILLS[canon_skill(skill_key) or DEFAULT_SKILL]
-    return skill.get("skills_root", str(CLEAN_SKILLS_ROOT))
+def _validated_resume_skill(workspace: str | Path) -> dict:
+    """由正式运行时只读验证既有 pin，不发布对象，也不读取新选择的源码。"""
+    command = (
+        "import json, sys\n"
+        "from runtime.shared_objects import SharedSkillStore, studio_data_root\n"
+        "from runtime.workspace_paths import WorkspacePaths\n"
+        "paths = WorkspacePaths.from_root(sys.argv[1])\n"
+        "ref = SharedSkillStore(studio_data_root(paths.root), create=False).load_ref(paths)\n"
+        "print(json.dumps({'skill_name': ref.skill_name, 'object_root': str(ref.object_root)}))\n"
+    )
+    python = _engine_python()
+    if python is None:
+        raise ValueError("无法验证 resume Skill：正式 Python 不可用")
+    try:
+        result = subprocess.run(
+            [python, "-B", "-c", command, str(Path(workspace).expanduser().resolve())],
+            cwd=str(MURAL_V1_HARNESS_ROOT), capture_output=True, text=True,
+            timeout=30, check=True,
+        )
+    except subprocess.CalledProcessError as exc:
+        detail = (exc.stderr or "固定对象校验失败").strip().splitlines()[-1]
+        raise ValueError(f"无法恢复固定 Skill：{detail}") from exc
+    return json.loads(result.stdout)
 
 
 def build_job(sample_id: str, seed: dict, run_dir, dry: bool = False, model_key: str = None,
               pipeline_key: str = None, skill_key: str = None,
-              model_config: dict | None = None) -> dict:
+              model_config: dict | None = None, *, resume_workspace: bool = False) -> dict:
     model_key = canon(model_key) or DEFAULT_MODEL if model_config is None else model_key
     skill_key = canon_skill(skill_key, pipeline_key)
     if skill_key is None:
         raise ValueError("未知 skill")
-    if skill_key in {
-        "long-horizon",
-        "long-horizon-grouped",
-        "visual-craft",
-        "visual-craft-v3-pre-speech",
-        "visual-craft-v3-speech",
-        "sn-ppt-web",
-        "long-horizon-presenter",
-        "mural-presenter",
-        "mural-presenter-creative",
-        "mural-presenter-v0.2",
-        "mural-presenter-v0.2-grouped",
-        "mural-presenter-v0.3",
-        "mural-presenter-v0.4",
-        "sense-present-ppt-skill",
-        "mural-next",
-    }:
-        # A generation job must capture the latest Skill even when the homepage
-        # catalog is still inside its latency-oriented cache window.
-        refresh_external_skills(force=True)
-    pipeline_key = pipeline_for_skill(skill_key)
-    if pipeline_key is None:
-        raise ValueError(SKILLS[skill_key].get("unavailable_reason", "Skill 没有配对 Harness"))
-    skill = SKILLS[skill_key]
+    if resume_workspace:
+        skill = _mural_v1_skill(pinned_skill=_validated_resume_skill(run_dir))
+        selected_skill_name = Path(
+            os.environ.get("MURAL_SKILL_DIR")
+            or _MURAL_REPOSITORY_ROOT / "skills" / "mural-presenter-v1"
+        ).expanduser().name
+    else:
+        skill = refresh_external_skills(force=True)
+        selected_skill_name = skill["name"]
+    pipeline_key = skill["pipeline"]
     if not skill.get("ready", False):
         raise ValueError(skill.get("unavailable_reason") or "该 Skill 当前不可用")
     eng_seed = dict(seed)
     deck_language = skill.get("deck_language", skill["language"])
-    if deck_language == "auto":
-        eng_seed.pop("lang", None)
-    else:
+    if deck_language != "auto":
         eng_seed["lang"] = deck_language
     if eng_seed.get("slide_count") and not eng_seed.get("pages_hint"):
         eng_seed["pages_hint"] = int(eng_seed["slide_count"])
     if skill.get("authoring_profile"):
         eng_seed["authoring_profile"] = str(skill["authoring_profile"])
-    pipe = PIPELINES[pipeline_key]
+    pipe = _mural_v1_pipeline(skill)
     job = {
         "sample_id": sample_id,
         "seed": eng_seed,
@@ -2364,8 +3365,10 @@ def build_job(sample_id: str, seed: dict, run_dir, dry: bool = False, model_key:
         "pipeline": pipe,
         "skill_version": skill_key,
         "skill": skill,
+        "selected_skill_name": selected_skill_name,
+        "resume_workspace": bool(resume_workspace),
     }
-    job["skill_mount_dir"] = skill_mount_dir(skill_key, pipe["skill_mode"])
+    job["skill_mount_dir"] = skill["path"]
     m = model_config or MODELS[model_key]
     job["model"] = m["engine_model"]      # serve_one 会把它覆盖进 config["model"]
     return job
@@ -2548,6 +3551,9 @@ def render_env(env: dict | None = None) -> dict:
         # to discover pyvenv.cfg and the environment's installed packages.
         engine_python = str(Path(engine_python).expanduser().absolute())
         out["PPTAGENT_ENGINE_PYTHON"] = engine_python
+        out["NORMALIZE_PY"] = engine_python
+        out["VIRTUAL_ENV"] = str(Path(engine_python).parent.parent)
+        out["PYTHONNOUSERSITE"] = "1"
         out["PATH"] = _prepend_path(
             out.get("PATH") or os.environ.get("PATH", ""),
             Path(engine_python).parent,

@@ -1,0 +1,63 @@
+{
+  "schema": "mural.replay-fixture.v1",
+  "source": "webui/studio/data/workspaces/1/decks/_archived_attempts/189/fresh-retry-20260902T010921Z-1788311361412958552/_trace/events.jsonl",
+  "source_sha256": "c6ef3cf7724982dd9b83a76353daceee93fc31022bb23b543063215e1c5a7871",
+  "selection": "One complete first_byte timeout and immediate cross-Channel success, source trace_sequence 168,169,171,172.",
+  "events": [
+    {
+      "event_type": "provider_attempt_started",
+      "attempt_id": "attempt-001-8c492dcbb2454e1183fc5e723cc8985d",
+      "provider_id": "provider-42a89b6f5b",
+      "channel_id": "ch-a-a7dca02f",
+      "attempt": 1,
+      "max_attempts": 6,
+      "request_kind": "hermes_main",
+      "model": "claude-opus-5",
+      "event_id": "agent:u1_d189:orchestrator:4101693-1788296794592843095:00000168",
+      "trace_sequence": 168
+    },
+    {
+      "event_type": "provider_attempt_failed",
+      "attempt_id": "attempt-001-8c492dcbb2454e1183fc5e723cc8985d",
+      "provider_id": "provider-42a89b6f5b",
+      "channel_id": "ch-a-a7dca02f",
+      "attempt": 1,
+      "request_kind": "hermes_main",
+      "model": "claude-opus-5",
+      "elapsed_s": 120.811,
+      "error_kind": "timeout",
+      "timeout_phase": "first_byte",
+      "retryable": true,
+      "next_channel_id": "ch-k-de6e74a1",
+      "recovery_boundary": "last_closed_tool_transaction",
+      "partial_response_discarded": true,
+      "event_id": "agent:u1_d189:orchestrator:4101693-1788296794592843095:00000169",
+      "trace_sequence": 169
+    },
+    {
+      "event_type": "provider_attempt_started",
+      "attempt_id": "attempt-002-cdc5eca513f5476b851554f437b1239e",
+      "provider_id": "provider-42a89b6f5b",
+      "channel_id": "ch-k-de6e74a1",
+      "attempt": 2,
+      "max_attempts": 6,
+      "request_kind": "hermes_main",
+      "model": "claude-opus-5",
+      "event_id": "agent:u1_d189:orchestrator:4101693-1788296794592843095:00000171",
+      "trace_sequence": 171
+    },
+    {
+      "event_type": "provider_attempt_succeeded",
+      "attempt_id": "attempt-002-cdc5eca513f5476b851554f437b1239e",
+      "provider_id": "provider-42a89b6f5b",
+      "channel_id": "ch-k-de6e74a1",
+      "attempt": 2,
+      "request_kind": "hermes_main",
+      "model": "claude-opus-5",
+      "elapsed_s": 9.701,
+      "first_byte_s": 4.546,
+      "event_id": "agent:u1_d189:orchestrator:4101693-1788296794592843095:00000172",
+      "trace_sequence": 172
+    }
+  ]
+}

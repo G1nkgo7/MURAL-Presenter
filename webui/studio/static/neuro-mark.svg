@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">Neuro</title>
+  <desc id="desc">A modular letter N flowing from purple to mint green.</desc>
+  <defs>
+    <linearGradient id="neuro-flow" x1="48" y1="52" x2="208" y2="204" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#6B35E8"/>
+      <stop offset="0.48" stop-color="#7251E6"/>
+      <stop offset="1" stop-color="#13C99A"/>
+    </linearGradient>
+    <linearGradient id="neuro-purple" x1="32" y1="32" x2="82" y2="224" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#7A4CF0"/>
+      <stop offset="1" stop-color="#5422CC"/>
+    </linearGradient>
+    <linearGradient id="neuro-green" x1="180" y1="32" x2="224" y2="224" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#24DCAD"/>
+      <stop offset="1" stop-color="#05A979"/>
+    </linearGradient>
+    <clipPath id="left-stem"><rect x="28" y="28" width="56" height="200" rx="28"/></clipPath>
+  </defs>
+  <rect x="28" y="28" width="56" height="200" rx="28" fill="url(#neuro-purple)"/>
+  <path d="M56 54 200 202" fill="none" stroke="url(#neuro-flow)" stroke-width="52" stroke-linecap="round"/>
+  <rect x="172" y="28" width="56" height="200" rx="28" fill="url(#neuro-green)"/>
+  <g clip-path="url(#left-stem)" fill="none" stroke="#28E1B2" stroke-width="7" stroke-linecap="round" opacity="0.92">
+    <path d="m16 45 83 83"/>
+    <path d="m11 69 83 83"/>
+    <path d="m7 94 78 78"/>
+  </g>
+  <circle cx="56" cy="54" r="8" fill="#A98BFA"/>
+  <circle cx="128" cy="128" r="8" fill="#A39BF0"/>
+  <circle cx="200" cy="202" r="8" fill="#78F0CA"/>
+</svg>

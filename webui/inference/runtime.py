@@ -63,9 +63,10 @@ def cgroup_cpus():
 
 
 def load_dotenv():
-    """加载 ROOT/.env 里的 KEY=VALUE 到环境变量(不覆盖已设的)。无依赖、幂等;
-    main 和 worker 都调一次,保证父进程和(spawn 出来的)子进程都拿得到密钥。"""
-    path = os.path.join(ROOT, ".env")
+    """加载共享密钥 .env 里的 KEY=VALUE 到环境变量(不覆盖已设的)。无依赖、幂等;
+    main 和 worker 都调一次,保证父进程和(spawn 出来的)子进程都拿得到密钥。
+    单一真相源 = <repo>/.secrets/.env(infer 合成 + webui 共用)。"""
+    path = os.path.join(os.path.dirname(os.path.dirname(ROOT)), ".secrets", ".env")
     if not os.path.exists(path):
         return
     with open(path, encoding="utf-8") as f:

@@ -9,7 +9,10 @@ from studio.app import custom_models
 
 
 ROOT = Path(__file__).resolve().parents[1]
-BACKENDS = [ROOT.parent / "harnesses/mural-presenter/core/openai_backend.py"]
+BACKENDS = [
+    ROOT.parent
+    / "archive/mural-presenter-pre-v0.6/harnesses/mural-presenter/core/openai_backend.py"
+]
 EXPERIMENTAL_BACKEND = (
     ROOT.parent / "research/mural-next/harnesses/mural-presenter/core/openai_backend.py"
 )
@@ -43,7 +46,9 @@ class DeepSeekThinkingTests(unittest.TestCase):
             "mode": "toggle",
             "transport": "deepseek",
             "toggle": True,
-            "effort": "high",
+            "effort": "",
+            "effort_levels": (),
+            "effort_select": False,
         })
         self.assertFalse(custom_models.vision_capability(row))
         self.assertFalse(custom_models.public_payload({
@@ -60,6 +65,23 @@ class DeepSeekThinkingTests(unittest.TestCase):
             "vision_enabled": 1,
         }
         self.assertFalse(custom_models.vision_capability(row))
+
+    def test_official_v4_vision_variant_keeps_native_vision_and_thinking_toggle(self):
+        row = {
+            "model_id": "deepseek-v4-flash-vision-exp",
+            "base_url": "https://api.deepseek.com/v1",
+            "vision_enabled": 1,
+        }
+
+        self.assertTrue(custom_models.vision_capability(row))
+        self.assertEqual(custom_models.thinking_capability(row), {
+            "mode": "toggle",
+            "transport": "deepseek",
+            "toggle": True,
+            "effort": "",
+            "effort_levels": (),
+            "effort_select": False,
+        })
 
     def test_available_harnesses_send_official_deepseek_thinking_fields(self):
         for index, path in enumerate(BACKENDS):

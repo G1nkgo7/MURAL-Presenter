@@ -1,93 +1,37 @@
-name: Public surface
-
-on:
-  push:
-  pull_request:
-
+name: Paper release
+on: [push, pull_request]
 permissions:
   contents: read
-
 jobs:
-  repository:
-    name: Repository invariants
+  release:
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - run: python tools/check_public_release.py
-
-  site:
-    name: Bilingual site
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: site
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22.14.0"
-          cache: npm
-          cache-dependency-path: site/package-lock.json
-      - run: npm ci
-      - run: npm run lint
-      - run: npm test
-
-  studio:
-    name: SenseNova Present Studio
-    runs-on: ubuntu-latest
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+      TMPDIR: ${{ github.workspace }}/.runtime/tmp
+      MURAL_RUNTIME_CONFIG: ${{ github.workspace }}/configs/runtime.local.json
+      MURAL_SECRETS_ENV_PATH: ${{ github.workspace }}/.runtime/no-secrets.env
+      STUDIO_DATA_DIR: ${{ github.workspace }}/.runtime/studio-test
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - run: python -m pip install uv
-      - run: uv sync --project harnesses/mural-presenter --frozen
-      - run: >-
-          uv run --frozen
-          --project harnesses/mural-presenter
-          --with pytest
-          pytest -q -p no:cacheprovider
-          harnesses/mural-presenter/tests
+      - run: mkdir -p .runtime/tmp
       - run: uv sync --project webui/inference --frozen
-      - working-directory: webui
-        run: >-
-          uv run --frozen
-          --project studio
-          --with pytest
-          python -m pytest -q -p no:cacheprovider
-          tests
-      - run: >-
-          webui/start.sh
-          --check --no-install --no-browser-install
-
-  studio-platforms:
-    name: Studio launcher (${{ matrix.os }})
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - run: python -m pip install uv
       - run: uv sync --project webui/studio --frozen
-      - run: uv sync --project webui/inference --frozen
-      - run: uv sync --project harnesses/mural-presenter --frozen
-      - name: Check launcher on macOS
-        if: runner.os == 'macOS'
-        shell: bash
-        run: >-
-          webui/start.sh
-          --check --no-install --no-browser-install
-      - name: Check launcher on Windows
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: >-
-          ./webui/start.ps1
-          -Check -NoInstall -NoBrowserInstall
+      - name: Resolve local deployment configuration
+        run: |
+          unset MURAL_RUNTIME_CONFIG
+          python -c 'import sys; sys.path.insert(0,"scripts"); from runtime_environment import prepare_environment; prepare_environment()'
+      - run: python tools/check_paper_release.py
+      - name: Portable WebUI integration
+        run: uv run --project webui/studio --with pytest --with httpx python -m pytest tests/test_portable_release.py tests/test_webui_http.py -q -p no:cacheprovider --basetemp=.runtime/tests/portable
+      - name: Runtime release and configuration contracts
+        run: uv run --project webui/inference --with pytest python -m pytest harnesses/mural-presenter-v1/tests/test_release_guard.py harnesses/mural-presenter-v1/tests/test_config.py -q -p no:cacheprovider --basetemp=.runtime/tests/contracts
+      - name: WebUI configuration and active runtime
+        env:
+          PYTHONPATH: ${{ github.workspace }}/webui:${{ github.workspace }}/webui/studio
+        run: uv run --project webui/studio --with pytest python -m pytest webui/tests/test_service_config.py webui/studio/tests/test_harness_retirement.py webui/studio/tests/test_mural_profiles.py -q -p no:cacheprovider --basetemp=.runtime/tests/webui
+      - name: Example deployment configuration
+        run: python webui/scripts/launch.py --check --no-install --no-browser-install --env-file webui/.env.example

@@ -1,0 +1,51 @@
+.page-edit-dialog {
+  zoom: calc(1 / var(--ui-scale, 1));
+  width: calc(100vw - 40px); max-width: 1800px; height: calc(100dvh - 40px); max-height: 1100px;
+  margin: auto; padding: 0; border: 1px solid var(--hairline); border-radius: 18px;
+  background: var(--surface); color: var(--fg); box-shadow: 0 24px 100px #0006;
+  font-family: var(--sans); overflow: hidden;
+}
+.page-edit-dialog[open] { display: flex; flex-direction: column; }
+.page-edit-dialog::backdrop { background: #090b16b8; backdrop-filter: blur(7px); }
+.page-edit-dialog [hidden] { display: none !important; }
+.page-edit-header { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 18px 24px 12px; }
+.page-edit-header small { font-size: 10px; letter-spacing: .1em; color: var(--muted); }
+.page-edit-header h2 { margin: 5px 0 0; font-size: 19px; }
+.page-edit-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.page-edit-dialog button { border: 1px solid var(--hairline); border-radius: 8px; background: transparent; color: var(--fg); padding: 8px 12px; font: inherit; font-size: 12px; cursor: pointer; }
+.page-edit-dialog button:hover:not(:disabled) { background: color-mix(in srgb, var(--acc) 12%, transparent); }
+.page-edit-dialog button:disabled { opacity: .4; cursor: not-allowed; }
+.page-edit-dialog .page-edit-primary { background: var(--acc); color: white; border-color: transparent; }
+.page-edit-dialog :focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
+.page-edit-note { margin: 0; padding: 0 24px 14px; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.page-edit-body { display: grid; grid-template-columns: minmax(0,1fr) 280px; flex: 1; min-height: 0; border-block: 1px solid var(--hairline); }
+.page-edit-stage { min-width: 0; min-height: 0; position: relative; overflow: hidden; background: #1c1e26; background-image: radial-gradient(#ffffff12 1px, transparent 1px); background-size: 16px 16px; }
+.page-edit-stage iframe { position: absolute; border: 0; transform-origin: top left; background: white; box-shadow: 0 8px 48px #0005; }
+.page-edit-selection { position: absolute; pointer-events: none; border: 2px solid #9e80ff; box-shadow: 0 0 0 1px #fff9; box-sizing: border-box; }
+.page-edit-sidebar { overflow: auto; padding: 18px; border-left: 1px solid var(--hairline); }
+.page-edit-sidebar h3 { margin: 0 0 12px; font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+.page-edit-sidebar p { font-size: 12px; color: var(--muted); line-height: 1.7; }
+.page-edit-sidebar label { display: flex; flex-direction: column; gap: 5px; font-size: 11px; color: var(--muted); margin-top: 12px; min-width: 0; }
+.page-edit-sidebar input, .page-edit-sidebar textarea { width: 100%; box-sizing: border-box; min-width: 0; padding: 8px; border: 1px solid var(--hairline); border-radius: 6px; background: var(--surface); color: var(--fg); font: 12px var(--sans); }
+.page-edit-sidebar input[type="color"] { height: 34px; padding: 3px; }
+.page-edit-sidebar input:disabled { opacity: .4; }
+.page-edit-sidebar textarea { resize: vertical; min-height: 72px; line-height: 1.5; }
+.page-edit-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 10px; }
+.page-edit-layer-section { margin-top: 22px; padding-top: 16px; border-top: 1px solid var(--hairline); }
+[data-editor-layers] { display: grid; gap: 3px; margin-top: 10px; }
+.page-edit-dialog .page-edit-layer { text-align: left; border: 1px solid transparent; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; padding: 8px; }
+.page-edit-dialog .page-edit-layer.on { border-color: var(--acc); background: color-mix(in srgb, var(--acc) 10%, transparent); }
+.page-edit-dialog footer { display: flex; align-items: center; gap: 18px; padding: 10px 20px; color: var(--muted); font-size: 11px; }
+.page-edit-dialog [data-editor-status] { flex: 1; line-height: 1.5; }
+@media (max-width: 900px) {
+  .page-edit-dialog { width: calc(100vw - 16px); height: calc(100dvh - 16px); }
+  .page-edit-body { grid-template-columns: minmax(0,1fr) 220px; }
+  .page-edit-header { padding: 12px; gap: 8px; flex-wrap: wrap; }
+  .page-edit-note { padding: 0 12px 10px; }
+  .page-edit-sidebar { padding: 12px; }
+  .page-edit-dialog footer > span:last-child { display: none; }
+}
+@media (max-width: 560px) {
+  .page-edit-body { grid-template-columns: 1fr; grid-template-rows: minmax(180px,1fr) minmax(100px, .7fr); }
+  .page-edit-sidebar { border-left: 0; border-top: 1px solid var(--hairline); }
+}

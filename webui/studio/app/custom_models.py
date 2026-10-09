@@ -14,6 +14,7 @@ from urllib.parse import urlsplit, urlunsplit
 from cryptography.fernet import Fernet, InvalidToken
 
 from .db import DATA_DIR
+from .service_config import model_effort_capability
 
 KEY_PREFIX = "custom:"
 _KEY_FILE = DATA_DIR / ".custom-model.key"
@@ -70,6 +71,10 @@ def normalize_base_url(value: str) -> str:
         raise ValueError("Base URL 必须是完整的 http:// 或 https:// 地址")
     if parts.username or parts.password or parts.fragment:
         raise ValueError("Base URL 不能包含账号密码或锚点")
+    if parts.path.rstrip("/").endswith("/responses"):
+        raise ValueError(
+            "当前仅支持 OpenAI Chat Completions；Responses API 尚未实现"
+        )
     return urlunsplit((parts.scheme, parts.netloc, parts.path.rstrip("/"), parts.query, ""))
 
 
@@ -139,6 +144,9 @@ def public_payload(row) -> dict:
         "multimodal": vision,
         "thinking_toggle": thinking["toggle"],
         "thinking_effort": thinking["effort"],
+        "thinking_transport": thinking["transport"],
+        "effort_levels": list(thinking["effort_levels"]),
+        "effort_select": thinking["effort_select"],
     }
 
 
@@ -154,16 +162,59 @@ def thinking_capability(row) -> dict:
     """Return the explicit reasoning contract for known custom endpoints."""
     model_id = str(row["model_id"] or "").strip().lower()
     base_url = str(row["base_url"] or "").strip().lower()
-    deepseek_v4 = model_id in {"deepseek-v4-flash", "deepseek-v4-pro"}
-    official_deepseek = "api.deepseek.com" in base_url
-    if deepseek_v4 and official_deepseek:
+    # Official V4 variants share the same OpenAI-compatible thinking contract.
+    # This includes the native multimodal experimental endpoint used by the
+    # MURAL paper profile; it must not be silently forced to thinking=false.
+    deepseek_v4 = model_id in {"deepseek-v4-flash", "deepseek-v4-pro"} or (
+        model_id.startswith("deepseek-v4-")
+        and model_id.endswith("-vision-exp")
+    )
+    if base_url.endswith("/responses"):
+        return {
+            "mode": "none", "transport": "", "toggle": False,
+            "effort": "", "effort_levels": (), "effort_select": False,
+        }
+    if deepseek_v4:
         return {
             "mode": "toggle",
             "transport": "deepseek",
             "toggle": True,
-            "effort": "high",
+            "effort": "",
+            "effort_levels": (),
+            "effort_select": False,
         }
-    return {"mode": "none", "transport": "", "toggle": False, "effort": ""}
+    if "qwen" in model_id or "qwq" in model_id:
+        effort = model_effort_capability(model_id)
+        return {
+            "mode": "toggle",
+            "transport": "chat_template_kwargs",
+            "toggle": True,
+            "effort": effort["default"],
+            "effort_levels": effort["levels"],
+            "effort_select": bool(effort["levels"]),
+        }
+    if model_id == "kimi-k3":
+        return {
+            "mode": "toggle",
+            "transport": "chat_template_kwargs",
+            "toggle": True,
+            "effort": "",
+            "effort_levels": (),
+            "effort_select": False,
+        }
+    if model_id.startswith(("gpt-5", "o1", "o3", "o4")):
+        return {
+            "mode": "always",
+            "transport": "reasoning_effort",
+            "toggle": False,
+            "effort": "medium",
+            "effort_levels": ("low", "medium", "high"),
+            "effort_select": True,
+        }
+    return {
+        "mode": "none", "transport": "", "toggle": False,
+        "effort": "", "effort_levels": (), "effort_select": False,
+    }
 
 
 def runtime_config(row) -> dict:
@@ -178,6 +229,7 @@ def runtime_config(row) -> dict:
         "thinking_mode": thinking["mode"],
         "thinking_transport": thinking["transport"],
         "thinking_effort": thinking["effort"],
+        "thinking_effort_levels": thinking["effort_levels"],
         "multimodal": vision_capability(row),
         "custom": True,
     }

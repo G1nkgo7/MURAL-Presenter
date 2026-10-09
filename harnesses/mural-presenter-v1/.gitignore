@@ -1,0 +1,10 @@
+# Python caches
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Canary evidence blobs (PNG/PDF/PPTX/woff2/workspaces). Scripts are tracked;
+# regenerated evidence is not — matches v1.0 convention (no canary in git).
+canary/runs/
+canary/webui/
+canary/preflight/

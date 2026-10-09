@@ -31,7 +31,7 @@ from dataclasses import dataclass
 from typing import Optional, List, Any, TYPE_CHECKING, Callable
 from enum import Enum
 
-from utils.api.base import GeminiAPI, GeminiInlineAPI, OpenAIChatAPI
+from utils.api.base import GeminiAPI, GeminiInlineAPI, OpenAIChatAPI, JudgeRequestError
 from utils.api.judge_api import JudgeAPI
 from utils.pptx_to_pdf import convert_pptx_to_pdf
 from utils.count_pages import count_pages
@@ -287,6 +287,40 @@ def _normalize_boxed_token(raw: str) -> str:
     return s
 
 
+def _extract_binary_answer(response_text: str) -> Optional[str]:
+    """Extract an unambiguous yes/no verdict from common judge formats."""
+    boxed = [
+        _normalize_boxed_token(match).lower()
+        for match in re.findall(r'\\boxed\{([^}]+)\}', response_text)
+    ]
+    # A conflicting or malformed explicit box must not fall through to prose.
+    if any(token not in {'yes', 'no'} for token in boxed):
+        return None
+    verdicts = set(boxed)
+
+    # Some providers follow the requested schema but omit the LaTeX box.
+    labelled = re.findall(
+        r'(?i)(?:\*\*)?(?:final\s+)?answer(?:\*\*)?\s*:\s*'
+        r'(?:\*\*)?\s*(yes|no)\b(?!\s*/)',
+        response_text,
+    )
+    verdicts.update(token.lower() for token in labelled)
+
+    # Also accept a verdict as the first standalone token, e.g. "no\n\n..."
+    # or "No, the deck...". This does not match prompt placeholders such as
+    # "[yes/no]" or prose that merely mentions both options.
+    leading = re.match(r'(?is)^\s*(?:[-*]\s*)?(?:\*\*)?(yes|no)(?:\*\*)?(?=\s|[,.:;!?-]|$)', response_text)
+    if leading:
+        verdicts.add(leading.group(1).lower())
+
+    emphasized = re.findall(
+        r'(?is)\*\*\s*(yes|no)\s*\*\*\s*\*\*\s*explanation\s*\*\*',
+        response_text,
+    )
+    verdicts.update(token.lower() for token in emphasized)
+    return next(iter(verdicts)) if len(verdicts) == 1 else None
+
+
 def process_single_item(item_info, context: JudgeContext):
     """
     Process a single checklist item.
@@ -333,6 +367,8 @@ def process_single_item(item_info, context: JudgeContext):
         answer = None
         response_text = None
         error_msg = None
+        request_error = {}
+        retry_prompt = item
 
         # Retry up to max_retries times until \boxed{...} is matched.
         for attempt in range(context.max_retries):
@@ -340,7 +376,7 @@ def process_single_item(item_info, context: JudgeContext):
                 # Use JudgeAPI's unified interface.
                 response_text, response_json = context.judge_api.generate_content(
                     model=context.model,
-                    prompt=item,
+                    prompt=retry_prompt,
                     slides_obj=context.slides_obj,
                     material_objs=context.material_objs,
                     slides_path=context.slides_path,
@@ -350,8 +386,7 @@ def process_single_item(item_info, context: JudgeContext):
                     seed=context.seed,
                 )
 
-                # If the underlying API returns an empty response (e.g. network error returning (None, None)),
-                # treat it as a failure and retry with backoff rather than as a valid response.
+                # 空正文与请求异常分开：两者都不是有效评审，但不能丢掉服务端原始错误。
                 if not response_text:
                     error_msg = f"Empty response on attempt {attempt + 1}/{context.max_retries} for item {key} of {context.slides_path}"
                     logger.error(f'Error: {error_msg}')
@@ -363,25 +398,33 @@ def process_single_item(item_info, context: JudgeContext):
                 logger.info(f"{response_text=}")
                 logger.info('====================================\n\n')
 
-                # Extract the content inside \boxed{...} from the response text.
-                # Each captured token is normalized to tolerate LaTeX wrappers
-                # (e.g. \boxed{\text{no}} / \boxed{\textbf{Yes}}); then, as before,
-                # if the first \boxed{} is yes/no use it, otherwise use the last.
-                if all_matches := re.findall(r'\\boxed\{([^}]+)\}', response_text):
-                    normalized = [_normalize_boxed_token(m) for m in all_matches]
-                    first = normalized[0]
-                    if first.lower() in ('yes', 'no'):
-                        answer = first
-                    else:
-                        answer = normalized[-1]
-                    break  # Match succeeded -> exit retry loop.
+                answer = _extract_binary_answer(response_text)
+                if answer is not None:
+                    break
+                retry_prompt = item + (
+                    "\n\nAnswer format reminder: Apply the same criterion and evidence "
+                    "above. Give exactly one final binary verdict as \\boxed{yes} or "
+                    "\\boxed{no}, with your explanation outside the box. Do not "
+                    "include alternative or conflicting answer labels or boxes."
+                )
+                error_msg = (
+                    f"Failed to extract an unambiguous answer on attempt "
+                    f"{attempt + 1}/{context.max_retries} for item {key}"
+                )
+                request_error = {}
+            except JudgeRequestError as e:
+                error_msg = f"Judge request failed on attempt {attempt + 1}/{context.max_retries}: {e}"
+                request_error = {"error_type": "judge_request_failed", "status_code": e.status_code,
+                                 "retryable": e.retryable}
+                logger.error(error_msg)
+                if not e.retryable:
+                    break
+                if attempt < context.max_retries - 1:
+                    time.sleep(min(2**attempt, 60))
             except Exception as e:
-                # Other unexpected exceptions.
                 error_msg = f"Unexpected error on attempt {attempt + 1}/{context.max_retries}: {str(e)}"
                 logger.error(f'Error: {error_msg}')
-                # sleep 2**attempt seconds, but not more than 60 seconds
-                if attempt < context.max_retries - 1:  # No sleep on the last attempt.
-                    time.sleep(min(2**attempt, 60))
+                break
         
         # Build the final result.
         if answer is not None:
@@ -397,7 +440,8 @@ def process_single_item(item_info, context: JudgeContext):
             return (f"{i+1}", key, {
                 "answer": None,
                 "explanation": response_text if response_text else None,
-                "log": final_error
+                "log": final_error,
+                **request_error,
             })
 
 
@@ -974,6 +1018,13 @@ def main(args=None):
             yaml.safe_dump(output_data, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
 
         logger.info(f'\nFinal results saved to: {output_path}')
+
+    final_results = load_config(output_path)
+    if not all(is_result_complete(checklist, final_results.get(section)) for checklist, section in (
+        (material_independent_checklist, JudgeType.MATERIAL_INDEPENDENT.value),
+        (material_dependent_checklist, JudgeType.MATERIAL_DEPENDENT.value),
+    )):
+        raise ValueError(f"Official judge incomplete: unanswered items retained in {output_path}; no score computed")
 
     # Compute scores (skipped only when _score.yaml was found above — which already returned).
     if not args.weights_path:

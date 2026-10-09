@@ -1,10 +1,10 @@
 {% extends "base.html" %}
-{% block title %}SenseNova-Present{% endblock %}
+{% block title %}MURAL Presenter{% endblock %}
 {% block body %}
 <div class="auth-wrap">
   <div class="auth-card">
     <img class="brand-logo" src="/static/logo.svg?v={{ asset_ver }}" alt="">
-    <div class="brand-big">SenseNova-Present</div>
+    <div class="brand-big">MURAL Presenter</div>
     <p class="sub">登录以进入你的工作区</p>
     {% if error %}<div class="error">{{ error }}</div>{% endif %}
     <form method="post" action="/api/auth/login">

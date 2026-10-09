@@ -4,6 +4,7 @@ import tempfile
 from abc import ABC, abstractmethod
 
 import requests
+import httpx
 from google import genai
 
 from utils.encode_file import (
@@ -15,6 +16,22 @@ from utils.encode_file import (
 
 
 logger = logging.getLogger(__name__)
+
+
+class JudgeRequestError(RuntimeError):
+    """保留评审服务的错误与可重试性；请求失败不是模型给出的空答案。"""
+
+    def __init__(self, error: Exception):
+        self.status_code = getattr(error, "code", None)
+        if self.status_code is None:
+            self.status_code = getattr(getattr(error, "response", None), "status_code", None)
+        self.retryable = (
+            self.status_code in {408, 409, 425, 429} or self.status_code >= 500
+            if isinstance(self.status_code, int) else
+            isinstance(error, (httpx.TransportError, requests.exceptions.ConnectionError,
+                               requests.exceptions.Timeout, TimeoutError, ConnectionError))
+        )
+        super().__init__(f"{type(error).__name__}: {error}")
 
 
 def _describe_request_error(error: Exception) -> str:
@@ -125,8 +142,7 @@ class GeminiAPI(BaseAPI):
             )
             return response.text, dict(response)
         except Exception as e:
-            logger.error(f"Gemini API call failed: {str(e)}")
-            return None, None
+            raise JudgeRequestError(e) from e
     
 
 class GeminiInlineAPI(BaseAPI):
@@ -172,8 +188,7 @@ class GeminiInlineAPI(BaseAPI):
             )
             return response.text, dict(response)
         except Exception as e:
-            logger.error(f"Gemini API call failed: {str(e)}")
-            return None, None
+            raise JudgeRequestError(e) from e
 
 
 

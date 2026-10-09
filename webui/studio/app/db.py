@@ -64,6 +64,9 @@ CREATE TABLE IF NOT EXISTS decks (
   revision_no     INTEGER NOT NULL DEFAULT 0,
   revision_instruction TEXT,
   title           TEXT,
+  title_source    TEXT NOT NULL DEFAULT 'legacy', -- legacy|fallback|task_model|plan|manual
+  title_locked    INTEGER NOT NULL DEFAULT 0,
+  title_updated_at INTEGER,
   seed_json       TEXT,             -- {query, lang, slide_count, ...}
   status          TEXT NOT NULL DEFAULT 'queued',  -- waiting|queued|running|completed|failed|canceled
   model           TEXT,                            -- 模型选择(engine.MODELS 的 key)
@@ -175,6 +178,16 @@ def init_db():
             con.execute("ALTER TABLE decks ADD COLUMN revision_no INTEGER NOT NULL DEFAULT 0")
         if "revision_instruction" not in cols:
             con.execute("ALTER TABLE decks ADD COLUMN revision_instruction TEXT")
+        if "title_source" not in cols:
+            con.execute(
+                "ALTER TABLE decks ADD COLUMN title_source TEXT NOT NULL DEFAULT 'legacy'"
+            )
+        if "title_locked" not in cols:
+            con.execute(
+                "ALTER TABLE decks ADD COLUMN title_locked INTEGER NOT NULL DEFAULT 0"
+            )
+        if "title_updated_at" not in cols:
+            con.execute("ALTER TABLE decks ADD COLUMN title_updated_at INTEGER")
         con.execute("CREATE INDEX IF NOT EXISTS idx_decks_batch ON decks(batch_id, batch_index)")
         con.execute(
             "CREATE INDEX IF NOT EXISTS idx_decks_parent "

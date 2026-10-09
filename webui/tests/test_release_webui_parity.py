@@ -1,6 +1,9 @@
 import ast
+import hashlib
 import json
 import os
+import runpy
+import tempfile
 import unittest
 import urllib.request
 from pathlib import Path
@@ -11,6 +14,79 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class ReleaseWebUIParityTests(unittest.TestCase):
+    def test_public_v1_digest_includes_shared_skill_scripts_with_runtime_path_checks(self):
+        checker = runpy.run_path(str(ROOT.parent / "tools/check_public_release.py"))
+        guard = runpy.run_path(str(ROOT.parent / "harnesses/mural-presenter-v1/runtime/release_guard.py"))
+        with tempfile.TemporaryDirectory() as temporary:
+            skills = Path(temporary) / "skills"
+            shared = skills / "mural-presenter-v1/scripts"
+            shared.mkdir(parents=True)
+            source = shared / "slide.py"
+            source.write_text("version = 1\n")
+            alpha = skills / "mural-presenter-v1-alpha"
+            alpha.mkdir()
+            (alpha / "SKILL.md").write_text("selected Skill\n")
+            (alpha / "scripts").symlink_to("../mural-presenter-v1/scripts", target_is_directory=True)
+            def digest():
+                actual = checker["release_tree_digest"]((alpha,), relative_to=alpha,
+                    ignored_parts=checker["V1_RELEASE_IGNORED_PARTS"])
+                self.assertEqual(actual, guard["release_tree_digest"]((alpha,), relative_to=alpha))
+                return actual
+            before = digest()
+            source.write_text("version = 2\n")
+            self.assertNotEqual(before, digest())
+            (alpha / "unapproved").symlink_to("../mural-presenter-v1/scripts", target_is_directory=True)
+            with self.assertRaisesRegex(RuntimeError, "unsupported Skill source symlink"):
+                digest()
+
+    def test_runtime_revision_hash_ignores_generated_harness_outputs(self):
+        engine_path = ROOT / "studio/app/engine.py"
+        tree = ast.parse(engine_path.read_text(encoding="utf-8"))
+        function = next(
+            node
+            for node in tree.body
+            if isinstance(node, ast.FunctionDef)
+            and node.name == "_hash_runtime_tree"
+        )
+        namespace = {"hashlib": hashlib, "os": os, "Path": Path}
+        exec(
+            compile(
+                ast.Module(body=[function], type_ignores=[]),
+                str(engine_path),
+                "exec",
+            ),
+            namespace,
+        )
+        hash_tree = namespace["_hash_runtime_tree"]
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "core").mkdir()
+            (root / "runs/sample/_trace").mkdir(parents=True)
+            (root / "artifacts").mkdir()
+            (root / "canary/runs/live").mkdir(parents=True)
+            (root / "logs").mkdir()
+            (root / "core/runtime.py").write_text("VERSION = 1\n", encoding="utf-8")
+            (root / "runs/sample/_trace/messages.json").write_text("first", encoding="utf-8")
+            (root / "artifacts/result.json").write_text("first", encoding="utf-8")
+            (root / "canary/runs/live/result.json").write_text("first", encoding="utf-8")
+            (root / "logs/live.log").write_text("first", encoding="utf-8")
+
+            before = hashlib.sha256()
+            hash_tree(before, root, prefix="harness/")
+            (root / "runs/sample/_trace/messages.json").write_text("second", encoding="utf-8")
+            (root / "artifacts/result.json").write_text("second", encoding="utf-8")
+            (root / "canary/runs/live/result.json").write_text("second", encoding="utf-8")
+            (root / "logs/live.log").write_text("second", encoding="utf-8")
+            after_outputs = hashlib.sha256()
+            hash_tree(after_outputs, root, prefix="harness/")
+            self.assertEqual(before.hexdigest(), after_outputs.hexdigest())
+
+            (root / "core/runtime.py").write_text("VERSION = 2\n", encoding="utf-8")
+            after_source = hashlib.sha256()
+            hash_tree(after_source, root, prefix="harness/")
+            self.assertNotEqual(before.hexdigest(), after_source.hexdigest())
+
     def test_provisional_player_routes_fragments_and_standalone_documents(self):
         main = (ROOT / "studio/app/main.py").read_text(encoding="utf-8")
         self.assertIn(
@@ -63,7 +139,8 @@ class ReleaseWebUIParityTests(unittest.TestCase):
             for grouped in (False, True):
                 suffix = "-grouped" if grouped else ""
                 deck = (
-                    ROOT.parents[0] / "skills/mural-presenter-v0.2"
+                    ROOT.parents[0]
+                    / "archive/mural-presenter-pre-v0.6/skills/mural-presenter-v0.2"
                     / f"mural-presenter-v0-2{suffix}-{language}/scripts/deck.py"
                 ).read_text(encoding="utf-8")
                 self.assertIn(
@@ -110,9 +187,39 @@ class ReleaseWebUIParityTests(unittest.TestCase):
         self.assertIn("scheduleStaticPreviewFallback(frame, n, deckId, requestedStamp)", show)
         self.assertIn('frame.contentDocument?.readyState === "complete"', show)
 
+    def test_static_preview_uses_canonical_viewport_and_current_page_fallback(self):
+        app = (ROOT / "studio/static/app.js").read_text(encoding="utf-8")
+        self.assertNotIn("const DEFAULT_CANVAS_WIDTH", app)
+        self.assertNotIn("const DEFAULT_CANVAS_HEIGHT", app)
+        active_start = app.index("function activeCanvasSize(")
+        active_end = app.index("\nfunction setCanvasSpec(", active_start)
+        active = app[active_start:active_end]
+        self.assertIn("ed.canvasSpec?.width_px", active)
+        self.assertIn("ed.canvasSpec?.height_px", active)
+        self.assertIn(": null", active)
+        fit_start = app.index("function fitCanonicalStaticFrame(")
+        fit_end = app.index("\nfunction resetCanonicalStaticFrame(", fit_start)
+        fit = app[fit_start:fit_end]
+        self.assertIn("if (!size) return", fit)
+        self.assertIn("deck.offsetWidth", fit)
+        self.assertIn("const { width, height } = size", fit)
+        self.assertIn("frame.style.width = `${width}px`", fit)
+        self.assertIn("frame.style.height = `${height}px`", fit)
+        self.assertIn("frame.style.transform = `scale(${scale})`", fit)
+
+        show_start = app.index("function showStaticDeck(")
+        show_end = app.index("\nfunction outlineBriefData(", show_start)
+        show = app[show_start:show_end]
+        self.assertLess(show.index("primeStaticPng(n)"), show.index("const sameDeck"))
+
+        keep_start = app.index("function keepStaticPng(")
+        keep_end = app.index("\nlet staticPreviewFallbackToken", keep_start)
+        self.assertIn("primeStaticPng(n)", app[keep_start:keep_end])
+
     def test_deployment_think_off_reaches_openai_compatible_chat_api(self):
         engine = (ROOT / "studio/app/engine.py").read_text(encoding="utf-8")
-        self.assertIn('"chat_template_kwargs" if transport == "openai"', engine)
+        self.assertIn('"openai": "chat_template_kwargs"', engine)
+        self.assertIn("def _default_openai_thinking_transport", engine)
         # The deployment registry now supports both SENSENOVA_MODEL and
         # SENSENOVA_MODEL2 through one prefix-aware helper. Keep this assertion
         # on the semantic default rather than the old first-model-only literal.
@@ -165,21 +272,71 @@ class ReleaseWebUIParityTests(unittest.TestCase):
             "function orchestrationOutputTimeMarkup(value, label = \"记录\")",
             "function orchestrationTimingMarkup()",
             "const wasNearBottom = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 120",
-            "const shouldFollow = wasNearBottom || (firstFlowRender && running)",
+            "const firstPrimaryLoad = (firstFlowRender || firstPopulatedFlow)",
+            "const shouldFollow = wasNearBottom || firstPrimaryLoad",
             "top: shouldFollow ? scroller.scrollHeight : previousTop",
         ):
             self.assertIn(marker, app)
 
-    def test_process_feed_normalizes_internal_recovery_narration(self):
+    def test_agent_trace_refresh_cannot_leave_the_panel_permanently_loading(self):
         app = (ROOT / "studio/static/app.js").read_text(encoding="utf-8")
+        start = app.index("async function loadWorkflowAgentTrace(")
+        end = app.index("\nfunction openWorkflowAgentTrace(", start)
+        loader = app[start:end]
+
+        self.assertIn("const controller = new AbortController()", loader)
+        self.assertIn("WORKFLOW_TRACE_REQUEST_TIMEOUT_MS", loader)
+        self.assertIn("signal: controller.signal", loader)
+        self.assertIn("clearTimeout(timeout)", loader)
+        self.assertIn("ed.workflowTraceLoading = false", loader)
+        self.assertIn("if (request === ed.workflowTraceRequest)", loader)
+
+        messages_start = app.index("function renderWorkflowTraceMessages(")
+        messages_end = app.index("\nfunction renderWorkflowTraceContent(", messages_start)
+        messages = app[messages_start:messages_end]
         self.assertIn(
-            "规划文件未通过批量写入约束，正在使用受控批量恢复方式更新。",
-            app,
+            "if (ed.workflowTraceLoading && !ed.workflowTracePayload)",
+            messages,
         )
+
+    def test_workflow_blank_click_keeps_the_selected_agent_trace_available(self):
+        app = (ROOT / "studio/static/app.js").read_text(encoding="utf-8")
+        controls_start = app.index("function bindWorkflowCenterControls(")
+        controls_end = app.index("\nfunction scheduleWorkflowEdgeDraw(", controls_start)
+        controls = app[controls_start:controls_end]
+        blank_start = controls.index(
+            'if (!event.target.closest(".workflow-node") && (ed.workflowTraceAgent || ed.workflowSelectedNodeId)) {'
+        )
+        blank_click = controls[blank_start:controls.index("\n      }", blank_start)]
+        self.assertIn('ed.workflowSelectedNodeId = "";', blank_click)
+        self.assertIn('setWorkflowConversationMode("history");', blank_click)
+        self.assertNotIn('clearAgent: true', blank_click)
+        self.assertNotIn('ed.workflowTraceAgent =', blank_click)
+        self.assertNotIn('ed.workflowTracePayload =', blank_click)
+
+        trace_start = app.index("function bindWorkflowTraceControls(")
+        trace_end = app.index("\nfunction setScrollBottomImmediately(", trace_start)
+        trace_controls = app[trace_start:trace_end]
         self.assertIn(
-            "页面责任分组格式未通过校验，正在按既定所有权拓扑修正单页组写法。",
-            app,
+            'back.addEventListener("click", () => setWorkflowConversationMode("history"))',
+            trace_controls,
         )
+
+    def test_process_feed_preserves_agent_recovery_narration(self):
+        import subprocess
+
+        app = (ROOT / "studio/static/app.js").read_text(encoding="utf-8")
+        start = app.index("function cleanAgentText(")
+        clean = app[start:app.index("\nfunction agentStoryHtml(", start)]
+        originals = [
+            "Slide 2 is not ready. The layout still needs work.",
+            "Review is not complete.",
+            "研究尚未完成，仍有事实待核验。",
+            "The planning write failed; I need to read the exact current text before retrying.",
+        ]
+        script = clean + "\nconsole.log(JSON.stringify(" + json.dumps(originals) + ".map(cleanAgentText)));"
+        result = subprocess.run(["node", "-e", script], check=True, capture_output=True, text=True)
+        self.assertEqual(json.loads(result.stdout), originals)
 
     def test_process_feed_keeps_terminal_states_and_revision_scoping(self):
         app = (ROOT / "studio/static/app.js").read_text(encoding="utf-8")
@@ -188,7 +345,7 @@ class ReleaseWebUIParityTests(unittest.TestCase):
         css = (ROOT / "studio/static/app.css").read_text(encoding="utf-8")
 
         self.assertIn(
-            '["completed", "failed", "rejected", "interrupted", "not_started"]',
+            '["completed", "failed", "rejected", "interrupted", "paused_recoverable", "not_started"]',
             app,
         )
         self.assertIn("function renderStatus(p, phase)", app)
@@ -199,22 +356,25 @@ class ReleaseWebUIParityTests(unittest.TestCase):
         self.assertIn(".orchestration-timing-card", css)
         self.assertIn(".orch-output-time", css)
 
-    def test_public_release_exposes_stable_and_creative_mural_profiles(self):
+    def test_public_release_defaults_to_the_only_active_v1_pair(self):
         engine = (ROOT / "studio/app/engine.py").read_text(encoding="utf-8")
-        app = (ROOT / "studio/static/app.js").read_text(encoding="utf-8")
-        self.assertIn('"mural-presenter-v0.2",', engine)
-        self.assertIn('"mural-presenter-v0.2-grouped",', engine)
-        self.assertIn('"mural-presenter": "MURAL Presenter"', app)
+        from studio.app import engine as registry
+        self.assertEqual(tuple(registry.SKILLS), ("mural-presenter-v1",))
+        self.assertEqual(tuple(registry.PIPELINES), ("mural-presenter-v1-harness",))
+        self.assertEqual(registry.PUBLIC_SKILL_KEYS, ("mural-presenter-v1",))
+        self.assertEqual(registry.PUBLIC_PIPELINE_KEYS, ("mural-presenter-v1-harness",))
+        self.assertNotIn("LEGACY_SKILL_ALIASES", engine)
+        main = (ROOT / "studio/app/main.py").read_text(encoding="utf-8")
+        self.assertIn("for k in engine.PUBLIC_PIPELINE_KEYS", main)
+
+        launch = (ROOT / "scripts/launch.py").read_text(encoding="utf-8")
         self.assertIn(
-            '"mural-presenter-creative": "MURAL Presenter · Creative"', app
+            '"harnesses/mural-presenter-v1/runtime/release_guard.py"',
+            launch.replace("\n", ""),
         )
-        self.assertIn(
-            '"mural-presenter-v0.2": "MURAL Presenter v0.2 · Single"', app
-        )
-        self.assertIn(
-            '"mural-presenter-v0.2-grouped": "MURAL Presenter v0.2 · Grouped"', app
-        )
-        self.assertNotIn('"long-horizon-presenter": "Long-Horizon Presenter"', app)
+        self.assertIn('"PPTAGENT_MURAL_V1_HARNESS_ROOT"', launch)
+        self.assertNotIn('"mural-presenter-v1,mural-presenter-v1.0"', launch)
+        self.assertNotIn('harnesses/mural-presenter-v1.0', launch)
 
     def test_mural_presenter_registry_requires_bilingual_auto_routing(self):
         engine = (ROOT / "studio/app/engine.py").read_text(encoding="utf-8")
@@ -237,7 +397,7 @@ class ReleaseWebUIParityTests(unittest.TestCase):
         engine = (ROOT / "studio/app/engine.py").read_text(encoding="utf-8")
         self.assertNotIn("def _mural_v01_skill(", engine)
         self.assertNotIn('"mural-presenter-v0.1": _mural_v01_skill()', engine)
-        archive = ROOT.parents[0] / "archive/mural-presenter-v0.1"
+        archive = ROOT.parents[0] / "archive/mural-presenter-pre-v0.6"
         self.assertTrue(
             (archive / "skills/mural-presenter-v0.1/mural-presenter-v0-1-zh/SKILL.md").is_file()
         )

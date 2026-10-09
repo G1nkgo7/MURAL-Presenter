@@ -1,0 +1,2359 @@
+{
+  "schema": "mural-font-lock/1",
+  "google_fonts_rev": "2796410152d4f9524b68ed46e69c1b60f8e0f7c3",
+  "family_count": 79,
+  "families": {
+    "Architects Daughter": {
+      "license": "OFL-1.1",
+      "source": "https://github.com/google/fonts/tree/2796410152d4f9524b68ed46e69c1b60f8e0f7c3/ofl/architectsdaughter",
+      "license_file": "assets/licenses/OFL-1.1.txt",
+      "ui_selectable": false,
+      "portable_bundle": true,
+      "faces": [
+        {
+          "file": "ArchitectsDaughter-Regular.ttf",
+          "sha256": "6159718a08898e34bc1cb7354086141a5f9a70b73e54dbec27ead0d59a697359",
+          "bytes": 43352,
+          "declared_weight": "400",
+          "style": "normal",
+          "variable": false,
+          "axes": [],
+          "internal_family": "Architects Daughter",
+          "scripts": [
+            "latn"
+          ]
+        }
+      ]
+    },
+    "Archivo": {
+      "license": "OFL-1.1",
+      "source": "https://github.com/google/fonts/tree/2796410152d4f9524b68ed46e69c1b60f8e0f7c3/ofl/archivo",
+      "license_file": "assets/licenses/OFL-1.1.txt",
+      "ui_selectable": true,
+      "portable_bundle": true,
+      "faces": [
+        {
+          "file": "Archivo.ttf",
+          "sha256": "0e094a7d3c7c4c25cf1310c4b30014f1dae9332220b1c2c88f4fa996f0b05053",
+          "bytes": 658596,
+          "declared_weight": "100 900",
+          "style": "normal",
+          "variable": true,
+          "axes": [
+            {
+              "tag": "wght",
+              "min": 100.0,
+              "max": 900.0,
+              "default": 600.0
+            },
+            {
+              "tag": "wdth",
+              "min": 62.0,
+              "max": 125.0,
+              "default": 100.0
+            }
+          ],
+          "internal_family": "Archivo",
+          "scripts": [
+            "latn",
+            "grek"
+          ]
+        }
+      ]
+    },
+    "Barlow Condensed": {
+      "license": "OFL-1.1",
+      "source": "https://github.com/google/fonts/tree/2796410152d4f9524b68ed46e69c1b60f8e0f7c3/ofl/barlowcondensed",
+      "license_file": "assets/licenses/OFL-1.1.txt",
+      "ui_selectable": false,
+      "portable_bundle": true,
+      "faces": [
+        {
+          "file": "BarlowCondensed-Regular.ttf",
+          "sha256": "583cec5da3b84bc4dc7c9c72e2a565c94d34e431518b19d7e250b7830ad5f996",
+          "bytes": 102480,
+          "declared_weight": "400",
+          "style": "normal",
+          "variable": false,
+          "axes": [],
+          "internal_family": "Barlow Condensed",
+          "scripts": [
+            "latn",
+            "grek"
+          ]
+        },
+        {
+          "file": "BarlowCondensed-SemiBold.ttf",
+          "sha256": "7b619d14bc2327509a9ef32b0890f709626f7ecc9ff61191c2a4314c5499d2d9",
+          "bytes": 109428,
+          "declared_weight": "600",
+          "style": "normal",
+          "variable": false,
+          "axes": [],
+          "internal_family": "Barlow Condensed",
+          "scripts": [
+            "latn",
+            "grek"
+          ]
+        },
+        {
+          "file": "BarlowCondensed-Bold.ttf",
+          "sha256": "e476562ec9c1e16cf16475895b511f08c804f438cc9a9f80a44ea50a0eeb5b65",
+          "bytes": 109912,
+          "declared_weight": "700",
+          "style": "normal",
+          "variable": false,
+          "axes": [],
+          "internal_family": "Barlow Condensed",
+          "scripts": [
+            "latn",
+            "grek"
+          ]
+        }
+      ]
+    },
+    "Bebas Neue": {
+      "license": "OFL-1.1",
+      "source": "https://github.com/google/fonts/tree/2796410152d4f9524b68ed46e69c1b60f8e0f7c3/ofl/bebasneue",
+      "license_file": "assets/licenses/OFL-1.1.txt",
+      "ui_selectable": true,
+      "portable_bundle": true,
+      "faces": [
+        {
+          "file": "BebasNeue-Regular.ttf",
+          "sha256": "08e4623805102d819f58601e46e345648846075e363b2ceb23313c2d1c83ec73",
+          "bytes": 61400,
+          "declared_weight": "400",
+          "style": "normal",
+          "variable": false,
+          "axes": [],
+          "internal_family": "Bebas Neue",
+          "scripts": [
+            "latn",
+            "grek"
+          ]
+        }
+      ]
+    },
+    "Bungee": {
+      "license": "OFL-1.1",
+      "source": "https://github.com/google/fonts/tree/2796410152d4f9524b68ed46e69c1b60f8e0f7c3/ofl/bungee",
+      "license_file": "assets/licenses/OFL-1.1.txt",
+      "ui_selectable": false,
+      "portable_bundle": true,
+      "faces": [
+        {
+          "file": "Bungee-Regular.ttf",
+          "sha256": "c4f5361ce120af3e6b9156d0bf379fa19cda2ea0cd18ac01fd99596c6bf66e3f",
+          "bytes": 118996,
+          "declared_weight": "400",
+          "style": "normal",
+          "variable": false,
+          "axes": [],
+          "internal_family": "Bungee",
+          "scripts": [
+            "latn",
+            "grek"
+          ]
+        }
+      ]
+    },
+    "Caveat": {
+      "license": "OFL-1.1",
+      "source": "https://github.com/google/fonts/tree/2796410152d4f9524b68ed46e69c1b60f8e0f7c3/ofl/caveat",
+      "license_file": "assets/licenses/OFL-1.1.txt",
+      "ui_selectable": false,
+      "portable_bundle": true,
+      "faces": [
+        {
+          "file": "Caveat.ttf",
+          "sha256": "0bdb6b660482d31531b3945849fba5916b3ef8695da7024a9e6b9ee3c4157988",
+          "bytes": 403648,
+          "declared_weight": "400 700",
+          "style": "normal",
+          "variable": true,
+          "axes": [
+            {
+              "tag": "wght",
+              "min": 400.0,
+              "max": 700.0,
+              "default": 400.0
+            }
+          ],
+          "internal_family": "Caveat",
+          "scripts": [
+            "latn",
+            "cyrl",
+            "grek"
+          ]
+        }
+      ]
+    },
+    "Cormorant Garamond": {
+      "license": "OFL-1.1",
+      "source": "https://github.com/google/fonts/tree/2796410152d4f9524b68ed46e69c1b60f8e0f7c3/ofl/cormorantgaramond",
+      "license_file": "assets/licenses/OFL-1.1.txt",
+      "ui_selectable": false,
+      "portable_bundle": true,
+      "faces": [
+        {
+          "file": "CormorantGaramond.ttf",
+          "sha256": "b20b7d9626dd956b2c5e558692ad328b1f19e3275e2782db4fa07670d83f35e0",
+          "bytes": 1195560,
+          "declared_weight": "300 700",
+          "style": "normal",
+          "variable": true,
+          "axes": [
+            {
+              "tag": "wght",
+              "min": 300.0,
+              "max": 700.0,
+              "default": 300.0
+            }
+          ],
+          "internal_family": "Cormorant Garamond",
+          "scripts": [
+            "latn",
+            "cyrl",
+            "grek"
+          ]
+        }
+      ]
+    },
+    "DM Sans": {
+      "license": "OFL-1.1",
+      "source": "https://github.com/google/fonts/tree/2796410152d4f9524b68ed46e69c1b60f8e0f7c3/ofl/dmsans",
+      "license_file": "assets/licenses/OFL-1.1.txt",
+      "ui_selectable": true,
+      "portable_bundle": true,
+      "faces": [
+        {
+          "file": "DMSans.ttf",
+          "sha256": "8cd08d97e89c24d0aa92edd2f0f4c8ee6195eee9b7c9f154865a58b02f0c1c0d",
+          "bytes": 240164,
+          "declared_weight": "100 1000",
+          "style": "normal",
+          "variable": true,
+          "axes": [
+            {
+              "tag": "opsz",
+              "min": 9.0,
+              "max": 40.0,
+              "default": 9.0
+            },
+            {
+              "tag": "wght",
+              "min": 100.0,
+              "max": 1000.0,
+              "default": 400.0
+            }
+          ],
+          "internal_family": "DM Sans",
+          "scripts": [
+            "latn",
+            "grek"
+          ]
+        }
+      ]
+    },
+    "Dancing Script": {
+      "license": "OFL-1.1",
+      "source": "https://github.com/google/fonts/tree/2796410152d4f9524b68ed46e69c1b60f8e0f7c3/ofl/dancingscript",
+      "license_file": "assets/licenses/OFL-1.1.txt",
+      "ui_selectable": true,
+      "portable_bundle": true,
+      "faces": [
+        {
+          "file": "DancingScript.ttf",
+          "sha256": "21808625578fe8d8cd10cb684be546dca077b27cd03a53a2f1ec11dc743c924c",
+          "bytes": 133636,
+          "declared_weight": "400 700",
+          "style": "normal",
+          "variable": true,
+          "axes": [
+            {
+              "tag": "wght",
+              "min": 400.0,
+              "max": 700.0,
+              "default": 400.0
+            }
+          ],
+          "internal_family": "Dancing Script",
+          "scripts": [
+            "latn"
+          ]
+        }
+      ]
+    },
+    "Figtree": {
+      "license": "OFL-1.1",
+      "source": "https://github.com/google/fonts/tree/2796410152d4f9524b68ed46e69c1b60f8e0f7c3/ofl/figtree",
+      "license_file": "assets/licenses/OFL-1.1.txt",
+      "ui_selectable": true,
+      "portable_bundle": true,
+      "faces": [
+        {
+          "file": "Figtree[wght].ttf",
+          "sha256": "26ad3db9b31ff7dde67a91ff515d022d2f495cd506590699cf264f0bfe6fb714",
+          "bytes": 62712,
+          "declared_weight": "300 900",
+          "style": "normal",
+          "variable": true,
+          "axes": [
+            {
+              "tag": "wght",
+              "min": 300.0,
+              "max": 900.0,
+              "default": 300.0
+            }
+          ],
+          "internal_family": "Figtree",
+          "scripts": [
+            "latn"
+          ]
+        }
+      ]
+    },
+    "Fraunces": {
+      "license": "OFL-1.1",
+      "source": "https://github.com/google/fonts/tree/2796410152d4f9524b68ed46e69c1b60f8e0f7c3/ofl/fraunces",
+      "license_file": "assets/licenses/OFL-1.1.txt",
+      "ui_selectable": true,
+      "portable_bundle": true,
+      "faces": [
+        {
+          "file": "Fraunces.ttf",
+          "sha256": "177ff6c0f14e5550a3c624247cd1189611d4eb65d000b14944c63d967958abbb",
+          "bytes": 360440,
+          "declared_weight": "100 900",
+          "style": "normal",
+          "variable": true,
+          "axes": [
+            {
+              "tag": "opsz",
+              "min": 9.0,
+              "max": 144.0,
+              "default": 9.0
+            },
+            {
+              "tag": "wght",
+              "min": 100.0,
+              "max": 900.0,
+              "default": 900.0
+            },
+            {
+              "tag": "SOFT",
+              "min": 0.0,
+              "max": 100.0,
+              "default": 0.0
+            },
+            {
+              "tag": "WONK",
+              "min": 0.0,
+              "max": 1.0,
+              "default": 1.0
+            }
+          ],
+          "internal_family": "Fraunces",
+          "scripts": [
+            "latn"
+          ]
+        }
+      ]
+    },
+    "Geist": {
+      "license": "OFL-1.1",
+      "source": "https://github.com/google/fonts/tree/2796410152d4f9524b68ed46e69c1b60f8e0f7c3/ofl/geist",
+      "license_file": "assets/licenses/OFL-1.1.txt",
+      "ui_selectable": true,
+      "portable_bundle": true,
+      "faces": [
+        {
+          "file": "Geist[wght].ttf",
+          "sha256": "73894e0448cae90a92b6c2f8732b7bb9acb7b94c418bff559dad4a18e1de9659",
+          "bytes": 169056,
+          "declared_weight": "100 900",
+          "style": "normal",
+          "variable": true,
+          "axes": [
+            {
+              "tag": "wght",
+              "min": 100.0,
+              "max": 900.0,
+              "default": 400.0
+            }
+          ],
+          "internal_family": "Geist",
+          "scripts": [
+            "latn",
+            "cyrl",
+            "grek"
+          ]
+        }
+      ]
+    },
+    "Geist Mono": {
+      "license": "OFL-1.1",
+      "source": "https://github.com/google/fonts/tree/2796410152d4f9524b68ed46e69c1b60f8e0f7c3/ofl/geistmono",
+      "license_file": "assets/licenses/OFL-1.1.txt",
+      "ui_selectable": true,
+      "portable_bundle": true,
+      "faces": [
+        {
+          "file": "GeistMono[wght].ttf",
+          "sha256": "d00e590b8eb3a59acc329b2d044fd143ae935090b7da33199ebee27cc7de8196",
+          "bytes": 171948,
+          "declared_weight": "100 900",
+          "style": "normal",
+          "variable": true,
+          "axes": [
+            {
+              "tag": "wght",
+              "min": 100.0,
+              "max": 900.0,
+              "default": 400.0
+            }
+          ],
+          "internal_family": "Geist Mono",
+          "scripts": [
+            "latn",
+            "cyrl",
+            "grek"
+          ]
+        }
+      ]
+    },
+    "IBM Plex Mono": {
+      "license": "OFL-1.1",
+      "source": "https://github.com/google/fonts/tree/2796410152d4f9524b68ed46e69c1b60f8e0f7c3/ofl/ibmplexmono",
+      "license_file": "assets/licenses/OFL-1.1.txt",
+      "ui_selectable": true,
+      "portable_bundle": true,
+      "faces": [
+        {
+          "file": "IBMPlexMono-Regular.ttf",
+          "sha256": "6a3412f058c7d8dfd9170c41e85ade48e5156ecb89356110ca57a0a27734af46",
+          "bytes": 135580,
+          "declared_weight": "400",
+          "style": "normal",
+          "variable": false,
+          "axes": [],
+          "internal_family": "IBM Plex Mono",
+          "scripts": [
+            "latn",
+            "cyrl",
+            "grek"
+          ]
+        },
+        {
+          "file": "IBMPlexMono-SemiBold.ttf",
+          "sha256": "d3c38e55c78f5b0f28009fddba4834ec503278936a5986032424c9bd2d23aa46",
+          "bytes": 140216,
+          "declared_weight": "600",
+          "style": "normal",
+          "variable": false,
+          "axes": [],
+          "internal_family": "IBM Plex Mono",
+          "scripts": [
+            "latn",
+            "cyrl",
+            "grek"
+          ]
+        }
+      ]
+    },
+    "IBM Plex Sans": {
+      "license": "OFL-1.1",
+      "source": "https://github.com/google/fonts/tree/2796410152d4f9524b68ed46e69c1b60f8e0f7c3/ofl/ibmplexsans",
+      "license_file": "assets/licenses/OFL-1.1.txt",
+      "ui_selectable": false,
+      "portable_bundle": true,
+      "faces": [
+        {
+          "file": "IBMPlexSans_2.ttf",
+          "sha256": "6dbe082463cf749cfa057d45c3048c90f4df031496498e5b5bdfd0b6babb9d16",
+          "bytes": 205252,
+          "declared_weight": "400",
+          "style": "normal",
+          "variable": false,
+          "axes": [],
+          "internal_family": "IBM Plex Sans",
+          "scripts": [
+            "latn",
+            "cyrl",
+            "grek"
+          ]
+        },
+        {
+          "file": "IBMPlexSans_1.ttf",
+          "sha256": "6f7a8c4219e021ff7c9131bc5f1f7af97bcd1436a59578d444a8cb92e9791742",
+          "bytes": 205292,
+          "declared_weight": "500",
+          "style": "normal",
+          "variable": false,
+          "axes": [],
+          "internal_family": "IBM Plex Sans",
+          "scripts": [
+            "latn",
+            "cyrl",
+            "grek"
+          ]
+        }
+      ]
+    },
+    "Indie Flower": {
+      "license": "OFL-1.1",
+      "source": "https://github.com/google/fonts/tree/2796410152d4f9524b68ed46e69c1b60f8e0f7c3/ofl/indieflower",
+      "license_file": "assets/licenses/OFL-1.1.txt",
+      "ui_selectable": false,
+      "portable_bundle": true,
+      "faces": [
+        {
+          "file": "IndieFlower-Regular.ttf",
+          "sha256": "ccc94b22b156e9c5dfe50fd051f01b097600b252c24473e624bb43a143140a94",
+          "bytes": 108196,
+          "declared_weight": "400",
+          "style": "normal",
+          "variable": false,
+          "axes": [],
+          "internal_family": "Indie Flower",
+          "scripts": [
+            "latn"
+          ]
+        }
+      ]
+    },
+    "Inter": {
+      "license": "OFL-1.1",
+      "source": "https://github.com/google/fonts/tree/2796410152d4f9524b68ed46e69c1b60f8e0f7c3/ofl/inter",
+      "license_file": "assets/licenses/OFL-1.1.txt",
+      "ui_selectable": true,
+      "portable_bundle": true,
+      "faces": [
+        {
+          "file": "Inter[opsz,wght].ttf",
+          "sha256": "29160a80ff49ddcab2c97711247e08b1fab27a484a329ce8b813d820dc559031",
+          "bytes": 876576,
+          "declared_weight": "100 900",
+          "style": "normal",
+          "variable": true,
+          "axes": [
+            {
+              "tag": "opsz",
+              "min": 14.0,
+              "max": 32.0,
+              "default": 14.0
+            },
+            {
+              "tag": "wght",
+              "min": 100.0,
+              "max": 900.0,
+              "default": 400.0
+            }
+          ],
+          "internal_family": "Inter",
+          "scripts": [
+            "latn",
+            "cyrl",
+            "grek"
+          ]
+        }
+      ]
+    },
+    "Inter Tight": {
+      "license": "OFL-1.1",
+      "source": "https://github.com/google/fonts/tree/2796410152d4f9524b68ed46e69c1b60f8e0f7c3/ofl/intertight",
+      "license_file": "assets/licenses/OFL-1.1.txt",
+      "ui_selectable": true,
+      "portable_bundle": true,
+      "faces": [
+        {
+          "file": "InterTight[wght].ttf",
+          "sha256": "b81b73dcb64df3c230cabade7df6c5773bf863233f24c9ee51087519f1f88b6f",
+          "bytes": 581588,
+          "declared_weight": "100 900",
+          "style": "normal",
+          "variable": true,
+          "axes": [
+            {
+              "tag": "wght",
+              "min": 100.0,
+              "max": 900.0,
+              "default": 400.0
+            }
+          ],
+          "internal_family": "Inter Tight",
+          "scripts": [
+            "latn",
+            "cyrl",
+            "grek"
+          ]
+        }
+      ]
+    },
+    "JetBrains Mono": {
+      "license": "OFL-1.1",
+      "source": "https://github.com/google/fonts/tree/2796410152d4f9524b68ed46e69c1b60f8e0f7c3/ofl/jetbrainsmono",
+      "license_file": "assets/licenses/OFL-1.1.txt",
+      "ui_selectable": true,
+      "portable_bundle": true,
+      "faces": [
+        {
+          "file": "JetBrainsMono[wght].ttf",
+          "sha256": "48715a42ec242c21e9f02692891e147d022299a52e48d5e413e1a942193ffeda",
+          "bytes": 187208,
+          "declared_weight": "100 800",
+          "style": "normal",
+          "variable": true,
+          "axes": [
+            {
+              "tag": "wght",
+              "min": 100.0,
+              "max": 800.0,
+              "default": 400.0
+            }
+          ],
+          "internal_family": "JetBrains Mono",
+          "scripts": [
+            "latn",
+            "cyrl",
+            "grek"
+          ]
+        }
+      ]
+    },
+    "Kalam": {
+      "license": "OFL-1.1",
+      "source": "https://github.com/google/fonts/tree/2796410152d4f9524b68ed46e69c1b60f8e0f7c3/ofl/kalam",
+      "license_file": "assets/licenses/OFL-1.1.txt",
+      "ui_selectable": true,
+      "portable_bundle": true,
+      "faces": [
+        {
+          "file": "Kalam-Regular.ttf",
+          "sha256": "57cecb63d4608019371954274ae1d8c397764debd5b19d4a33c1efa4dc923c0b",
+          "bytes": 427360,
+          "declared_weight": "400",
+          "style": "normal",
+          "variable": false,
+          "axes": [],
+          "internal_family": "Kalam",
+          "scripts": [
+            "latn",
+            "grek"
+          ]
+        },
+        {
+          "file": "Kalam-Bold.ttf",
+          "sha256": "2f6576601db015d4f6c08678120277fc8510b98c06e932ce7a6a9cbff4cbdded",
+          "bytes": 460896,
+          "declared_weight": "700",
+          "style": "normal",
+          "variable": false,
+          "axes": [],
+          "internal_family": "Kalam",
+          "scripts": [
+            "latn",
+            "grek"
+          ]
+        }
+      ]
+    },
+    "LXGW WenKai": {
+      "license": "OFL-1.1",
+      "source": "https://github.com/lxgw/LxgwWenKai",
+      "license_file": "assets/licenses/OFL-1.1.txt",
+      "ui_selectable": true,
+      "portable_bundle": true,
+      "faces": [
+        {
+          "file": "LXGWWenKai-Regular.ttf",
+          "sha256": "ea47ec17d0f3d0ed1e6d9c51d6146402d4d1e2f0ff397a90765aaaa0ddd382fb",
+          "bytes": 19310488,
+          "declared_weight": "400",
+          "style": "normal",
+          "variable": false,
+          "axes": [],
+          "internal_family": "LXGW WenKai",
+          "scripts": [
+            "latn",
+            "hani",
+            "cyrl",
+            "grek"
+          ]
+        },
+        {
+          "file": "LXGWWenKai-Regular.ttf",
+          "sha256": "ea47ec17d0f3d0ed1e6d9c51d6146402d4d1e2f0ff397a90765aaaa0ddd382fb",
+          "bytes": 19310488,
+          "declared_weight": "700",
+          "style": "normal",
+          "variable": false,
+          "axes": [],
+          "internal_family": "LXGW WenKai",
+          "scripts": [
+            "latn",
+            "hani",
+            "cyrl",
+            "grek"
+          ]
+        }
+      ]
+    },
+    "League Gothic": {
+      "license": "OFL-1.1",
+      "source": "https://github.com/google/fonts/tree/2796410152d4f9524b68ed46e69c1b60f8e0f7c3/ofl/leaguegothic",
+      "license_file": "assets/licenses/OFL-1.1.txt",
+      "ui_selectable": false,
+      "portable_bundle": true,
+      "faces": [
+        {
+          "file": "LeagueGothic.ttf",
+          "sha256": "3b0e998c9a0034222394ffecdd383e6948259ad037b95555b139a217629ce1d0",
+          "bytes": 65972,
+          "declared_weight": "400",
+          "style": "normal",
+          "variable": true,
+          "axes": [
+            {
+              "tag": "wdth",
+              "min": 75.0,
+              "max": 100.0,
+              "default": 100.0
+            }
+          ],
+          "internal_family": "League Gothic",
+          "scripts": [
+            "latn"
+          ]
+        }
+      ]
+    },
+    "Liu Jian Mao Cao": {
+      "license": "OFL-1.1",
+      "source": "https://github.com/google/fonts/tree/2796410152d4f9524b68ed46e69c1b60f8e0f7c3/ofl/liujianmaocao",
+      "license_file": "assets/licenses/OFL-1.1.txt",
+      "ui_selectable": false,
+      "portable_bundle": true,
+      "faces": [
+        {
+          "file": "LiuJianMaoCao-Regular.ttf",
+          "sha256": "cab396b91a5b7c0b4005a35891180d06e6751f5ac261fe680aec65c1ae209033",
+          "bytes": 4951804,
+          "declared_weight": "400",
+          "style": "normal",
+          "variable": false,
+          "axes": [],
+          "internal_family": "Liu Jian Mao Cao",
+          "scripts": [
+            "latn",
+            "hani"
+          ]
+        }
+      ]
+    },
+    "Long Cang": {
+      "license": "OFL-1.1",
+      "source": "https://github.com/google/fonts/tree/2796410152d4f9524b68ed46e69c1b60f8e0f7c3/ofl/longcang",
+      "license_file": "assets/licenses/OFL-1.1.txt",
+      "ui_selectable": false,
+      "portable_bundle": true,
+      "faces": [
+        {
+          "file": "LongCang-Regular.ttf",
+          "sha256": "e5bf2c3f24ef2327c6f136d8f73e2f9dfdf44896fdbeb35a9515f44777bb91bc",
+          "bytes": 5162508,
+          "declared_weight": "400",
+          "style": "normal",
+          "variable": false,
+          "axes": [],
+          "internal_family": "Long Cang",
+          "scripts": [
+            "latn",
+            "hani"
+          ]
+        }
+      ]
+    },
+    "Ma Shan Zheng": {
+      "license": "OFL-1.1",
+      "source": "https://github.com/google/fonts/tree/2796410152d4f9524b68ed46e69c1b60f8e0f7c3/ofl/mashanzheng",
+      "license_file": "assets/licenses/OFL-1.1.txt",
+      "ui_selectable": true,
+      "portable_bundle": true,
+      "faces": [
+        {
+          "file": "MaShanZheng-Regular.ttf",
+          "sha256": "b844c59bf20bf530e41c20d6ff12b383b23a2e553b9b68cc89f070869213155d",
+          "bytes": 5858048,
+          "declared_weight": "400",
+          "style": "normal",
+          "variable": false,
+          "axes": [],
+          "internal_family": "Ma Shan Zheng",
+          "scripts": [
+            "latn",
+            "hani"
+          ]
+        }
+      ]
+    },
+    "Manrope": {
+      "license": "OFL-1.1",
+      "source": "https://github.com/google/fonts/tree/2796410152d4f9524b68ed46e69c1b60f8e0f7c3/ofl/manrope",
+      "license_file": "assets/licenses/OFL-1.1.txt",
+      "ui_selectable": true,
+      "portable_bundle": true,
+      "faces": [
+        {
+          "file": "Manrope.ttf",
+          "sha256": "d0639be45d0af36e798172419d7bd173c4bd4f29e2b76cbb69db1d11bf8b0a40",
+          "bytes": 165420,
+          "declared_weight": "200 800",
+          "style": "normal",
+          "variable": true,
+          "axes": [
+            {
+              "tag": "wght",
+              "min": 200.0,
+              "max": 800.0,
+              "default": 200.0
+            }
+          ],
+          "internal_family": "Manrope",
+          "scripts": [
+            "latn",
+            "cyrl",
+            "grek"
+          ]
+        }
+      ]
+    },
+    "Montserrat": {
+      "license": "OFL-1.1",
+      "source": "https://github.com/google/fonts/tree/2796410152d4f9524b68ed46e69c1b60f8e0f7c3/ofl/montserrat",
+      "license_file": "assets/licenses/OFL-1.1.txt",
+      "ui_selectable": true,
+      "portable_bundle": true,
+      "faces": [
+        {
+          "file": "Montserrat.ttf",
+          "sha256": "0f7b311b2f3279e4eef9b2f968bcdbab6e28f4daeb1f049f4f278a902bcd82f7",
+          "bytes": 744936,
+          "declared_weight": "100 900",
+          "style": "normal",
+          "variable": true,
+          "axes": [
+            {
+              "tag": "wght",
+              "min": 100.0,
+              "max": 900.0,
+              "default": 100.0
+            }
+          ],
+          "internal_family": "Montserrat",
+          "scripts": [
+            "latn",
+            "cyrl",
+            "grek"
+          ]
+        }
+      ]
+    },
+    "Noto Sans SC": {
+      "license": "OFL-1.1",
+      "source": "https://github.com/google/fonts/tree/2796410152d4f9524b68ed46e69c1b60f8e0f7c3/ofl/notosanssc",
+      "license_file": "assets/licenses/OFL-1.1.txt",
+      "ui_selectable": true,
+      "portable_bundle": true,
+      "faces": [
+        {
+          "file": "NotoSansSC.ttf",
+          "sha256": "a3041811a78c361b1de50f953c805e0244951c21c5bd412f7232ef0d899af0da",
+          "bytes": 17772300,
+          "declared_weight": "100 900",
+          "style": "normal",
+          "variable": true,
+          "axes": [
+            {
+              "tag": "wght",
+              "min": 100.0,
+              "max": 900.0,
+              "default": 100.0
+            }
+          ],
+          "internal_family": "Noto Sans SC",
+          "scripts": [
+            "latn",
+            "hani",
+            "cyrl",
+            "grek"
+          ]
+        }
+      ]
+    },
+    "Noto Serif SC": {
+      "license": "OFL-1.1",
+      "source": "https://github.com/google/fonts/tree/2796410152d4f9524b68ed46e69c1b60f8e0f7c3/ofl/notoserifsc",
+      "license_file": "assets/licenses/OFL-1.1.txt",
+      "ui_selectable": true,
+      "portable_bundle": true,
+      "faces": [
+        {
+          "file": "NotoSerifSC.ttf",
+          "sha256": "050080d9255a86808f2945bffac582b31ef32bc36411ce29563b4961670c66f9",
+          "bytes": 25125512,
+          "declared_weight": "200 900",
+          "style": "normal",
+          "variable": true,
+          "axes": [
+            {
+              "tag": "wght",
+              "min": 200.0,
+              "max": 900.0,
+              "default": 200.0
+            }
+          ],
+          "internal_family": "Noto Serif SC",
+          "scripts": [
+            "latn",
+            "hani",
+            "cyrl",
+            "grek"
+          ]
+        }
+      ]
+    },
+    "Open Sans": {
+      "license": "OFL-1.1",
+      "source": "https://github.com/google/fonts/tree/2796410152d4f9524b68ed46e69c1b60f8e0f7c3/ofl/opensans",
+      "license_file": "assets/licenses/OFL-1.1.txt",
+      "ui_selectable": true,
+      "portable_bundle": true,
+      "faces": [
+        {
+          "file": "OpenSans[wdth,wght].ttf",
+          "sha256": "36643644f318a812aab2d2ed3bb98f8cf0872527f835fe9398d95fe6b9adb878",
+          "bytes": 532636,
+          "declared_weight": "300 800",
+          "style": "normal",
+          "variable": true,
+          "axes": [
+            {
+              "tag": "wght",
+              "min": 300.0,
+              "max": 800.0,
+              "default": 400.0
+            },
+            {
+              "tag": "wdth",
+              "min": 75.0,
+              "max": 100.0,
+              "default": 100.0
+            }
+          ],
+          "internal_family": "Open Sans",
+          "scripts": [
+            "latn",
+            "cyrl",
+            "grek"
+          ]
+        }
+      ]
+    },
+    "Oswald": {
+      "license": "OFL-1.1",
+      "source": "https://github.com/google/fonts/tree/2796410152d4f9524b68ed46e69c1b60f8e0f7c3/ofl/oswald",
+      "license_file": "assets/licenses/OFL-1.1.txt",
+      "ui_selectable": true,
+      "portable_bundle": true,
+      "faces": [
+        {
+          "file": "Oswald.ttf",
+          "sha256": "5b38c246e255a12f5712d640d56bcced0472466fc68983d2d0410ec0457c2817",
+          "bytes": 172088,
+          "declared_weight": "200 700",
+          "style": "normal",
+          "variable": true,
+          "axes": [
+            {
+              "tag": "wght",
+              "min": 200.0,
+              "max": 700.0,
+              "default": 400.0
+            }
+          ],
+          "internal_family": "Oswald",
+          "scripts": [
+            "latn",
+            "cyrl",
+            "grek"
+          ]
+        }
+      ]
+    },
+    "Patrick Hand": {
+      "license": "OFL-1.1",
+      "source": "https://github.com/google/fonts/tree/2796410152d4f9524b68ed46e69c1b60f8e0f7c3/ofl/patrickhand",
+      "license_file": "assets/licenses/OFL-1.1.txt",
+      "ui_selectable": false,
+      "portable_bundle": true,
+      "faces": [
+        {
+          "file": "PatrickHand-Regular.ttf",
+          "sha256": "0f173b3e6cb6d1af25babf7f0057c5ac4ee11f9992b0469bb817e967ef4ad0fc",
+          "bytes": 214772,
+          "declared_weight": "400",
+          "style": "normal",
+          "variable": false,
+          "axes": [],
+          "internal_family": "Patrick Hand",
+          "scripts": [
+            "latn",
+            "grek"
+          ]
+        }
+      ]
+    },
+    "Playfair Display": {
+      "license": "OFL-1.1",
+      "source": "https://github.com/google/fonts/tree/2796410152d4f9524b68ed46e69c1b60f8e0f7c3/ofl/playfairdisplay",
+      "license_file": "assets/licenses/OFL-1.1.txt",
+      "ui_selectable": true,
+      "portable_bundle": true,
+      "faces": [
+        {
+          "file": "PlayfairDisplay.ttf",
+          "sha256": "c40f2293766a503bc70cce9e512ef844a4ccb7cbcde792fe2ea31d191917d8d6",
+          "bytes": 300724,
+          "declared_weight": "400 900",
+          "style": "normal",
+          "variable": true,
+          "axes": [
+            {
+              "tag": "wght",
+              "min": 400.0,
+              "max": 900.0,
+              "default": 400.0
+            }
+          ],
+          "internal_family": "Playfair Display",
+          "scripts": [
+            "latn",
+            "cyrl",
+            "grek"
+          ]
+        }
+      ]
+    },
+    "Plus Jakarta Sans": {
+      "license": "OFL-1.1",
+      "source": "https://github.com/google/fonts/tree/2796410152d4f9524b68ed46e69c1b60f8e0f7c3/ofl/plusjakartasans",
+      "license_file": "assets/licenses/OFL-1.1.txt",
+      "ui_selectable": true,
+      "portable_bundle": true,
+      "faces": [
+        {
+          "file": "PlusJakartaSans[wght].ttf",
+          "sha256": "89b3fb38aa0d275d7a731d0d817a4f1622b316b4d7fbdedcf02ee9099ff68bc8",
+          "bytes": 176288,
+          "declared_weight": "200 800",
+          "style": "normal",
+          "variable": true,
+          "axes": [
+            {
+              "tag": "wght",
+              "min": 200.0,
+              "max": 800.0,
+              "default": 400.0
+            }
+          ],
+          "internal_family": "Plus Jakarta Sans",
+          "scripts": [
+            "latn",
+            "grek"
+          ]
+        }
+      ]
+    },
+    "Poppins": {
+      "license": "OFL-1.1",
+      "source": "https://github.com/google/fonts/tree/2796410152d4f9524b68ed46e69c1b60f8e0f7c3/ofl/poppins",
+      "license_file": "assets/licenses/OFL-1.1.txt",
+      "ui_selectable": true,
+      "portable_bundle": true,
+      "faces": [
+        {
+          "file": "Poppins-Regular.ttf",
+          "sha256": "7e65201e9b79159e2300267cc885e16c8dcef2424cdfa09a29bfb0980a94a7ba",
+          "bytes": 160316,
+          "declared_weight": "400",
+          "style": "normal",
+          "variable": false,
+          "axes": [],
+          "internal_family": "Poppins",
+          "scripts": [
+            "latn",
+            "grek"
+          ]
+        },
+        {
+          "file": "Poppins-Medium.ttf",
+          "sha256": "90373e7d838d32468438fc3e152dca0bdb12edcab99ea639f158790b1ba1fd05",
+          "bytes": 158576,
+          "declared_weight": "500",
+          "style": "normal",
+          "variable": false,
+          "axes": [],
+          "internal_family": "Poppins",
+          "scripts": [
+            "latn",
+            "grek"
+          ]
+        },
+        {
+          "file": "Poppins-SemiBold.ttf",
+          "sha256": "d3bf1bdaf0550e83da9ac0b1d1d9fe6db086835a83aa28578e609a394b9a0286",
+          "bytes": 157312,
+          "declared_weight": "600",
+          "style": "normal",
+          "variable": false,
+          "axes": [],
+          "internal_family": "Poppins",
+          "scripts": [
+            "latn",
+            "grek"
+          ]
+        },
+        {
+          "file": "Poppins-Bold.ttf",
+          "sha256": "983676516167748b74de6f4771fb384c664fd913acb8b471122ecacf5da5ea6c",
+          "bytes": 155996,
+          "declared_weight": "700",
+          "style": "normal",
+          "variable": false,
+          "axes": [],
+          "internal_family": "Poppins",
+          "scripts": [
+            "latn",
+            "grek"
+          ]
+        }
+      ]
+    },
+    "Roboto": {
+      "license": "OFL-1.1",
+      "source": "https://github.com/google/fonts/tree/2796410152d4f9524b68ed46e69c1b60f8e0f7c3/ofl/roboto",
+      "license_file": "assets/licenses/OFL-1.1.txt",
+      "ui_selectable": true,
+      "portable_bundle": true,
+      "faces": [
+        {
+          "file": "Roboto[wdth,wght].ttf",
+          "sha256": "d7598e12c5dbef095ff8272cfc55da0250bd07fbdecbac8a530b9b277872a134",
+          "bytes": 488584,
+          "declared_weight": "100 900",
+          "style": "normal",
+          "variable": true,
+          "axes": [
+            {
+              "tag": "wght",
+              "min": 100.0,
+              "max": 900.0,
+              "default": 400.0
+            },
+            {
+              "tag": "wdth",
+              "min": 75.0,
+              "max": 100.0,
+              "default": 100.0
+            }
+          ],
+          "internal_family": "Roboto",
+          "scripts": [
+            "latn",
+            "cyrl",
+            "grek"
+          ]
+        }
+      ]
+    },
+    "Roboto Mono": {
+      "license": "OFL-1.1",
+      "source": "https://github.com/google/fonts/tree/2796410152d4f9524b68ed46e69c1b60f8e0f7c3/ofl/robotomono",
+      "license_file": "assets/licenses/OFL-1.1.txt",
+      "ui_selectable": true,
+      "portable_bundle": true,
+      "faces": [
+        {
+          "file": "RobotoMono[wght].ttf",
+          "sha256": "66a80e79d17e4c7cabd162e2916578a4cc08fd19eef6e2a643305eae9c567b2b",
+          "bytes": 183700,
+          "declared_weight": "100 700",
+          "style": "normal",
+          "variable": true,
+          "axes": [
+            {
+              "tag": "wght",
+              "min": 100.0,
+              "max": 700.0,
+              "default": 400.0
+            }
+          ],
+          "internal_family": "Roboto Mono",
+          "scripts": [
+            "latn",
+            "cyrl",
+            "grek"
+          ]
+        }
+      ]
+    },
+    "Sacramento": {
+      "license": "OFL-1.1",
+      "source": "https://github.com/google/fonts/tree/2796410152d4f9524b68ed46e69c1b60f8e0f7c3/ofl/sacramento",
+      "license_file": "assets/licenses/OFL-1.1.txt",
+      "ui_selectable": false,
+      "portable_bundle": true,
+      "faces": [
+        {
+          "file": "Sacramento-Regular.ttf",
+          "sha256": "9341fda10adbfeb7efc94302b34507a3e227d7e7f5c432df3f5ac8753ff73d24",
+          "bytes": 79696,
+          "declared_weight": "400",
+          "style": "normal",
+          "variable": false,
+          "axes": [],
+          "internal_family": "Sacramento",
+          "scripts": [
+            "latn",
+            "grek"
+          ]
+        }
+      ]
+    },
+    "Shadows Into Light": {
+      "license": "OFL-1.1",
+      "source": "https://github.com/google/fonts/tree/2796410152d4f9524b68ed46e69c1b60f8e0f7c3/ofl/shadowsintolight",
+      "license_file": "assets/licenses/OFL-1.1.txt",
+      "ui_selectable": false,
+      "portable_bundle": true,
+      "faces": [
+        {
+          "file": "ShadowsIntoLight.ttf",
+          "sha256": "1347863151acdc00fa281daaba1a3543dbce5870b55f9cf7479a15bb84007681",
+          "bytes": 54304,
+          "declared_weight": "400",
+          "style": "normal",
+          "variable": false,
+          "axes": [],
+          "internal_family": "Shadows Into Light",
+          "scripts": [
+            "latn"
+          ]
+        }
+      ]
+    },
+    "Smiley Sans": {
+      "license": "OFL-1.1",
+      "source": "https://github.com/atelier-anchor/smiley-sans",
+      "license_file": "assets/licenses/OFL-1.1.txt",
+      "ui_selectable": true,
+      "portable_bundle": true,
+      "faces": [
+        {
+          "file": "SmileySans-Oblique.ttf",
+          "sha256": "b447d7e781f08bc95c4c9f23ba71ed2b8ebb639aa7184485c71c4ca5afcd25c4",
+          "bytes": 2629764,
+          "declared_weight": "400",
+          "style": "oblique",
+          "variable": false,
+          "axes": [],
+          "internal_family": "Smiley Sans",
+          "scripts": [
+            "latn",
+            "hani",
+            "cyrl",
+            "grek"
+          ]
+        }
+      ]
+    },
+    "Sora": {
+      "license": "OFL-1.1",
+      "source": "https://github.com/google/fonts/tree/2796410152d4f9524b68ed46e69c1b60f8e0f7c3/ofl/sora",
+      "license_file": "assets/licenses/OFL-1.1.txt",
+      "ui_selectable": true,
+      "portable_bundle": true,
+      "faces": [
+        {
+          "file": "Sora.ttf",
+          "sha256": "84ff7096ae3ec6c8be47d906d1a0ba4de7f2ce78c615275c77301964a316e16c",
+          "bytes": 111400,
+          "declared_weight": "100 800",
+          "style": "normal",
+          "variable": true,
+          "axes": [
+            {
+              "tag": "wght",
+              "min": 100.0,
+              "max": 800.0,
+              "default": 400.0
+            }
+          ],
+          "internal_family": "Sora",
+          "scripts": [
+            "latn"
+          ]
+        }
+      ]
+    },
+    "Space Grotesk": {
+      "license": "OFL-1.1",
+      "source": "https://github.com/google/fonts/tree/2796410152d4f9524b68ed46e69c1b60f8e0f7c3/ofl/spacegrotesk",
+      "license_file": "assets/licenses/OFL-1.1.txt",
+      "ui_selectable": true,
+      "portable_bundle": true,
+      "faces": [
+        {
+          "file": "SpaceGrotesk.ttf",
+          "sha256": "acad6de1fc93436f5c0f1f4137751ef04f1aea3063e7036535970ffcfbd79f72",
+          "bytes": 136676,
+          "declared_weight": "300 700",
+          "style": "normal",
+          "variable": true,
+          "axes": [
+            {
+              "tag": "wght",
+              "min": 300.0,
+              "max": 700.0,
+              "default": 300.0
+            }
+          ],
+          "internal_family": "Space Grotesk",
+          "scripts": [
+            "latn",
+            "grek"
+          ]
+        }
+      ]
+    },
+    "Spectral": {
+      "license": "OFL-1.1",
+      "source": "https://github.com/google/fonts/tree/2796410152d4f9524b68ed46e69c1b60f8e0f7c3/ofl/spectral",
+      "license_file": "assets/licenses/OFL-1.1.txt",
+      "ui_selectable": true,
+      "portable_bundle": true,
+      "faces": [
+        {
+          "file": "Spectral-Regular.ttf",
+          "sha256": "c89021dc20720c8d0dcf40b0b2f6e00c13665fa8041717f581396f51b8c78f5d",
+          "bytes": 261088,
+          "declared_weight": "400",
+          "style": "normal",
+          "variable": false,
+          "axes": [],
+          "internal_family": "Spectral",
+          "scripts": [
+            "latn",
+            "cyrl",
+            "grek"
+          ]
+        },
+        {
+          "file": "Spectral-Bold.ttf",
+          "sha256": "70ddb1ec6ae3b0b8d0c79231f670de786978f19baeba2130757526e407aebf9b",
+          "bytes": 273220,
+          "declared_weight": "700",
+          "style": "normal",
+          "variable": false,
+          "axes": [],
+          "internal_family": "Spectral",
+          "scripts": [
+            "latn",
+            "cyrl",
+            "grek"
+          ]
+        }
+      ]
+    },
+    "Syne": {
+      "license": "OFL-1.1",
+      "source": "https://github.com/google/fonts/tree/2796410152d4f9524b68ed46e69c1b60f8e0f7c3/ofl/syne",
+      "license_file": "assets/licenses/OFL-1.1.txt",
+      "ui_selectable": false,
+      "portable_bundle": true,
+      "faces": [
+        {
+          "file": "Syne.ttf",
+          "sha256": "ce5ac77142a65cab2248a1a2ebb740b1d4d9c20b52488877d3ff664d1356104a",
+          "bytes": 146980,
+          "declared_weight": "400 800",
+          "style": "normal",
+          "variable": true,
+          "axes": [
+            {
+              "tag": "wght",
+              "min": 400.0,
+              "max": 800.0,
+              "default": 400.0
+            }
+          ],
+          "internal_family": "Syne",
+          "scripts": [
+            "latn",
+            "grek"
+          ]
+        }
+      ]
+    },
+    "Unbounded": {
+      "license": "OFL-1.1",
+      "source": "https://github.com/google/fonts/tree/2796410152d4f9524b68ed46e69c1b60f8e0f7c3/ofl/unbounded",
+      "license_file": "assets/licenses/OFL-1.1.txt",
+      "ui_selectable": false,
+      "portable_bundle": true,
+      "faces": [
+        {
+          "file": "Unbounded.ttf",
+          "sha256": "323b511be380c8d474ef030686b71aedde501f8d9cd46da558b7c40454372c3f",
+          "bytes": 778272,
+          "declared_weight": "200 900",
+          "style": "normal",
+          "variable": true,
+          "axes": [
+            {
+              "tag": "wght",
+              "min": 200.0,
+              "max": 900.0,
+              "default": 400.0
+            }
+          ],
+          "internal_family": "Unbounded",
+          "scripts": [
+            "latn",
+            "cyrl",
+            "grek"
+          ]
+        }
+      ]
+    },
+    "Xiaolai": {
+      "license": "OFL-1.1",
+      "source": "https://github.com/lxgw/kose-font/tree/v3.126",
+      "license_file": "assets/licenses/OFL-1.1.txt",
+      "ui_selectable": false,
+      "portable_bundle": true,
+      "faces": [
+        {
+          "file": "Xiaolai-Regular.ttf",
+          "sha256": "e2f68daf0e72777a8cf58bc83de1b98634b251e537ddbfca24b0ae50d1802da2",
+          "bytes": 22220806,
+          "declared_weight": "400",
+          "style": "normal",
+          "variable": false,
+          "axes": [],
+          "internal_family": "Xiaolai",
+          "scripts": [
+            "latn",
+            "hani",
+            "cyrl",
+            "grek"
+          ]
+        }
+      ]
+    },
+    "ZCOOL KuaiLe": {
+      "license": "OFL-1.1",
+      "source": "https://github.com/google/fonts/tree/2796410152d4f9524b68ed46e69c1b60f8e0f7c3/ofl/zcoolkuaile",
+      "license_file": "assets/licenses/OFL-1.1.txt",
+      "ui_selectable": true,
+      "portable_bundle": true,
+      "faces": [
+        {
+          "file": "ZCOOLKuaiLe-Regular.ttf",
+          "sha256": "b3ed6f358cb69f9232eb7e794267767e51d8aeeeeeb612a81a24efb52f0b6bae",
+          "bytes": 1513964,
+          "declared_weight": "400",
+          "style": "normal",
+          "variable": false,
+          "axes": [],
+          "internal_family": "ZCOOL KuaiLe",
+          "scripts": [
+            "latn",
+            "hani"
+          ]
+        }
+      ]
+    },
+    "ZCOOL QingKe HuangYou": {
+      "license": "OFL-1.1",
+      "source": "https://github.com/google/fonts/tree/2796410152d4f9524b68ed46e69c1b60f8e0f7c3/ofl/zcoolqingkehuangyou",
+      "license_file": "assets/licenses/OFL-1.1.txt",
+      "ui_selectable": false,
+      "portable_bundle": true,
+      "faces": [
+        {
+          "file": "ZCOOLQingKeHuangYou-Regular.ttf",
+          "sha256": "54f0c0df4308cd74cd0f2fd3494ae054dbc4a1fd6fa7d71f4807eb4cdd8b4136",
+          "bytes": 8328684,
+          "declared_weight": "400",
+          "style": "normal",
+          "variable": false,
+          "axes": [],
+          "internal_family": "ZCOOL QingKe HuangYou",
+          "scripts": [
+            "latn",
+            "hani"
+          ]
+        }
+      ]
+    },
+    "ZCOOL XiaoWei": {
+      "license": "OFL-1.1",
+      "source": "https://github.com/google/fonts/tree/2796410152d4f9524b68ed46e69c1b60f8e0f7c3/ofl/zcoolxiaowei",
+      "license_file": "assets/licenses/OFL-1.1.txt",
+      "ui_selectable": true,
+      "portable_bundle": true,
+      "faces": [
+        {
+          "file": "ZCOOLXiaoWei-Regular.ttf",
+          "sha256": "a42b620140f493db42f741351dfbf343c0936d58588ee8004b8b2a218d997ff1",
+          "bytes": 6313808,
+          "declared_weight": "400",
+          "style": "normal",
+          "variable": false,
+          "axes": [],
+          "internal_family": "站酷小薇体",
+          "scripts": [
+            "latn",
+            "hani"
+          ]
+        }
+      ]
+    },
+    "Zhi Mang Xing": {
+      "license": "OFL-1.1",
+      "source": "https://github.com/google/fonts/tree/2796410152d4f9524b68ed46e69c1b60f8e0f7c3/ofl/zhimangxing",
+      "license_file": "assets/licenses/OFL-1.1.txt",
+      "ui_selectable": true,
+      "portable_bundle": true,
+      "faces": [
+        {
+          "file": "ZhiMangXing-Regular.ttf",
+          "sha256": "644e0cae9b40f0b10ab729a01bd32032e3973bac22be3dccae01bf6ae7fde969",
+          "bytes": 4063532,
+          "declared_weight": "400",
+          "style": "normal",
+          "variable": false,
+          "axes": [],
+          "internal_family": "Zhi Mang Xing",
+          "scripts": [
+            "latn",
+            "hani"
+          ]
+        }
+      ]
+    },
+    "Chakra Petch": {
+      "license": "OFL-1.1",
+      "source": "https://github.com/google/fonts/tree/2796410152d4f9524b68ed46e69c1b60f8e0f7c3/ofl/chakrapetch",
+      "usage_scope": "redistributable-ofl",
+      "license_file": "assets/licenses/OFL-1.1.txt",
+      "ui_selectable": false,
+      "portable_bundle": true,
+      "faces": [
+        {
+          "file": "ChakraPetch.ttf",
+          "sha256": "98fcd638baa5c81ff0316b7538ce330ee3b23b1302726de3526d5933a8ecf986",
+          "bytes": 78488,
+          "declared_weight": "400",
+          "style": "normal",
+          "variable": false,
+          "axes": [],
+          "internal_family": "Chakra Petch",
+          "scripts": [
+            "latn",
+            "grek"
+          ]
+        }
+      ]
+    },
+    "Cinzel": {
+      "license": "OFL-1.1",
+      "source": "https://github.com/google/fonts/tree/2796410152d4f9524b68ed46e69c1b60f8e0f7c3/ofl/cinzel",
+      "usage_scope": "redistributable-ofl",
+      "license_file": "assets/licenses/OFL-1.1.txt",
+      "ui_selectable": false,
+      "portable_bundle": true,
+      "faces": [
+        {
+          "file": "Cinzel.ttf",
+          "sha256": "f4d83d34d1f6c741193e4acf4b3dff9531e5a67b6aa65228d00a7db72a4e0f34",
+          "bytes": 125468,
+          "declared_weight": "400 900",
+          "style": "normal",
+          "variable": true,
+          "axes": [
+            {
+              "tag": "wght",
+              "min": 400.0,
+              "max": 900.0,
+              "default": 400.0
+            }
+          ],
+          "internal_family": "Cinzel",
+          "scripts": [
+            "latn",
+            "grek"
+          ]
+        }
+      ]
+    },
+    "Comic Neue": {
+      "license": "OFL-1.1",
+      "source": "https://github.com/google/fonts/tree/2796410152d4f9524b68ed46e69c1b60f8e0f7c3/ofl/comicneue",
+      "usage_scope": "redistributable-ofl",
+      "license_file": "assets/licenses/OFL-1.1.txt",
+      "ui_selectable": false,
+      "portable_bundle": true,
+      "faces": [
+        {
+          "file": "ComicNeue-Regular.ttf",
+          "sha256": "a0ee5a37c8b27c4db0700137d928598b1e23b0089e1546a8961909176b779360",
+          "bytes": 57248,
+          "declared_weight": "400",
+          "style": "normal",
+          "variable": false,
+          "axes": [],
+          "internal_family": "Comic Neue",
+          "scripts": [
+            "latn"
+          ]
+        }
+      ]
+    },
+    "Cormorant": {
+      "license": "OFL-1.1",
+      "source": "https://github.com/google/fonts/tree/2796410152d4f9524b68ed46e69c1b60f8e0f7c3/ofl/cormorant",
+      "usage_scope": "redistributable-ofl",
+      "license_file": "assets/licenses/OFL-1.1.txt",
+      "ui_selectable": false,
+      "portable_bundle": true,
+      "faces": [
+        {
+          "file": "Cormorant.ttf",
+          "sha256": "8f12cb21f05b61649192eaff13eeeb1b5619bc524feeae672fb916974259a076",
+          "bytes": 572892,
+          "declared_weight": "300 700",
+          "style": "normal",
+          "variable": true,
+          "axes": [
+            {
+              "tag": "wght",
+              "min": 300.0,
+              "max": 700.0,
+              "default": 300.0
+            }
+          ],
+          "internal_family": "Cormorant",
+          "scripts": [
+            "latn",
+            "cyrl",
+            "grek"
+          ]
+        }
+      ]
+    },
+    "EB Garamond": {
+      "license": "OFL-1.1",
+      "source": "https://github.com/google/fonts/tree/2796410152d4f9524b68ed46e69c1b60f8e0f7c3/ofl/ebgaramond",
+      "usage_scope": "redistributable-ofl",
+      "license_file": "assets/licenses/OFL-1.1.txt",
+      "ui_selectable": false,
+      "portable_bundle": true,
+      "faces": [
+        {
+          "file": "EBGaramond.ttf",
+          "sha256": "ef9512f92f6d579e5dc75af59a5a4b1b8b47d2eda89e00b954d44520e5369027",
+          "bytes": 851176,
+          "declared_weight": "400 800",
+          "style": "normal",
+          "variable": true,
+          "axes": [
+            {
+              "tag": "wght",
+              "min": 400.0,
+              "max": 800.0,
+              "default": 400.0
+            }
+          ],
+          "internal_family": "EB Garamond",
+          "scripts": [
+            "latn",
+            "cyrl",
+            "grek"
+          ]
+        }
+      ]
+    },
+    "Marcellus": {
+      "license": "OFL-1.1",
+      "source": "https://github.com/google/fonts/tree/2796410152d4f9524b68ed46e69c1b60f8e0f7c3/ofl/marcellus",
+      "usage_scope": "redistributable-ofl",
+      "license_file": "assets/licenses/OFL-1.1.txt",
+      "ui_selectable": false,
+      "portable_bundle": true,
+      "faces": [
+        {
+          "file": "Marcellus.ttf",
+          "sha256": "1cf0cd10b17d35e852729962cc1ffaffed94514895972458345e2df34abb2f81",
+          "bytes": 46004,
+          "declared_weight": "400",
+          "style": "normal",
+          "variable": false,
+          "axes": [],
+          "internal_family": "Marcellus",
+          "scripts": [
+            "latn",
+            "grek"
+          ]
+        }
+      ]
+    },
+    "Zilla Slab": {
+      "license": "OFL-1.1",
+      "source": "https://github.com/google/fonts/tree/2796410152d4f9524b68ed46e69c1b60f8e0f7c3/ofl/zillaslab",
+      "usage_scope": "redistributable-ofl",
+      "license_file": "assets/licenses/OFL-1.1.txt",
+      "ui_selectable": false,
+      "portable_bundle": true,
+      "faces": [
+        {
+          "file": "ZillaSlab.ttf",
+          "sha256": "41a4626844da9216b031308d4423045c765fe4231d99862d85d7d74509d37703",
+          "bytes": 270104,
+          "declared_weight": "400",
+          "style": "normal",
+          "variable": false,
+          "axes": [],
+          "internal_family": "Zilla Slab",
+          "scripts": [
+            "latn",
+            "grek"
+          ]
+        }
+      ]
+    },
+    "Lovely Little Jelly": {
+      "license": "OFL-1.1",
+      "source": "https://www.100font.com (软萌小果冻体 / Lovely Little Jelly)",
+      "usage_scope": "internal-parity; vendored from the mixture-v2 font package",
+      "license_file": "scripts/_internal/FONT-MANIFEST.lock.json (see usage_scope)",
+      "ui_selectable": false,
+      "portable_bundle": false,
+      "faces": [
+        {
+          "file": "RuanMengXiaoGuoDong-2.ttf",
+          "sha256": "b422b8f46dbbf38d331f1af5d9b3304c42f54a70feb03b727dde24ae556f5da8",
+          "bytes": 5495416,
+          "declared_weight": "400",
+          "style": "normal",
+          "variable": false,
+          "axes": [],
+          "internal_family": "Lovely Little Jelly",
+          "scripts": [
+            "latn",
+            "hani",
+            "cyrl",
+            "grek"
+          ]
+        }
+      ]
+    },
+    "今年也要加油鸭": {
+      "license": "free-personal-commercial (原作者授权免费商用)",
+      "source": "https://www.100font.com (今年也要加油鸭)",
+      "usage_scope": "internal-parity; vendored from the mixture-v2 font package",
+      "license_file": "scripts/_internal/FONT-MANIFEST.lock.json (see usage_scope)",
+      "ui_selectable": false,
+      "portable_bundle": false,
+      "faces": [
+        {
+          "file": "JinNianYeYaoJiaYouYa-2.ttf",
+          "sha256": "bee5d820e3a589c16080bad152feb01b107eeaf75194e671aacdb8f58e96b1fb",
+          "bytes": 7427360,
+          "declared_weight": "400",
+          "style": "normal",
+          "variable": false,
+          "axes": [],
+          "internal_family": "今年也要加油鸭",
+          "scripts": [
+            "latn",
+            "hani"
+          ]
+        }
+      ]
+    },
+    "叶根友钢笔行书简体": {
+      "license": "unknown / unlicensed (爱给网 redistribution; treat as internal-only)",
+      "source": "https://www.aigei.com (叶根友钢笔行书简体)",
+      "usage_scope": "internal-only parity; not for external redistribution",
+      "license_file": "scripts/_internal/FONT-MANIFEST.lock.json (see usage_scope)",
+      "ui_selectable": false,
+      "portable_bundle": false,
+      "faces": [
+        {
+          "file": "叶根友钢笔行书简体_爱给网_aigei_com.ttf",
+          "sha256": "84601dd9b25a857dd158460b8512ff1e6f1108386b7467ad3b00e2ed46d2e3af",
+          "bytes": 1885656,
+          "declared_weight": "400",
+          "style": "normal",
+          "variable": false,
+          "axes": [],
+          "internal_family": "“∂∏˘”",
+          "scripts": [
+            "latn",
+            "hani",
+            "cyrl",
+            "grek"
+          ]
+        }
+      ]
+    },
+    "段宁硬笔楷书粗体": {
+      "license": "free-commercial (段宁 免费商用手写体)",
+      "source": "https://www.100font.com (段宁硬笔楷书粗体)",
+      "usage_scope": "internal-parity; vendored from the mixture-v2 font package",
+      "license_file": "scripts/_internal/FONT-MANIFEST.lock.json (see usage_scope)",
+      "ui_selectable": false,
+      "portable_bundle": false,
+      "faces": [
+        {
+          "file": "DuanNingYingBiKaiShuCuTi-2.ttf",
+          "sha256": "d37991e8d258fc890b970e057e8d1c10d8890472c8e7f1b7c71a652b3c11f7d8",
+          "bytes": 3970060,
+          "declared_weight": "400",
+          "style": "normal",
+          "variable": false,
+          "axes": [],
+          "internal_family": "段宁硬笔楷书粗体",
+          "scripts": [
+            "latn",
+            "hani",
+            "cyrl",
+            "grek"
+          ]
+        }
+      ]
+    },
+    "迷你简硬笔行书": {
+      "license": "unknown / unlicensed (爱给网 redistribution; treat as internal-only)",
+      "source": "https://www.aigei.com (迷你简硬笔行书)",
+      "usage_scope": "internal-only parity; not for external redistribution",
+      "license_file": "scripts/_internal/FONT-MANIFEST.lock.json (see usage_scope)",
+      "ui_selectable": false,
+      "portable_bundle": false,
+      "faces": [
+        {
+          "file": "迷你简硬笔行书字体下载_爱给网_aigei_com.ttf",
+          "sha256": "089cf9c895bdcea23c3a93c74edf20eb977724bd3ab44f7d26293859a05d48cb",
+          "bytes": 5259288,
+          "declared_weight": "400",
+          "style": "normal",
+          "variable": false,
+          "axes": [],
+          "internal_family": "迷你简硬笔行书",
+          "scripts": [
+            "latn",
+            "hani",
+            "cyrl",
+            "grek"
+          ]
+        }
+      ]
+    },
+    "Archivo Black": {
+      "license": "OFL-1.1",
+      "source": "https://github.com/google/fonts/tree/2796410152d4f9524b68ed46e69c1b60f8e0f7c3/ofl/archivoblack",
+      "usage_scope": "redistributable-ofl",
+      "license_file": "assets/licenses/OFL-1.1.txt",
+      "ui_selectable": false,
+      "portable_bundle": true,
+      "faces": [
+        {
+          "file": "ArchivoBlack-Regular.ttf",
+          "sha256": "dd9a89a019b4849f66ab75455fe7bdf931311042cbb0f0f97acc061539703180",
+          "bytes": 90988,
+          "declared_weight": "400",
+          "style": "normal",
+          "variable": false,
+          "axes": [],
+          "internal_family": "Archivo Black",
+          "scripts": [
+            "latn",
+            "grek"
+          ]
+        }
+      ]
+    },
+    "IBM Plex Serif": {
+      "license": "OFL-1.1",
+      "source": "https://github.com/google/fonts/tree/2796410152d4f9524b68ed46e69c1b60f8e0f7c3/ofl/ibmplexserif",
+      "usage_scope": "redistributable-ofl",
+      "license_file": "assets/licenses/OFL-1.1.txt",
+      "ui_selectable": false,
+      "portable_bundle": true,
+      "faces": [
+        {
+          "file": "IBMPlexSerif-Regular.ttf",
+          "sha256": "e882efa9c41949a528ac2369079ec5ef050c1c996bbd0bacce3c3326d44cf80d",
+          "bytes": 163068,
+          "declared_weight": "400",
+          "style": "normal",
+          "variable": false,
+          "axes": [],
+          "internal_family": "IBM Plex Serif",
+          "scripts": [
+            "latn",
+            "cyrl",
+            "grek"
+          ]
+        },
+        {
+          "file": "IBMPlexSerif-SemiBold.ttf",
+          "sha256": "27ce4d105591b48f666b228e1e399838a704594efea22b730000951bea700a60",
+          "bytes": 164528,
+          "declared_weight": "600",
+          "style": "normal",
+          "variable": false,
+          "axes": [],
+          "internal_family": "IBM Plex Serif",
+          "scripts": [
+            "latn",
+            "cyrl",
+            "grek"
+          ]
+        }
+      ]
+    },
+    "Press Start 2P": {
+      "license": "OFL-1.1",
+      "source": "https://github.com/google/fonts/tree/2796410152d4f9524b68ed46e69c1b60f8e0f7c3/ofl/pressstart2p",
+      "usage_scope": "redistributable-ofl",
+      "license_file": "assets/licenses/OFL-1.1.txt",
+      "ui_selectable": false,
+      "portable_bundle": true,
+      "faces": [
+        {
+          "file": "PressStart2P-Regular.ttf",
+          "sha256": "034c77f1f05ec89421e4a63f0e3a4ca1ecf852cc6d2bf611f126f275728e017d",
+          "bytes": 118204,
+          "declared_weight": "400",
+          "style": "normal",
+          "variable": false,
+          "axes": [],
+          "internal_family": "Press Start 2P",
+          "scripts": [
+            "latn",
+            "cyrl",
+            "grek"
+          ]
+        }
+      ]
+    },
+    "Orbitron": {
+      "license": "OFL-1.1",
+      "source": "https://github.com/google/fonts/tree/2796410152d4f9524b68ed46e69c1b60f8e0f7c3/ofl/orbitron",
+      "usage_scope": "redistributable-ofl",
+      "license_file": "assets/licenses/OFL-1.1.txt",
+      "ui_selectable": false,
+      "portable_bundle": true,
+      "faces": [
+        {
+          "file": "Orbitron[wght].ttf",
+          "sha256": "f42db2dd16e642258e35782916eceb1dcdbea06fb958d77ad71dc5963587e8fd",
+          "bytes": 38576,
+          "declared_weight": "400 900",
+          "style": "normal",
+          "variable": true,
+          "axes": [
+            {
+              "tag": "wght",
+              "min": 400.0,
+              "max": 900.0,
+              "default": 400.0
+            }
+          ],
+          "internal_family": "Orbitron",
+          "scripts": [
+            "latn"
+          ]
+        }
+      ]
+    },
+    "DM Serif Display": {
+      "license": "OFL-1.1",
+      "source": "https://github.com/google/fonts/tree/2796410152d4f9524b68ed46e69c1b60f8e0f7c3/ofl/dmserifdisplay",
+      "usage_scope": "redistributable-ofl",
+      "license_file": "assets/licenses/OFL-1.1.txt",
+      "ui_selectable": false,
+      "portable_bundle": true,
+      "faces": [
+        {
+          "file": "DMSerifDisplay-Regular.ttf",
+          "sha256": "8cc3643535edf039aa5d95440a8542735e9197e4f4b8d9303e980fefbf5ab616",
+          "bytes": 76580,
+          "declared_weight": "400",
+          "style": "normal",
+          "variable": false,
+          "axes": [],
+          "internal_family": "DM Serif Display",
+          "scripts": [
+            "latn"
+          ]
+        }
+      ]
+    },
+    "Roboto Condensed": {
+      "license": "OFL-1.1",
+      "source": "https://github.com/google/fonts/tree/2796410152d4f9524b68ed46e69c1b60f8e0f7c3/ofl/robotocondensed",
+      "usage_scope": "redistributable-ofl",
+      "license_file": "assets/licenses/OFL-1.1.txt",
+      "ui_selectable": false,
+      "portable_bundle": true,
+      "faces": [
+        {
+          "file": "RobotoCondensed[wght].ttf",
+          "sha256": "dace262afcee68a5276f200d8026c57221735c0118ab5fda8c2c0d3dc409a8d0",
+          "bytes": 371616,
+          "declared_weight": "100 900",
+          "style": "normal",
+          "variable": true,
+          "axes": [
+            {
+              "tag": "wght",
+              "min": 100.0,
+              "max": 900.0,
+              "default": 400.0
+            }
+          ],
+          "internal_family": "Roboto Condensed",
+          "scripts": [
+            "latn",
+            "cyrl",
+            "grek"
+          ]
+        }
+      ]
+    },
+    "VT323": {
+      "license": "OFL-1.1",
+      "source": "https://github.com/google/fonts/tree/2796410152d4f9524b68ed46e69c1b60f8e0f7c3/ofl/vt323",
+      "usage_scope": "redistributable-ofl",
+      "license_file": "assets/licenses/OFL-1.1.txt",
+      "ui_selectable": false,
+      "portable_bundle": true,
+      "faces": [
+        {
+          "file": "VT323-Regular.ttf",
+          "sha256": "cf4de751ada78ceac033dbe16a687742939995b77bc2a052ae17a4957958594d",
+          "bytes": 153116,
+          "declared_weight": "400",
+          "style": "normal",
+          "variable": false,
+          "axes": [],
+          "internal_family": "VT323",
+          "scripts": [
+            "latn",
+            "grek"
+          ]
+        }
+      ]
+    },
+    "Baloo 2": {
+      "license": "OFL-1.1",
+      "source": "https://github.com/google/fonts/tree/2796410152d4f9524b68ed46e69c1b60f8e0f7c3/ofl/baloo2",
+      "usage_scope": "redistributable-ofl",
+      "license_file": "assets/licenses/OFL-1.1.txt",
+      "ui_selectable": false,
+      "portable_bundle": true,
+      "faces": [
+        {
+          "file": "Baloo2[wght].ttf",
+          "sha256": "d47a6852548059b1db49a1319d06d499d546c3fa2237cf9eee9c43c8abb025c2",
+          "bytes": 683200,
+          "declared_weight": "400 800",
+          "style": "normal",
+          "variable": true,
+          "axes": [
+            {
+              "tag": "wght",
+              "min": 400.0,
+              "max": 800.0,
+              "default": 400.0
+            }
+          ],
+          "internal_family": "Baloo 2",
+          "scripts": [
+            "latn",
+            "grek"
+          ]
+        }
+      ]
+    },
+    "Bodoni Moda": {
+      "license": "OFL-1.1",
+      "source": "https://github.com/google/fonts/tree/2796410152d4f9524b68ed46e69c1b60f8e0f7c3/ofl/bodonimoda",
+      "usage_scope": "redistributable-ofl",
+      "license_file": "assets/licenses/OFL-1.1.txt",
+      "ui_selectable": false,
+      "portable_bundle": true,
+      "faces": [
+        {
+          "file": "BodoniModa[opsz,wght].ttf",
+          "sha256": "550f5e34ee0a828d7941b1fe9bc58b34e5260d3f33a61532e6d0a0114e79a5cf",
+          "bytes": 162104,
+          "declared_weight": "400 900",
+          "style": "normal",
+          "variable": true,
+          "axes": [
+            {
+              "tag": "wght",
+              "min": 400.0,
+              "max": 900.0,
+              "default": 400.0
+            },
+            {
+              "tag": "opsz",
+              "min": 6.0,
+              "max": 96.0,
+              "default": 11.0
+            }
+          ],
+          "internal_family": "Bodoni Moda",
+          "scripts": [
+            "latn",
+            "grek"
+          ]
+        }
+      ]
+    },
+    "Ark Pixel": {
+      "license": "OFL-1.1",
+      "source": "https://github.com/TakWolf/ark-pixel-font (12px proportional zh_cn)",
+      "usage_scope": "redistributable-ofl",
+      "license_file": "assets/licenses/OFL-1.1.txt",
+      "ui_selectable": false,
+      "portable_bundle": true,
+      "faces": [
+        {
+          "file": "ArkPixel-12px-proportional-zh_cn.ttf",
+          "sha256": "c6b38b544f1a7a8281315ec003ffe116f8e586e06cbc188be1fe698a4f8082be",
+          "bytes": 4989864,
+          "declared_weight": "400",
+          "style": "normal",
+          "variable": false,
+          "axes": [],
+          "internal_family": "Ark Pixel 12px Prop zh_cn",
+          "scripts": [
+            "latn",
+            "hani",
+            "cyrl",
+            "grek"
+          ]
+        }
+      ]
+    },
+    "Fusion Pixel": {
+      "license": "OFL-1.1",
+      "source": "https://github.com/TakWolf/fusion-pixel-font (12px proportional zh_hans)",
+      "usage_scope": "redistributable-ofl",
+      "license_file": "assets/licenses/OFL-1.1.txt",
+      "ui_selectable": false,
+      "portable_bundle": true,
+      "faces": [
+        {
+          "file": "FusionPixel-12px-proportional-zh_hans.ttf",
+          "sha256": "1b423de0be589d159ef71af7d00530a7176e16af768a26adbc2e524e8817aad9",
+          "bytes": 7001608,
+          "declared_weight": "400",
+          "style": "normal",
+          "variable": false,
+          "axes": [],
+          "internal_family": "Fusion Pixel 12px Prop zh_hans",
+          "scripts": [
+            "latn",
+            "hani",
+            "cyrl",
+            "grek"
+          ]
+        }
+      ]
+    },
+    "Alimama FangYuanTi VF": {
+      "license": "free-commercial (Alibaba Design EULA; 永久免费商用, no resale/modification)",
+      "source": "https://www.alibabafonts.com (阿里妈妈方圆体 VF)",
+      "usage_scope": "internal-parity; free-commercial EULA, not OFL",
+      "license_file": "scripts/_internal/FONT-MANIFEST.lock.json (see usage_scope)",
+      "ui_selectable": false,
+      "portable_bundle": false,
+      "faces": [
+        {
+          "file": "AlimamaFangYuanTiVF.ttf",
+          "sha256": "b0b8c4c057af7dbc6ccb52a3ad00138fed41d1ad37d4f4a666b6cd431c913d94",
+          "bytes": 7402152,
+          "declared_weight": "200 700",
+          "style": "normal",
+          "variable": true,
+          "axes": [
+            {
+              "tag": "wght",
+              "min": 200.0,
+              "max": 700.0,
+              "default": 700.0
+            },
+            {
+              "tag": "BEVL",
+              "min": 1.0,
+              "max": 100.0,
+              "default": 100.0
+            }
+          ],
+          "internal_family": "Alimama FangYuanTi VF",
+          "scripts": [
+            "latn",
+            "hani"
+          ]
+        }
+      ]
+    },
+    "Alibaba PuHuiTi 3.0": {
+      "license": "free-commercial (Alibaba EULA; 全球永久免费商用, no resale/modification)",
+      "source": "https://www.alibabafonts.com (阿里巴巴普惠体 3.0 · 55 Regular)",
+      "usage_scope": "internal-parity; free-commercial EULA, not OFL",
+      "license_file": "scripts/_internal/FONT-MANIFEST.lock.json (see usage_scope)",
+      "ui_selectable": false,
+      "portable_bundle": false,
+      "faces": [
+        {
+          "file": "AlibabaPuHuiTi-3-55-Regular.ttf",
+          "sha256": "be33bc8d45ced30fa5c542f6f056565baf85003d4e079522110d76016f8a04e2",
+          "bytes": 8532824,
+          "declared_weight": "400",
+          "style": "normal",
+          "variable": false,
+          "axes": [],
+          "internal_family": "Alibaba PuHuiTi 3.0",
+          "scripts": [
+            "latn",
+            "hani",
+            "cyrl",
+            "grek"
+          ]
+        }
+      ]
+    },
+    "DingTalk JinBuTi": {
+      "license": "free-commercial (DingTalk EULA; 免费商用, no resale/modification)",
+      "source": "https://www.dingtalk.com (钉钉进步体)",
+      "usage_scope": "internal-parity; free-commercial EULA, not OFL",
+      "license_file": "scripts/_internal/FONT-MANIFEST.lock.json (see usage_scope)",
+      "ui_selectable": false,
+      "portable_bundle": false,
+      "faces": [
+        {
+          "file": "DingTalkJinBuTi-Regular.ttf",
+          "sha256": "6f6a1e15f33d559ff3d0d7dcc8bd9ab25a6dbd8e9bcd29865daf7615a17ea284",
+          "bytes": 2129136,
+          "declared_weight": "400",
+          "style": "normal",
+          "variable": false,
+          "axes": [],
+          "internal_family": "DingTalk JinBuTi",
+          "scripts": [
+            "latn",
+            "hani",
+            "grek"
+          ]
+        }
+      ]
+    },
+    "Sarasa Mono SC": {
+      "license": "OFL-1.1",
+      "source": "https://github.com/be5invis/Sarasa-Gothic (更纱黑体 Mono SC)",
+      "usage_scope": "redistributable-ofl",
+      "license_file": "assets/licenses/OFL-1.1.txt",
+      "ui_selectable": false,
+      "portable_bundle": true,
+      "faces": [
+        {
+          "file": "SarasaMonoSC-Regular.ttf",
+          "sha256": "00c49d6963436952332c69fee313495851f3579f2346769b049947220dba36d7",
+          "bytes": 25897640,
+          "declared_weight": "400",
+          "style": "normal",
+          "variable": false,
+          "axes": [],
+          "internal_family": "Sarasa Mono SC",
+          "scripts": [
+            "latn",
+            "hani",
+            "cyrl",
+            "grek"
+          ]
+        }
+      ]
+    },
+    "Alimama ShuHeiTi": {
+      "license": "free-commercial (Alibaba Design EULA; 永久免费商用, no resale/modification)",
+      "source": "https://www.alibabafonts.com (阿里妈妈数黑体 · Bold)",
+      "usage_scope": "internal-parity; free-commercial EULA, not OFL",
+      "license_file": "scripts/_internal/FONT-MANIFEST.lock.json (see usage_scope)",
+      "ui_selectable": false,
+      "portable_bundle": false,
+      "faces": [
+        {
+          "file": "AlimamaShuHeiTi-Bold.ttf",
+          "sha256": "3ef4ec3f5bac4b71cdee9190aabd5b20995016a59ffee60de87c9a204ac2a684",
+          "bytes": 1360708,
+          "declared_weight": "700",
+          "style": "normal",
+          "variable": false,
+          "axes": [],
+          "internal_family": "Alimama ShuHeiTi",
+          "scripts": [
+            "latn",
+            "hani"
+          ]
+        }
+      ]
+    },
+    "Zpix": {
+      "license": "proprietary / paid (SolidZORO; freely downloadable binary, license is paid)",
+      "source": "https://github.com/SolidZORO/zpix-pixel-font (最像素 Zpix)",
+      "usage_scope": "internal-only parity; paid license, not for external redistribution",
+      "license_file": "scripts/_internal/FONT-MANIFEST.lock.json (see usage_scope)",
+      "ui_selectable": false,
+      "portable_bundle": false,
+      "faces": [
+        {
+          "file": "Zpix.ttf",
+          "sha256": "fb18664ac66d1c6f09c2663b4c1a049f9a00e678f12bfc1c080679aa8e4951d4",
+          "bytes": 4681264,
+          "declared_weight": "400",
+          "style": "normal",
+          "variable": false,
+          "axes": [],
+          "internal_family": "Zpix",
+          "scripts": [
+            "latn",
+            "hani",
+            "cyrl",
+            "grek"
+          ]
+        }
+      ]
+    }
+  }
+}

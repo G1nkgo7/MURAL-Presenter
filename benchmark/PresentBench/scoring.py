@@ -101,7 +101,10 @@ def score_section(
             if not isinstance(item, dict):
                 continue
             valid_count += 1
-            ans = item.get("answer", "").strip().lower()
+            answer = item.get("answer")
+            if not isinstance(answer, str) or not answer.strip():
+                raise ValueError(f"Incomplete judge result at {cls_id}/{item_id}; no score computed")
+            ans = answer.strip().lower()
             if ans == "yes":
                 yes_count += 1
 
@@ -355,5 +358,4 @@ if __name__ == "__main__":
         output_path=args.output_path,
         print_summary=True,
     )
-
 

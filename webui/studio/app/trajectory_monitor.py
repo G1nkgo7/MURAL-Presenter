@@ -15,11 +15,13 @@ import time
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
+
+from .workspace_layout import WorkspaceLayout
 from typing import Any
 from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, Query, Request
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.templating import Jinja2Templates
 
 from . import mdrender, trace
@@ -94,6 +96,17 @@ def _catalog_deck_id(key: str) -> int:
     return int(digest, 16)
 
 
+def _legacy_extra_key(query: str) -> str:
+    return f"extra-{hashlib.sha1(query.encode('utf-8')).hexdigest()[:16]}"
+
+
+def _extra_key(query: str, config: dict[str, Any]) -> str:
+    """Keep retries together without hiding cross-model comparisons."""
+    model = _normalized_query(config.get("model")).lower() or "unknown-model"
+    model_digest = hashlib.sha1(model.encode("utf-8")).hexdigest()[:10]
+    return f"{_legacy_extra_key(query)}-{model_digest}"
+
+
 def _thinking_enabled(config: dict[str, Any]) -> bool:
     effective = config.get("effective_thinking")
     if isinstance(effective, bool):
@@ -157,17 +170,36 @@ def _matches_trajectory_run(run: Path, config: dict[str, Any]) -> bool:
     return expected in model or expected in name
 
 
+def _is_batch_layout_run(path: Path) -> bool:
+    """New v1 harness batch layout: runs/<batch>/<sid>/_trace/live-events.jsonl.
+
+    A run dir here holds sample dirs directly (no ``work/`` wrapper); each sample
+    keeps its trajectory in ``_trace/live-events.jsonl`` + ``_trace/training/``.
+    """
+    try:
+        for child in path.iterdir():
+            if child.is_dir() and (child / "_trace" / "live-events.jsonl").is_file():
+                return True
+    except OSError:
+        return False
+    return False
+
+
 def _run_directories() -> list[Path]:
     found: list[Path] = []
     for root in configured_roots():
-        if (root / "work").is_dir() or (root / "run.log").is_file():
+        if (root / "work").is_dir() or (root / "run.log").is_file() or _is_batch_layout_run(root):
             found.append(root)
         try:
             children = list(root.iterdir())
         except OSError:
             continue
         for child in children:
-            if child.is_dir() and ((child / "work").is_dir() or (child / "run.log").is_file()):
+            if child.is_dir() and (
+                (child / "work").is_dir()
+                or (child / "run.log").is_file()
+                or _is_batch_layout_run(child)
+            ):
                 found.append(child.resolve())
     return sorted(set(found), key=_latest_mtime, reverse=True)
 
@@ -233,9 +265,10 @@ def _catalog_records() -> list[dict[str, Any]]:
                 key = next((query_id for query_id in records if query_id in sample_id), None)
             if key is None:
                 # Keep a real smoke/canary even when it is intentionally
-                # outside the formal 3K catalogue. Repeated retries collapse to
-                # the same logical query instead of appearing as separate rows.
-                key = f"extra-{hashlib.sha1(query.encode('utf-8')).hexdigest()[:16]}"
+                # outside the formal 3K catalogue. Repeated retries for the
+                # same configured model collapse, while cross-model runs remain
+                # independently inspectable.
+                key = _extra_key(query, config)
             timestamp = _latest_mtime(sample)
             previous = latest_started.get(key)
             if previous is None or timestamp > previous[0]:
@@ -267,9 +300,21 @@ def _catalog_records() -> list[dict[str, Any]]:
 
 
 def _resolve_catalog_deck(deck_id: int) -> dict[str, Any]:
-    for record in _catalog_records():
+    records = _catalog_records()
+    for record in records:
         if record["id"] == deck_id:
             return record
+    # Preserve old query-only monitor links after extra rows became model-aware.
+    legacy_matches = [
+        record
+        for record in records
+        if record.get("catalog") is None
+        and _catalog_deck_id(_legacy_extra_key(str(record.get("query") or ""))) == deck_id
+        and record.get("run") is not None
+        and record.get("sample") is not None
+    ]
+    if legacy_matches:
+        return max(legacy_matches, key=lambda record: str(record.get("updated_at") or ""))
     raise HTTPException(status_code=404, detail="trajectory deck not found")
 
 
@@ -350,12 +395,61 @@ def _sample_process_alive(run: Path | None, sample: Path) -> bool:
             pid = None
         if _pid_alive(pid):
             return True
+    # v1 batch layout has no launcher.pid / subagent config pids. A deck can sit
+    # in a single opus-5 call for many minutes without writing an event, so a
+    # tight freshness window would wrongly flag it stopped. Trust a recently
+    # touched live-events log, and otherwise defer to whether the owning batch
+    # process (infer.py --batch <name>) is still alive.
+    live = sample / "_trace" / "live-events.jsonl"
+    try:
+        if time.time() - live.stat().st_mtime < 1800:
+            return True
+    except OSError:
+        pass
+    if run is not None and run.parent.name == "runs" and _batch_process_alive(run.name):
+        return True
     return False
+
+
+def _batch_process_alive(batch: str) -> bool:
+    """Whether a synthesis batch's main process (infer.py --batch <batch>) runs."""
+    needle = f"--batch {batch}"
+    try:
+        for pid in os.listdir("/proc"):
+            if not pid.isdigit():
+                continue
+            try:
+                with open(f"/proc/{pid}/cmdline", "rb") as handle:
+                    cmd = handle.read().replace(b"\0", b" ").decode("utf-8", "ignore")
+            except OSError:
+                continue
+            if "infer.py" in cmd and needle in cmd:
+                return True
+    except OSError:
+        return False
+    return False
+
+
+def _manifest_paths(run: Path) -> list[Path]:
+    """Manifest locations for a run.
+
+    Old layout keeps them under ``<run>/logs``. The v1 batch layout keeps the
+    run at ``<artifact-root>/runs/<batch>`` and its manifest as a sibling at
+    ``<artifact-root>/logs/<batch>.manifest.jsonl``.
+    """
+    paths: list[Path] = []
+    if (run / "logs").is_dir():
+        paths.extend(sorted((run / "logs").glob("*.manifest.jsonl")))
+    if run.parent.name == "runs":
+        sibling = run.parent.parent / "logs" / f"{run.name}.manifest.jsonl"
+        if sibling.is_file():
+            paths.append(sibling)
+    return paths
 
 
 def _manifest_statuses(run: Path) -> dict[str, str]:
     statuses: dict[str, str] = {}
-    for manifest in (run / "logs").glob("*.manifest.jsonl") if (run / "logs").is_dir() else ():
+    for manifest in _manifest_paths(run):
         try:
             for raw in manifest.read_text(encoding="utf-8").splitlines():
                 row = json.loads(raw)
@@ -370,7 +464,7 @@ def _manifest_statuses(run: Path) -> dict[str, str]:
 def _manifest_record(run: Path, sample_id: str) -> dict[str, Any]:
     """Return the latest terminal record for one sample, when available."""
     latest: dict[str, Any] = {}
-    for manifest in (run / "logs").glob("*.manifest.jsonl") if (run / "logs").is_dir() else ():
+    for manifest in _manifest_paths(run):
         try:
             for raw in manifest.read_text(encoding="utf-8").splitlines():
                 row = json.loads(raw)
@@ -381,12 +475,77 @@ def _manifest_record(run: Path, sample_id: str) -> dict[str, Any]:
     return latest
 
 
+def _live_event_roles(sample: Path, *, tail_bytes: int = 512 * 1024) -> set[str]:
+    """Roles seen in a v1 sample's live-events log (orchestrator/slide/image/...).
+
+    Reads only the tail to stay cheap on long-running decks; role coverage for
+    stage inference does not need the full history.
+    """
+    roles: set[str] = set()
+    path = sample / "_trace" / "live-events.jsonl"
+    try:
+        size = path.stat().st_size
+        with path.open("rb") as handle:
+            if size > tail_bytes:
+                handle.seek(size - tail_bytes)
+                handle.readline()  # discard partial line
+            body = handle.read().decode("utf-8", errors="ignore")
+    except OSError:
+        return roles
+    for raw in body.splitlines():
+        if not raw.strip():
+            continue
+        try:
+            role = json.loads(raw).get("role")
+        except ValueError:
+            continue
+        if role:
+            roles.add(str(role))
+    return roles
+
+
+def _batch_sample_config(sample: Path) -> dict[str, Any]:
+    """Synthesize the monitor's per-sample config dict from the v1 batch layout.
+
+    Old runs shipped ``_trace/orchestrator/config.json``; the v1 harness keeps
+    the equivalent facts in ``_state/run.json`` (query, provider.model, language,
+    page hint). Map them onto the same keys the monitor already consumes.
+    """
+    run_state = _json(sample / "_state" / "run.json", {})
+    if not isinstance(run_state, dict):
+        run_state = {}
+    provider = run_state.get("provider") if isinstance(run_state.get("provider"), dict) else {}
+    query = _normalized_query(
+        run_state.get("raw_user_query") or run_state.get("task") or run_state.get("query")
+    )
+    page_hint = run_state.get("page_count_hint")
+    try:
+        page_count = int(page_hint) if page_hint is not None else 0
+    except (TypeError, ValueError):
+        page_count = 0
+    return {
+        "sample_id": sample.name,
+        "task": query,
+        "model": str(provider.get("model") or "") if isinstance(provider, dict) else "",
+        "reasoning_effort": str(run_state.get("reasoning_effort") or "high"),
+        "language": str(run_state.get("language") or ""),
+        "generation_preferences": {"page_count": page_count},
+        "effective_thinking": bool(provider.get("thinking")) if isinstance(provider, dict) else None,
+    }
+
+
 def _sample_roots(run: Path) -> list[tuple[Path, dict[str, Any]]]:
     rows: list[tuple[Path, dict[str, Any]]] = []
     for config_path in run.glob("work/*/*/_trace/orchestrator/config.json"):
         config = _json(config_path, {})
         if isinstance(config, dict):
             rows.append((config_path.parents[2], config))
+    if not rows and _is_batch_layout_run(run):
+        # v1 batch layout: sample dirs sit directly under the run, each with
+        # _trace/live-events.jsonl and _state/run.json.
+        for child in run.iterdir():
+            if child.is_dir() and (child / "_trace" / "live-events.jsonl").is_file():
+                rows.append((child, _batch_sample_config(child)))
     return sorted(rows, key=lambda item: _latest_mtime(item[0]), reverse=True)
 
 
@@ -995,14 +1154,23 @@ def _sample_summary(
 ) -> dict[str, Any]:
     sample_id = str(config.get("sample_id") or sample.name)
     expected = int((config.get("generation_preferences") or {}).get("page_count") or 0)
-    plans = len(list((sample / "plan").glob("slide_*.md")))
-    slides = len(list((sample / "slides").glob("slide_*.html")))
-    renders = len(list((sample / "renders").glob("slide_*.png")))
+    layout = WorkspaceLayout.load(sample)
+    plans = len(trace._planned_pages(str(sample)))
+    slides = len(list(layout.path("slides").glob("slide_*.html")))
+    renders = len(list(layout.path("renders").glob("slide_*.png")))
     assets = _ready_asset_count(sample)
-    present = (sample / "present.html").is_file()
+    present = layout.path("present").is_file()
     review_started = (sample / "_trace/subagents/review").is_dir()
     slide_started = any((sample / "_trace/subagents").glob("slide*/config.json"))
     image_started = any((sample / "_trace/subagents").glob("image*/config.json"))
+    # v1 batch layout has no _trace/subagents/; derive role signals from the
+    # unified live-events log (roles: orchestrator/slide/image/research) and the
+    # on-disk artifacts that _sample_summary already counts.
+    if not (slide_started or image_started or review_started):
+        roles = _live_event_roles(sample)
+        review_started = review_started or "review" in roles or "critic" in roles
+        slide_started = slide_started or bool(slides or renders) or "slide" in roles
+        image_started = image_started or bool(assets) or "image" in roles
     terminal_status = str(manifest_status or "").lower()
     if present or terminal_status == "completed":
         stage, progress, status = "completed", 100, "completed"
@@ -1055,14 +1223,8 @@ def _tail_log(path: Path, sample_id: str, lines: int = 120, max_bytes: int = 512
 
 
 def _artifact_rows(run: Path, sample: Path) -> list[dict[str, Any]]:
-    candidates: list[Path] = []
-    candidates.extend(sorted((sample / "renders").glob("slide_*.png")))
-    candidates.extend(sorted((sample / "assets").glob("contact-sheet*.png")))
-    candidates.extend(path for path in (sample / "assets").glob("*.png") if "_work" not in path.name)
-    for relative in ("present.html", "speech.md", "plan/deck.md", "plan/design-brief.md"):
-        path = sample / relative
-        if path.is_file():
-            candidates.append(path)
+    layout = WorkspaceLayout.load(sample)
+    candidates = [path for _, _, files in layout.group_files() for path in files]
     deduped: dict[str, Path] = {}
     for path in candidates:
         deduped[str(path.resolve())] = path
@@ -1139,6 +1301,12 @@ def sample_payload(run: Path, sample_id: str) -> dict[str, Any]:
             "workspace": str(sample),
             "agents": _agent_rows(sample, complete, run=run),
             "artifacts": _artifact_rows(run, sample),
+            "mural_runtime": _json(
+                sample / "_trace/runtime-summary.json", {}
+            ),
+            "training_export": _json(
+                sample / "_trace/training-manifest.json", {}
+            ),
             "recent_log": _tail_log(run / "run.log", resolved_id),
             "pages": _page_rows(run, sample),
             "presentation_url": (
@@ -1210,7 +1378,7 @@ def trajectory_deck_progress(deck_id: int):
 
 
 @router.get("/api/trajectory-monitor/decks/{deck_id}/livefeed")
-def trajectory_deck_livefeed(deck_id: int):
+def trajectory_deck_livefeed(deck_id: int, cursor: int = Query(0, ge=0)):
     record = _resolve_catalog_deck(deck_id)
     if record["run"] is None or record["sample"] is None:
         return {"agents": {}, "page_agents": {}, "specialist_artifacts": {"agents": {}}}
@@ -1221,6 +1389,15 @@ def trajectory_deck_livefeed(deck_id: int):
         _manifest_statuses(run).get(str(config.get("sample_id") or sample.name)),
         run=run,
     )
+    if (sample / "_trace/live-events.jsonl").is_file():
+        payload = trace.livefeed(
+            "",
+            run_dir=str(sample),
+            deck_status=summary["status"],
+            live_cursor=cursor,
+        )
+        payload["specialist_artifacts"] = trace.specialist_artifacts(str(sample))
+        return payload
     return _feed_payload(
         sample,
         summary["status"] == "completed",
@@ -1228,6 +1405,52 @@ def trajectory_deck_livefeed(deck_id: int):
         config=config,
         status=summary["status"],
     )
+
+
+@router.get("/api/trajectory-monitor/decks/{deck_id}/live-events")
+def trajectory_deck_live_events(
+    deck_id: int,
+    cursor: int = Query(0, ge=0),
+    limit: int = Query(500, ge=1, le=5000),
+):
+    record = _resolve_catalog_deck(deck_id)
+    if record["sample"] is None:
+        return trace.live_events("", cursor=cursor, limit=limit)
+    return trace.live_events(str(record["sample"]), cursor=cursor, limit=limit)
+
+
+@router.get("/api/trajectory-monitor/decks/{deck_id}/agent-trace/{agent_key}")
+def trajectory_deck_agent_trace(
+    deck_id: int,
+    agent_key: str,
+    segment: str = "",
+    source: str = "messages",
+    include_workflow: bool = False,
+):
+    record = _resolve_catalog_deck(deck_id)
+    if record["sample"] is None:
+        raise HTTPException(status_code=404, detail="Agent Trace 尚未创建")
+    try:
+        return trace.agent_trace_payload(
+            str(record["sample"]), agent_key, segment=segment, source=source,
+            include_workflow=include_workflow,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Agent Trace 不存在") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/api/trajectory-monitor/decks/{deck_id}/trace-images/{digest}")
+def trajectory_deck_trace_image(deck_id: int, digest: str):
+    _, sample, _ = _resolve_deck(deck_id)
+    try:
+        content, media_type = trace.workflow_trace_image(str(sample), digest)
+    except OSError as exc:
+        raise HTTPException(status_code=404, detail="historical image not found or invalid") from exc
+    return Response(content, media_type=media_type, headers={
+        "Cache-Control": "private, max-age=31536000, immutable", "X-Content-Type-Options": "nosniff",
+    })
 
 
 @router.get("/api/trajectory-monitor/decks/{deck_id}/file")
@@ -1248,14 +1471,21 @@ def trajectory_deck_slideinfo(deck_id: int, n: int = Query(..., ge=0)):
     if record["sample"] is None:
         return {"exists": False}
     sample = record["sample"]
-    relative = "plan/deck.md" if n == 0 else f"plan/slide_{n:02d}.md"
-    path = sample / relative
-    if not path.is_file():
+    try:
+        layout = WorkspaceLayout.load(sample)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    try:
+        text = layout.plan_text(n)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if not text:
         return {"exists": False}
-    html_rel = "base.css" if n == 0 else f"slides/slide_{n:02d}.html"
+    html_path = layout.path("base_css") if n == 0 else layout.path("slide_pattern", page=n)
+    html_rel = layout.relative(html_path)
     return {
         "exists": True,
-        "html": mdrender.render(path.read_text(encoding="utf-8", errors="replace")),
+        "html": mdrender.render(text),
         "html_rel": html_rel if (sample / html_rel).is_file() else None,
         "assets": [],
     }

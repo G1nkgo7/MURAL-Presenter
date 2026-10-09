@@ -34,7 +34,10 @@ class ReleaseFontBundleTests(unittest.TestCase):
             font.close()
 
     def test_public_mural_presenter_requires_the_variable_weight_range(self):
-        path = ROOT.parent / "skills/mural-presenter/scripts/font_bundle.py"
+        path = (
+            ROOT.parent
+            / "archive/mural-presenter-pre-v0.6/skills/mural-presenter/scripts/font_bundle.py"
+        )
         name = "font_bundle_mural_presenter"
         spec = importlib.util.spec_from_file_location(name, path)
         module = importlib.util.module_from_spec(spec)

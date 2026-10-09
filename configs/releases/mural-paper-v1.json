@@ -1,7 +1,7 @@
 {
   "channel": "paper-release-candidate",
   "git": {
-    "source_commit": "7aab7c2f78d044fb8f1947df6887135141a56932",
+    "source_commit": "bde6d72cdc930cb2a082a3adab70761399d3cafa",
     "worktree_state": "Portable integration snapshot; original frozen core verified independently by publication inventory."
   },
   "harness": {

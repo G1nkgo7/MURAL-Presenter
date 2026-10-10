@@ -19,6 +19,9 @@ The public branch contains the runtime, WebUI and their maintenance files. Keep 
 root docs, examples, design drafts, training and paper workspaces local; do not force-add them.
 Keep public brand exports in `assets/logo/exports/` and method figures in `assets/figures/`.
 Both README editions should retain the project identity and method overview alongside current usage.
+Keep the large light/dark MURAL header visible. When the paper name changes, update its typography
+while preserving the existing mascot and historical exports. Put detailed provenance and validation
+records in expandable sections so the overview and quick start remain easy to find.
 Keep paper terminology, training checkpoints and evaluation scope consistent across both editions.
 Record manuscript figure sources in `assets/figures/README.md`; keep the runtime source pin separate
 from model checkpoint identities and do not imply that unpublished experiment artifacts are bundled.

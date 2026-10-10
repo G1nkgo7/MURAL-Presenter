@@ -9,7 +9,8 @@ import subprocess
 ROOT = Path(__file__).resolve().parents[1]
 PUBLIC_ASSET_ROOTS = ("assets/logo/exports/", "assets/figures/")
 README_ASSETS = {
-    "assets/logo/exports/mural-mark-256.png",
+    "assets/logo/exports/mural-paper-lockup-light.svg",
+    "assets/logo/exports/mural-paper-lockup-dark.svg",
     "assets/figures/cross-page-dependencies.png",
     "assets/figures/roles-and-tools.png",
     "assets/figures/ownership-workflow.png",
@@ -56,6 +57,10 @@ def main() -> None:
         assert ".git" not in parts and ".venv" not in parts and "node_modules" not in parts
         assert not (Path(name).name.startswith(".env") and Path(name).name != ".env.example"), name
     assert README_ASSETS <= set(tracked), "README logos or method diagrams are not tracked"
+    for name in ("README.md", "README_zh-CN.md"):
+        readme = (ROOT / name).read_text()
+        missing_assets = {asset for asset in README_ASSETS if asset not in readme}
+        assert not missing_assets, f"{name} omits public branding or figures: {sorted(missing_assets)}"
     release = json.loads((ROOT / "configs/releases/mural-paper-v1.json").read_text())
     missing = set(release["integration"]["files"]) - set(tracked)
     assert not missing, f"Release depends on untracked files: {sorted(missing)}"

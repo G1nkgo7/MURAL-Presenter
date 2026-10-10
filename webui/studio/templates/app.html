@@ -504,7 +504,12 @@
     <section class="editor" id="editor" hidden>
       <header class="ed-top">
         <button class="link" id="back-btn">← 返回</button>
-        <div class="ed-title" id="ed-title">演示文稿</div>
+        <div class="ed-heading">
+          <div class="ed-title" id="ed-title">演示文稿</div>
+          <span class="ed-model case-model" id="case-model-badge" hidden>
+            <span aria-hidden="true">◇</span><span class="case-model-label">模型</span><strong id="case-model">—</strong>
+          </span>
+        </div>
         <nav class="workspace-view-switch" id="workspace-view-switch" aria-label="切换 Workflow 与实时 PPT">
           <button type="button" data-workspace-view="workflow" class="on" aria-pressed="true">
             <span class="workspace-view-icon workspace-view-icon-workflow" aria-hidden="true"><i></i><i></i><i></i></span>
@@ -526,11 +531,13 @@
       <div class="ed-progressline"><div class="bar" id="ed-bar"></div></div>
 
       <div class="case-context" id="case-context" hidden>
-        <div class="case-model"><span class="case-context-label">生成模型</span><strong id="case-model">—</strong></div>
         <details class="case-query" id="case-query">
           <summary><span class="case-context-label">原始 Query</span><span class="case-query-preview" id="case-query-preview"></span><span class="case-query-toggle" aria-hidden="true"></span></summary>
           <div class="case-query-full" id="case-query-full"></div>
         </details>
+        <button type="button" class="outline-query-copy case-query-copy" id="case-query-copy" title="复制完整原始 Query" aria-label="复制完整原始 Query" aria-live="polite" disabled>
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2"/><path d="M12.5 3H5a2 2 0 0 0-2 2v7.5"/></svg><span>复制</span>
+        </button>
       </div>
 
       <div class="ed-body">

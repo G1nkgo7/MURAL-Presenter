@@ -20,10 +20,11 @@ def test_browser_completed_case_preview_and_context(tmp_path, monkeypatch):
         monkeypatch.setenv(name, str(tmp_path))
     env = engine.render_env(dict(os.environ))
     query = "Create a presentation about renewable energy.\n" + "Compare solar, wind and storage. " * 80 + "<script>unsafe()</script>"
-    base = {"title": "Renewable energy", "query": "internal augmented query",
+    model_label = "27B Global Selective SFT · 2ep / checkpoint-64"
+    base = {"title": "Renewable Energy: A Guide to Solar, Wind and Storage", "query": "internal augmented query",
             "user_query": query, "status": "completed", "phase": "done", "slides_total": 3,
             "rendered": [1, 2, 3], "authored": [1, 2, 3], "slides_rendered": 3,
-            "html_ready": True, "html_final": True, "model": "astra", "model_label": "GPT-6 Astra",
+            "html_ready": True, "html_final": True, "model": "astra", "model_label": model_label,
             "skill_version": "mural-presenter-v1", "elapsed_s": 42}
     cases = {
         "901": {**base, "id": 901},
@@ -76,20 +77,43 @@ window.cleanDeck={go:n=>window.__deckGo(n-1),count:3,fontsReady:document.fonts.r
                     route.abort()
 
             page.route("**/*", serve)
+            page.add_init_script("""window.copiedQueries=[];window.clipboardApiCalls=0;
+document.execCommand=command=>{if(command==='copy'){copiedQueries.push(document.activeElement.value);return true}return false};
+Object.defineProperty(navigator,'clipboard',{value:{writeText:async text=>{clipboardApiCalls++;copiedQueries.push(text)}}});""")
             page.goto("http://case.test/#static-901", wait_until="domcontentloaded")
             page.wait_for_selector("#editor.workspace-ppt", state="visible")
             assert page.evaluate("ed.sel") == 1
             page.locator("#canvas-deck.font-ready").wait_for(state="visible")
-            assert page.locator("#case-model").inner_text() == "GPT-6 Astra"
+            assert page.locator("#case-model").inner_text() == model_label
+            assert page.locator("#case-model-badge").get_attribute("title") == f"生成模型：{model_label}"
+            assert page.locator(".ed-top #case-model-badge").count() == 1
+            assert page.locator("#case-context #case-model").count() == 0
             assert page.locator("#case-query-preview").text_content() == query
             assert page.locator("#case-query").get_attribute("open") is None
+            page.locator("#case-query-copy").click()
+            page.wait_for_function("copiedQueries.length===1")
+            assert page.evaluate("copiedQueries[0]") == query
+            assert page.evaluate("clipboardApiCalls") == 0
+            assert page.locator("#case-query-copy").inner_text() == "已复制"
+            assert page.locator("#case-query").get_attribute("open") is None
+            page.wait_for_function("document.querySelector('#case-query-copy svg')!==null")
 
             for theme in ("light", "dark"):
                 page.evaluate("theme=>document.documentElement.dataset.theme=theme", theme)
-                for width in (1440, 1024, 390):
+                for width in (1920, 1657, 1440, 1280, 1024, 390):
                     page.set_viewport_size({"width": width, "height": 960})
                     assert page.locator("#case-context").is_visible()
                     assert page.evaluate("document.documentElement.scrollWidth<=innerWidth")
+                    title_box = page.locator("#ed-title").bounding_box()
+                    model_box = page.locator("#case-model-badge").bounding_box()
+                    switch_box = page.locator("#workspace-view-switch").bounding_box()
+                    assert model_box["x"] >= title_box["x"]
+                    if width > 760:
+                        assert model_box["x"] >= title_box["x"] + title_box["width"] - 1
+                        assert model_box["x"] + model_box["width"] <= switch_box["x"] + 1
+                        assert abs(model_box["y"] + model_box["height"] / 2 - switch_box["y"] - switch_box["height"] / 2) < 2
+                    else:
+                        assert model_box["y"] >= title_box["y"] + title_box["height"]
                     page.locator("#case-query summary").click()
                     assert page.locator("#case-query-full").text_content() == query
                     assert page.locator("#case-query-full script").count() == 0
@@ -109,6 +133,9 @@ window.cleanDeck={go:n=>window.__deckGo(n-1),count:3,fontsReady:document.fonts.r
             assert page.locator("#case-model").inner_text() == "Opus 5"
             assert page.locator("#case-query-preview").text_content() == "制作三页中文演示。"
             assert page.locator("#case-query").get_attribute("open") is None
+            page.locator("#case-query-copy").click()
+            page.wait_for_function("copiedQueries.length===2")
+            assert page.evaluate("copiedQueries[1]") == "制作三页中文演示。"
             for deck_id in (903, 904):
                 page.evaluate("id=>openDeck(id)", deck_id)
                 assert page.evaluate("ed.workspaceView") == "workflow"
@@ -126,6 +153,14 @@ window.cleanDeck={go:n=>window.__deckGo(n-1),count:3,fontsReady:document.fonts.r
             assert page.locator("#case-query-preview").text_content() == "Create an animated presentation."
             page.evaluate("closeEditor()")
             assert page.locator("#case-context").is_hidden()
+            assert page.locator("#case-model-badge").is_hidden()
+
+            page.goto("https://case.test/#static-901", wait_until="domcontentloaded")
+            page.wait_for_selector("#editor.workspace-ppt", state="visible")
+            page.locator("#case-query-copy").click()
+            page.wait_for_function("clipboardApiCalls===1")
+            assert page.evaluate("copiedQueries") == [query]
+            assert page.locator("#case-query").get_attribute("open") is None
             assert not errors, errors
         finally:
             browser.close()

@@ -2828,8 +2828,16 @@ function closeEditor({ showComposerView = true } = {}) {
   ed.id = null;
   const context = $("#case-context");
   if (context) context.hidden = true;
+  const modelBadge = $("#case-model-badge");
+  if (modelBadge) modelBadge.hidden = true;
   const queryDetails = $("#case-query");
   if (queryDetails) queryDetails.open = false;
+  const queryCopy = $("#case-query-copy");
+  if (queryCopy) {
+    clearTimeout(queryCopy._labelTimer);
+    if (queryCopy._fallbackHtml) queryCopy.innerHTML = queryCopy._fallbackHtml;
+    queryCopy.disabled = true;
+  }
   ed.workflowToolOutputs = {};
   const frame = $("#canvas-deck");
   frame.hidden = true; frame.src = "about:blank";
@@ -3506,11 +3514,17 @@ function syncCaseContext(model) {
   const context = $("#case-context");
   if (!context) return;
   context.hidden = !ed.id;
-  const query = ed.briefMeta?.user_query || ed.fullQuery || "—";
+  const query = ed.briefMeta?.user_query || ed.fullQuery || "";
+  const modelBadge = $("#case-model-badge");
+  modelBadge.hidden = !ed.id;
+  modelBadge.title = `生成模型：${model}`;
   $("#case-model").textContent = model;
   $("#case-model").title = model;
-  $("#case-query-preview").textContent = query;
-  $("#case-query-full").textContent = query;
+  $("#case-query-preview").textContent = query || "—";
+  $("#case-query-full").textContent = query || "—";
+  const queryCopy = $("#case-query-copy");
+  queryCopy.dataset.copyMessage = query;
+  queryCopy.disabled = !query;
 }
 
 function renderStatus(p, phase) {

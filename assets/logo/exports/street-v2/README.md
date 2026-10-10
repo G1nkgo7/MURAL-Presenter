@@ -28,7 +28,8 @@ alpha transparency. These are raster illustrations, not editable vector artwork.
 
 - Use the M mark for small interface placements. Use the mascot where its tools and pose can remain readable.
 - Keep the M a pure letterform: its central opening has no eyes, face panel or lower smile-shaped chevron.
-- Draw each robot with two attached, round-tipped antennae. Preserve the original expressive eyes: painters have closed smiling arches; the reader and assembler have cyan open eyes with visible dark navy pupils and natural gaze. Do not replace these with blank solid cyan ovals. Avoid extra antennae, detached tips or unintentionally mismatched eye construction.
+- Draw each robot with two attached, round-tipped antennae. Preserve the original expressive eyes: painters have closed smiling arches; the reader's original eye artwork is canonical. The assembler uses larger off-center dark pupils within its original cyan eye shapes. Do not simplify these into blank ovals or small centered dots.
+- For small corrections, return to the original PNG and use bounded pixel patches. Preserve pixels outside the repair regions; do not repeatedly regenerate the complete illustration.
 - Preserve aspect ratios and leave clear space around the mark. Avoid stretching, cropping letters or placing text across the robots' faces.
 - Pair the light wordmark with light surfaces and the dark wordmark with navy or similarly dark surfaces.
 - The banners carry the stable name **MURAL Presenter**. Keep the full paper title as selectable text below the banner.
@@ -74,8 +75,16 @@ the assembler the same lively eye construction. The closed-eye painter, repaired
 faceless M are retained. Both banners, the sharing card and the overview are updated; the other
 five masters are unchanged from revision 3.
 
+Revision 5 restores the four promotional images from the original `4b3e71a` PNGs and applies
+local pixel repairs, explicitly requested by the author. The reader's original face is protected
+pixel for pixel. M and antenna patches come from `8061b20`; the assembler's pupils are local
+edits within its original eye shapes. No new image generation, whole-image resizing, sharpening
+or lossy encoding was used. [pixel-repair.json](pixel-repair.json) records the source commits,
+repair regions, checksums and unchanged-pixel checks. The other five masters remain unchanged.
+
 中文说明：本套包含主标识、头像、吉祥物、两版透明字标、两版横幅、论文分享图及视觉总览。
 当前接入中英文 README；原网站、WebUI 与旧版素材保留，后续应用时以本目录的独立文件为准。
 第 2 次修订移除了 M 内部的人脸元素，并统一机器人的双天线、椭圆眼睛；上一版可从 Git 历史恢复。
 第 3 次修订恢复画家与独立吉祥物的眯眼笑，保留另外两位角色的睁眼表情，只要求睁眼画法协调，不统一所有表情。
 第 4 次修订恢复最初读书角色带瞳孔的灵动眼睛，并补齐中间角色的瞳孔；保留眯眼笑、修好的天线和无脸 M。
+第 5 次修订回到初版原始 PNG 做局部像素修补，原样保留读书角色的脸部；修补范围外的像素与初版完全一致，停止整图反复生成。

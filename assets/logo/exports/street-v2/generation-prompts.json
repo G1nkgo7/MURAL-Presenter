@@ -225,6 +225,15 @@
           ]
         }
       ]
+    },
+    {
+      "revision": 5,
+      "date": "2026-10-10",
+      "base_commit": "24b4a8db38763ccdc39f395359583b9aae7658ad",
+      "method": "Local pixel repair in Python with Pillow, NumPy and OpenCV, explicitly authorized by the user. No new generation prompts.",
+      "original_artwork_commit": "4b3e71ad1018cadff1ccf42b8da02a2c63de5e59",
+      "summary": "Restore original artwork quality and exact reader face pixels; locally retain faceless M and corrected antennae, add off-center assembler pupils.",
+      "repair_report": "pixel-repair.json"
     }
   ]
 }

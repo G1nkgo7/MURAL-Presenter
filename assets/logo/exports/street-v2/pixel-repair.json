@@ -1,0 +1,877 @@
+{
+  "method": "Lossless PNG restoration plus local pixel patches; no whole-image generation, resampling, sharpening or recompression loss.",
+  "authorization": "User explicitly selected local pixel repair.",
+  "assets": [
+    {
+      "file": "mural-banner-light.png",
+      "base_commit": "4b3e71ad1018cadff1ccf42b8da02a2c63de5e59",
+      "base_sha256": "f2edd8ccf1a9fa65accd5f0e33b060466fb9a374e6b45e9017c8e09dd5651f49",
+      "donor_commit": "8061b207e0a0ee13a0921aa33258653fd635f75e",
+      "operations": [
+        {
+          "name": "M mark",
+          "polygon": [
+            [
+              48,
+              145
+            ],
+            [
+              468,
+              145
+            ],
+            [
+              468,
+              532
+            ],
+            [
+              48,
+              532
+            ]
+          ],
+          "feather": 2,
+          "alignment": "native pixels"
+        },
+        {
+          "name": "assembler antenna",
+          "polygon": [
+            [
+              1628,
+              333
+            ],
+            [
+              1698,
+              333
+            ],
+            [
+              1698,
+              401
+            ],
+            [
+              1628,
+              401
+            ]
+          ],
+          "feather": 2,
+          "alignment": "local vertical 3.5px Gaussian adjustment at y=390, sigma=7"
+        },
+        {
+          "name": "reader antennae",
+          "polygon": [
+            [
+              1948,
+              300
+            ],
+            [
+              2168,
+              300
+            ],
+            [
+              2168,
+              432
+            ],
+            [
+              2096,
+              432
+            ],
+            [
+              2078,
+              398
+            ],
+            [
+              2032,
+              375
+            ],
+            [
+              1990,
+              368
+            ],
+            [
+              1960,
+              387
+            ],
+            [
+              1948,
+              389
+            ]
+          ],
+          "feather": 1.5
+        },
+        {
+          "name": "assembler pupil",
+          "ellipse": [
+            1616,
+            459,
+            8.2,
+            10.2
+          ],
+          "clip": "original cyan eye pixels",
+          "texture_sample": [
+            1636,
+            426,
+            1653,
+            448
+          ]
+        },
+        {
+          "name": "assembler pupil",
+          "ellipse": [
+            1661,
+            435,
+            6.6,
+            8.4
+          ],
+          "clip": "original cyan eye pixels",
+          "texture_sample": [
+            1636,
+            426,
+            1653,
+            448
+          ]
+        }
+      ],
+      "protected_reader_face_polygons": [
+        [
+          [
+            1966,
+            388
+          ],
+          [
+            1990,
+            373
+          ],
+          [
+            2020,
+            375
+          ],
+          [
+            2063,
+            396
+          ],
+          [
+            2081,
+            425
+          ],
+          [
+            2073,
+            457
+          ],
+          [
+            2045,
+            463
+          ],
+          [
+            1990,
+            450
+          ],
+          [
+            1966,
+            429
+          ]
+        ]
+      ],
+      "changed_pixels": 196528,
+      "total_pixels": 1572528,
+      "unchanged_percent": 87.5024,
+      "changed_outside_masks": 0,
+      "changed_reader_face_pixels": 0,
+      "protected_text_boxes": [
+        [
+          480,
+          200,
+          1230,
+          530
+        ],
+        [
+          200,
+          532,
+          1220,
+          594
+        ]
+      ],
+      "changed_protected_text_pixels": 0,
+      "output_sha256": "c134448a37e8d28970b2c830648b10d97584b421811b448b8f370672d1a4cf66"
+    },
+    {
+      "file": "mural-banner-dark.png",
+      "base_commit": "4b3e71ad1018cadff1ccf42b8da02a2c63de5e59",
+      "base_sha256": "2410ecf24b7105dc2d9ba4005279d9a9ef68f96c9523053f1375c4ecc7704f64",
+      "donor_commit": "8061b207e0a0ee13a0921aa33258653fd635f75e",
+      "operations": [
+        {
+          "name": "M mark",
+          "polygon": [
+            [
+              48,
+              145
+            ],
+            [
+              468,
+              145
+            ],
+            [
+              468,
+              532
+            ],
+            [
+              48,
+              532
+            ]
+          ],
+          "feather": 2,
+          "alignment": "native pixels"
+        },
+        {
+          "name": "assembler antenna",
+          "polygon": [
+            [
+              1628,
+              333
+            ],
+            [
+              1698,
+              333
+            ],
+            [
+              1698,
+              401
+            ],
+            [
+              1628,
+              401
+            ]
+          ],
+          "feather": 2,
+          "alignment": "local vertical 3.5px Gaussian adjustment at y=390, sigma=7"
+        },
+        {
+          "name": "reader antennae",
+          "polygon": [
+            [
+              1948,
+              300
+            ],
+            [
+              2168,
+              300
+            ],
+            [
+              2168,
+              432
+            ],
+            [
+              2096,
+              432
+            ],
+            [
+              2078,
+              398
+            ],
+            [
+              2032,
+              375
+            ],
+            [
+              1990,
+              368
+            ],
+            [
+              1960,
+              387
+            ],
+            [
+              1948,
+              389
+            ]
+          ],
+          "feather": 1.5
+        },
+        {
+          "name": "assembler pupil",
+          "ellipse": [
+            1616,
+            459,
+            8.2,
+            10.2
+          ],
+          "clip": "original cyan eye pixels",
+          "texture_sample": [
+            1636,
+            426,
+            1653,
+            448
+          ]
+        },
+        {
+          "name": "assembler pupil",
+          "ellipse": [
+            1661,
+            435,
+            6.6,
+            8.4
+          ],
+          "clip": "original cyan eye pixels",
+          "texture_sample": [
+            1636,
+            426,
+            1653,
+            448
+          ]
+        }
+      ],
+      "protected_reader_face_polygons": [
+        [
+          [
+            1966,
+            388
+          ],
+          [
+            1990,
+            373
+          ],
+          [
+            2020,
+            375
+          ],
+          [
+            2063,
+            396
+          ],
+          [
+            2081,
+            425
+          ],
+          [
+            2073,
+            457
+          ],
+          [
+            2045,
+            463
+          ],
+          [
+            1990,
+            450
+          ],
+          [
+            1966,
+            429
+          ]
+        ]
+      ],
+      "changed_pixels": 195959,
+      "total_pixels": 1572528,
+      "unchanged_percent": 87.5386,
+      "changed_outside_masks": 0,
+      "changed_reader_face_pixels": 0,
+      "protected_text_boxes": [
+        [
+          480,
+          200,
+          1230,
+          530
+        ],
+        [
+          200,
+          532,
+          1220,
+          594
+        ]
+      ],
+      "changed_protected_text_pixels": 0,
+      "output_sha256": "5537030ed91cf89833538fe55cf268a4ce9b7861f0eaec83a513159f4a6603a5"
+    },
+    {
+      "file": "mural-social-card.png",
+      "base_commit": "4b3e71ad1018cadff1ccf42b8da02a2c63de5e59",
+      "base_sha256": "89393feff90717ff4984d37ce020e5ef03c9f2ba66abf815e742b8b9d20030a4",
+      "donor_commit": "8061b207e0a0ee13a0921aa33258653fd635f75e",
+      "operations": [
+        {
+          "name": "M mark",
+          "polygon": [
+            [
+              31,
+              138
+            ],
+            [
+              372,
+              138
+            ],
+            [
+              372,
+              457
+            ],
+            [
+              31,
+              457
+            ]
+          ],
+          "feather": 2,
+          "alignment": "native pixels"
+        },
+        {
+          "name": "reader antennae",
+          "polygon": [
+            [
+              1570,
+              428
+            ],
+            [
+              1728,
+              428
+            ],
+            [
+              1728,
+              541
+            ],
+            [
+              1673,
+              541
+            ],
+            [
+              1651,
+              502
+            ],
+            [
+              1615,
+              485
+            ],
+            [
+              1570,
+              486
+            ]
+          ],
+          "feather": 1.5
+        },
+        {
+          "name": "assembler pupil",
+          "ellipse": [
+            1270,
+            544,
+            7.8,
+            9.8
+          ],
+          "clip": "original cyan eye pixels",
+          "texture_sample": [
+            1289,
+            517,
+            1303,
+            538
+          ]
+        },
+        {
+          "name": "assembler pupil",
+          "ellipse": [
+            1312,
+            522,
+            6.2,
+            8.0
+          ],
+          "clip": "original cyan eye pixels",
+          "texture_sample": [
+            1289,
+            517,
+            1303,
+            538
+          ]
+        }
+      ],
+      "protected_reader_face_polygons": [
+        [
+          [
+            1552,
+            507
+          ],
+          [
+            1578,
+            489
+          ],
+          [
+            1600,
+            494
+          ],
+          [
+            1638,
+            514
+          ],
+          [
+            1653,
+            540
+          ],
+          [
+            1640,
+            557
+          ],
+          [
+            1609,
+            560
+          ],
+          [
+            1572,
+            545
+          ],
+          [
+            1549,
+            526
+          ]
+        ]
+      ],
+      "changed_pixels": 127586,
+      "total_pixels": 1572738,
+      "unchanged_percent": 91.8877,
+      "changed_outside_masks": 0,
+      "changed_reader_face_pixels": 0,
+      "protected_text_boxes": [
+        [
+          380,
+          200,
+          980,
+          456
+        ],
+        [
+          120,
+          463,
+          960,
+          520
+        ],
+        [
+          55,
+          545,
+          950,
+          716
+        ]
+      ],
+      "changed_protected_text_pixels": 0,
+      "output_sha256": "c0442aad924984253c5b6baa27d05e96915cd520b80bfd5744d74e91035dffd7"
+    },
+    {
+      "file": "mural-brand-overview.png",
+      "base_commit": "4b3e71ad1018cadff1ccf42b8da02a2c63de5e59",
+      "base_sha256": "2de21518587c6a4f0c1ab75507a004cadf05eaf0881ad638be8f5a67f3715f30",
+      "donor_commit": "8061b207e0a0ee13a0921aa33258653fd635f75e",
+      "operations": [
+        {
+          "name": "wordmark M",
+          "polygon": [
+            [
+              72,
+              126
+            ],
+            [
+              285,
+              126
+            ],
+            [
+              285,
+              334
+            ],
+            [
+              72,
+              334
+            ]
+          ],
+          "feather": 2,
+          "alignment": "native pixels"
+        },
+        {
+          "name": "dark banner M",
+          "polygon": [
+            [
+              784,
+              174
+            ],
+            [
+              925,
+              174
+            ],
+            [
+              925,
+              311
+            ],
+            [
+              784,
+              311
+            ]
+          ],
+          "feather": 2,
+          "alignment": "native pixels"
+        },
+        {
+          "name": "primary M",
+          "polygon": [
+            [
+              82,
+              435
+            ],
+            [
+              337,
+              435
+            ],
+            [
+              337,
+              687
+            ],
+            [
+              82,
+              687
+            ]
+          ],
+          "feather": 2,
+          "alignment": "native pixels"
+        },
+        {
+          "name": "avatar M",
+          "polygon": [
+            [
+              443,
+              494
+            ],
+            [
+              648,
+              494
+            ],
+            [
+              648,
+              649
+            ],
+            [
+              443,
+              649
+            ]
+          ],
+          "feather": 2,
+          "alignment": "native pixels"
+        },
+        {
+          "name": "campaign M",
+          "polygon": [
+            [
+              39,
+              743
+            ],
+            [
+              167,
+              743
+            ],
+            [
+              167,
+              866
+            ],
+            [
+              39,
+              866
+            ]
+          ],
+          "feather": 2,
+          "alignment": "native pixels"
+        },
+        {
+          "name": "dark reader antennae",
+          "polygon": [
+            [
+              1428,
+              218
+            ],
+            [
+              1522,
+              218
+            ],
+            [
+              1522,
+              271
+            ],
+            [
+              1487,
+              271
+            ],
+            [
+              1472,
+              248
+            ],
+            [
+              1440,
+              245
+            ],
+            [
+              1428,
+              250
+            ]
+          ],
+          "feather": 1.5
+        },
+        {
+          "name": "campaign reader antennae",
+          "polygon": [
+            [
+              686,
+              813
+            ],
+            [
+              761,
+              813
+            ],
+            [
+              761,
+              854
+            ],
+            [
+              729,
+              854
+            ],
+            [
+              714,
+              835
+            ],
+            [
+              694,
+              832
+            ],
+            [
+              686,
+              835
+            ]
+          ],
+          "feather": 1.5
+        },
+        {
+          "name": "assembler pupil",
+          "ellipse": [
+            1291,
+            285,
+            3.6,
+            4.6
+          ],
+          "clip": "original cyan eye pixels",
+          "texture_sample": [
+            1300,
+            272,
+            1308,
+            284
+          ]
+        },
+        {
+          "name": "assembler pupil",
+          "ellipse": [
+            1311,
+            276,
+            2.8,
+            3.7
+          ],
+          "clip": "original cyan eye pixels",
+          "texture_sample": [
+            1300,
+            272,
+            1308,
+            284
+          ]
+        },
+        {
+          "name": "assembler pupil",
+          "ellipse": [
+            548,
+            872,
+            3.2,
+            4.2
+          ],
+          "clip": "original cyan eye pixels",
+          "texture_sample": [
+            557,
+            858,
+            563,
+            870
+          ]
+        },
+        {
+          "name": "assembler pupil",
+          "ellipse": [
+            565,
+            863,
+            2.6,
+            3.4
+          ],
+          "clip": "original cyan eye pixels",
+          "texture_sample": [
+            557,
+            858,
+            563,
+            870
+          ]
+        }
+      ],
+      "protected_reader_face_polygons": [
+        [
+          [
+            1438,
+            254
+          ],
+          [
+            1449,
+            248
+          ],
+          [
+            1462,
+            254
+          ],
+          [
+            1479,
+            269
+          ],
+          [
+            1479,
+            282
+          ],
+          [
+            1464,
+            286
+          ],
+          [
+            1447,
+            277
+          ],
+          [
+            1438,
+            266
+          ]
+        ],
+        [
+          [
+            685,
+            842
+          ],
+          [
+            696,
+            837
+          ],
+          [
+            709,
+            844
+          ],
+          [
+            721,
+            855
+          ],
+          [
+            718,
+            868
+          ],
+          [
+            704,
+            872
+          ],
+          [
+            688,
+            858
+          ]
+        ]
+      ],
+      "changed_pixels": 194314,
+      "total_pixels": 1572864,
+      "unchanged_percent": 87.6458,
+      "changed_outside_masks": 0,
+      "changed_reader_face_pixels": 0,
+      "protected_text_boxes": [],
+      "changed_protected_text_pixels": 0,
+      "output_sha256": "a628c14a2732295eff05d3076d4da2a844ec8b91ff31360f232f2ca4a76a1c1b"
+    }
+  ]
+}

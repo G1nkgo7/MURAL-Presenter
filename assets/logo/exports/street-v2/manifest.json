@@ -22,8 +22,8 @@
       "height": 724,
       "mode": "RGB",
       "transparent": false,
-      "bytes": 2585051,
-      "sha256": "a19cc63c9da13741287b68d2192cc6b6dc47cd2fa4ae47bb9b55bb98c681a3d0"
+      "bytes": 2838095,
+      "sha256": "5537030ed91cf89833538fe55cf268a4ce9b7861f0eaec83a513159f4a6603a5"
     },
     {
       "file": "mural-banner-light.png",
@@ -31,8 +31,8 @@
       "height": 724,
       "mode": "RGB",
       "transparent": false,
-      "bytes": 2661693,
-      "sha256": "aea3fde51e3d7405de7198b6625d5743554bf53490a2c7c23fd1f4b399f3e87e"
+      "bytes": 2879441,
+      "sha256": "c134448a37e8d28970b2c830648b10d97584b421811b448b8f370672d1a4cf66"
     },
     {
       "file": "mural-brand-overview.png",
@@ -40,8 +40,8 @@
       "height": 1024,
       "mode": "RGB",
       "transparent": false,
-      "bytes": 2263604,
-      "sha256": "25bc98766c93b2394280f97b99d822abd64868cadc68fb5078f0c744898910c6"
+      "bytes": 2629493,
+      "sha256": "a628c14a2732295eff05d3076d4da2a844ec8b91ff31360f232f2ca4a76a1c1b"
     },
     {
       "file": "mural-mark.png",
@@ -67,8 +67,8 @@
       "height": 907,
       "mode": "RGB",
       "transparent": false,
-      "bytes": 2536553,
-      "sha256": "8014d3c9d88df91bab44bd60955c640e23790695f49a33788b1660e97800ea6c"
+      "bytes": 2900922,
+      "sha256": "c0442aad924984253c5b6baa27d05e96915cd520b80bfd5744d74e91035dffd7"
     },
     {
       "file": "mural-wordmark-dark.png",
@@ -89,11 +89,14 @@
       "sha256": "3644c15c311e116afa67eab23904308e20750b446e94a34ef2faf0f8220f1928"
     }
   ],
-  "revision": 4,
+  "revision": 5,
   "updated": "2026-10-10",
-  "previous_revision_commit": "f1558a1409f8f2bfc69abbef08c1cb1b8ca13702",
+  "previous_revision_commit": "24b4a8db38763ccdc39f395359583b9aae7658ad",
   "visual_rules": {
     "mark": "Open uppercase M without facial features.",
-    "robot": "Two attached ball-tip antennae. Preserve the original closed smiling arch eyes for painters. Reader and assembler have expressive cyan open eyes with visible dark navy pupils and natural gaze, not blank solid cyan ovals."
-  }
+    "robot": "Preserve original reader eye pixels and painter closed smiles. Assembler uses larger off-center dark pupils in its original cyan eye shapes. Two attached antennae per robot.",
+    "quality": "Use original PNG masters for local repair; preserve all pixels outside explicit repair masks. Do not repeatedly regenerate the complete image."
+  },
+  "last_edit_method": "User-authorized local pixel repair from original PNGs; no new image generation.",
+  "repair_report": "pixel-repair.json"
 }

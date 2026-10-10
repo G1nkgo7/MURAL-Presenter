@@ -1,7 +1,7 @@
 {
   "channel": "paper-release-candidate",
   "git": {
-    "source_commit": "879fe1ec29ca55102f17f4220ea78e1e5f2dd53b",
+    "source_commit": "1e56a98ad7fbef75922500a0dbb375abd0c58362",
     "worktree_state": "Portable integration snapshot; original frozen core verified independently by publication inventory."
   },
   "harness": {
@@ -82,10 +82,10 @@
       "webui/studio/templates/register.html",
       "webui/studio/uv.lock"
     ],
-    "tree_sha256": "613bb5af96de7b2b9e29868e81b2bca6ea607611cf2ddd51a7d51e1961cf6f0b"
+    "tree_sha256": "90033d3f51498560b8e7b1e1117af200fa0ed1f8baab18b5869c676a8906cff8"
   },
   "lineage": {
-    "note": "Skill/Harness unchanged; portable WebUI source release excludes local benchmark, documentation and branding trees.",
+    "note": "Skill/Harness unchanged; portable WebUI and public brand assets included; benchmark and internal documentation remain local.",
     "runtime_modes": [
       "inference",
       "synthesis"

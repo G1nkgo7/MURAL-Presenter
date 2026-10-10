@@ -125,6 +125,66 @@
           ]
         }
       ]
+    },
+    {
+      "revision": 3,
+      "date": "2026-10-10",
+      "base_commit": "8061b207e0a0ee13a0921aa33258653fd635f75e",
+      "summary": "Restore expressive closed-eye painters alongside open-eyed collaborators; keep consistent construction between the two open-eyed agents.",
+      "prompts": [
+        {
+          "file": "mural-banner-light.png",
+          "prompt": "Use case: precise-object-edit. Perform a tiny local expression correction on this exact MURAL PRESENTER wide light banner. ONLY change the TWO cyan eyes of the blue-apron roller-painter robot sitting on the ladder at upper right-center: replace its two solid oval eyes with TWO cheerful CLOSED smiling eyes, clean cyan upward arches like ∩ ∩, following the existing tilted face perspective. Keep its little smile. This painter should look delighted, not stare with open eyes. The yellow-apron assembler below and teal-apron book-holding robot on the far right MUST KEEP their two OPEN solid cyan oval eyes and smiles exactly as currently drawn; both open-eyed characters use consistent matching eye construction, with natural differences from head tilt. Preserve all SIX antennae in their correct existing positions, all heads, bodies, clothing, hands, props and poses. Preserve the new faceless open-bottom M, every word, background, brushwork, colors, layout, dimensions and wide 3:1 framing. No other edits. Do NOT make all robots have the same expression. Final combination: happy closed eyes on painter, attentive open eyes on assembler and reader. One opaque light banner.",
+          "references": [
+            "mural-banner-light.png (revision 2)"
+          ],
+          "status": "discarded: closed-eye expression was not clearly rendered"
+        },
+        {
+          "file": "mural-banner-light.png",
+          "prompt": "Edit target is IMAGE 1, the revised ivory mural banner. IMAGE 2 is an EXPRESSION reference ONLY: its smiling robot has closed arch eyes. Restore that visibly CLOSED-EYE joyful expression to ONLY the blue-apron robot on the ladder in IMAGE 1. Repaint its navy face screen cleanly and draw two broad inverted-U cyan STROKES (∩ ∩), with clearly OPEN navy space below each arch. These are CLOSED EYELIDS, not cyan oval eye discs, not rings, not slits cut into discs. Make the arches as clearly curved as image 2. Keep the existing little smiling mouth. This is the only robot to have closed eyes. The two ground-level robots must KEEP their current OPEN oval eyes. Leave the NEW faceless M, lettering, all TWO antennae per robot, all other art exactly as image 1. No changes to the palette, texture, composition, text or 3:1 aspect. One finished opaque banner.",
+          "references": [
+            "mural-banner-light.png (revision 2)",
+            "mural-mascot.png (4b3e71a)"
+          ],
+          "status": "selected"
+        },
+        {
+          "file": "mural-banner-dark.png",
+          "prompt": "Use case: precise-object-edit. Image 1 is the dark banner edit target; image 2 is the corrected LIGHT banner defining the desired expression mix. Change ONLY the two eyes of the blue-apron ladder painter in image 1 to the happy closed eyes shown in image 2: two broad cyan inverted-U eyelid strokes ∩ ∩, open dark space below arches, not solid discs or rings. Keep painter's smile. BOTH ground-level robots remain OPEN-eyed with the existing paired solid cyan ovals. Preserve the EXACT dark banner colors, navy wall, ivory U/A/PRESENTER and teal R/L, pure faceless M, all six antennae, composition, robot poses, tools, text and dimensions. Only the painter's expression changes. No new elements. One opaque 3:1 dark banner.",
+          "references": [
+            "mural-banner-dark.png (revision 2)",
+            "mural-banner-light.png (revision 3)"
+          ],
+          "status": "selected"
+        },
+        {
+          "file": "mural-social-card.png",
+          "prompt": "Use case: precise-object-edit. Image 1 is the paper social card to edit, image 2 is the corrected banner expression reference. Change ONLY the blue-apron ladder painter's two eye glyphs in image 1 to the visibly closed smiling eyes from image 2: two broad inverted-U cyan eyelid strokes ∩ ∩ with dark open space under the arches. Keep its small smile. The other TWO robots remain OPEN-eyed with paired solid cyan ovals, exactly as now. Keep all corrected two-antenna head anatomy, faceless M, all artwork, spacing, palette, ivory wall, props and robot poses unchanged. Text must remain exactly MURAL / PRESENTER / Multi-Agent Units of Responsibility / for Authoring Long-Horizon / Presentations. Preserve landscape 1.91:1 framing. Do not redraw the design or make every face the same. One finished opaque social card.",
+          "references": [
+            "mural-social-card.png (revision 2)",
+            "mural-banner-light.png (revision 3)"
+          ],
+          "status": "selected"
+        },
+        {
+          "file": "mural-brand-overview.png",
+          "prompt": "Use case: precise-object-edit. Image 1 is the brand overview board to update. Image 2 is the corrected banner expression reference. Image 3 is the ORIGINAL canonical standalone mascot with happy closed arch eyes. Change only these facial details on image 1: in the DARK and CAMPAIGN panels, the BLUE-APRON LADDER PAINTER has TWO closed happy cyan arch eyes ∩ ∩, copied from image 2; the other two ground-level agents in each panel KEEP OPEN oval eyes. In MASCOT panel restore image 3's TWO large smiling closed arch eyes (with navy open space below), no oval discs; remove its tiny mouth to match original mascot expression. Keep ALL two-antenna structures, head contours, body poses and tools intact. Preserve all faceless M logos in WORDMARK, MARK, DARK and CAMPAIGN without any facial elements. Keep all text, labels, palette, panel layout, colors, paper texture and all other artwork unchanged. Do not homogenize all robot expressions. Deliver same single opaque 1536x1024 board.",
+          "references": [
+            "mural-brand-overview.png (revision 2)",
+            "mural-banner-light.png (revision 3)",
+            "mural-mascot.png (4b3e71a)"
+          ],
+          "status": "selected"
+        }
+      ],
+      "restorations": [
+        {
+          "file": "mural-mascot.png",
+          "source_commit": "4b3e71ad1018cadff1ccf42b8da02a2c63de5e59",
+          "reason": "Restore original smiling closed-eye mascot without regenerating it."
+        }
+      ]
     }
   ]
 }

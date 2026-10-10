@@ -22,8 +22,8 @@
       "height": 724,
       "mode": "RGB",
       "transparent": false,
-      "bytes": 2700379,
-      "sha256": "309886c6f3168fa2da1f05b9b01e8c3b87375e801201fadbdf8d65136233f5e7"
+      "bytes": 2606220,
+      "sha256": "e9f3da1b5f58bb6bae76d158e2cbfd410810d318411cae4234888001a98ee254"
     },
     {
       "file": "mural-banner-light.png",
@@ -31,8 +31,8 @@
       "height": 724,
       "mode": "RGB",
       "transparent": false,
-      "bytes": 2748782,
-      "sha256": "57b2989f67983c1942bde056761725c179860f70aa5be4969552bf644c6389a3"
+      "bytes": 2640488,
+      "sha256": "7682a97fb9cb4b18a1bd7406875c62d969b825f2dbe83904baca6538a7512003"
     },
     {
       "file": "mural-brand-overview.png",
@@ -40,8 +40,8 @@
       "height": 1024,
       "mode": "RGB",
       "transparent": false,
-      "bytes": 2523490,
-      "sha256": "e33ed43f91aca64dd8e7494ef19556a6d7ba080152f4b60fa989213509b601e9"
+      "bytes": 2413646,
+      "sha256": "66121b1a58ec0679f1027af88acbe27383c76b55b1f2c6e83804bc365dc1eec1"
     },
     {
       "file": "mural-mark.png",
@@ -58,8 +58,8 @@
       "height": 1254,
       "mode": "RGBA",
       "transparent": true,
-      "bytes": 1162178,
-      "sha256": "c3032796d0cb4044bdde9b503c82365a052e1c77e8d4c105bd254353d66a5774"
+      "bytes": 1230869,
+      "sha256": "8b055fc6cbbb6518754839d93ad3e1cfa4758dfdd65eaf319805dfd32bb0fd61"
     },
     {
       "file": "mural-social-card.png",
@@ -67,8 +67,8 @@
       "height": 907,
       "mode": "RGB",
       "transparent": false,
-      "bytes": 2690645,
-      "sha256": "2d5465d5540b5b7b4372df428b922b756a9202cb7ee7083cc4bbc627d943a023"
+      "bytes": 2575596,
+      "sha256": "d3bd91d07af3e69f0b0443d125fad700610f7ec17aa54881e249e9480c706f31"
     },
     {
       "file": "mural-wordmark-dark.png",
@@ -89,11 +89,11 @@
       "sha256": "3644c15c311e116afa67eab23904308e20750b446e94a34ef2faf0f8220f1928"
     }
   ],
-  "revision": 2,
+  "revision": 3,
   "updated": "2026-10-10",
-  "previous_revision_commit": "4b3e71ad1018cadff1ccf42b8da02a2c63de5e59",
+  "previous_revision_commit": "8061b207e0a0ee13a0921aa33258653fd635f75e",
   "visual_rules": {
     "mark": "Open uppercase M without facial features.",
-    "robot": "Two attached ball-tip antennae; two solid cyan oval eyes; one small curved smile."
+    "robot": "Two attached ball-tip antennae. Preserve expression variety: closed smiling arch eyes for painters; consistent paired open oval eyes for assembler and reader, adjusted naturally to head perspective."
   }
 }

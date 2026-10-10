@@ -42,5 +42,89 @@
       "asset": "mural-brand-overview-final",
       "prompt": "Make one strictly localized correction to this MURAL Presenter brand overview board. Remove ONLY the tiny invented slogan \"PAINT BETTER TOGETHER\" and its underline in the extreme upper-right header corner. Fill that small area with the surrounding warm ivory paper/plaster background, keeping the teal/cobalt/yellow brush decoration immediately to its left intact. Do not replace the slogan with any words. Preserve the rest of this entire 2-column, 3-row board: same layout, borders, MURAL PRESENTER header, STREET MURAL IDENTITY heading, logos, typography, robot, campaign picture, five palette swatches and labels. No other edits or additions. Output the complete same-aspect-ratio board."
     }
+  ],
+  "revisions": [
+    {
+      "revision": 2,
+      "date": "2026-10-10",
+      "base_commit": "4b3e71ad1018cadff1ccf42b8da02a2c63de5e59",
+      "summary": "Replace anthropomorphic M with an open letterform; repair robot antennae and unify oval eyes across the identity.",
+      "prompts": [
+        {
+          "file": "mural-mark.png",
+          "prompt": "Use case: logo-brand. Edit the supplied MURAL mark into a refined NON-ANTHROPOMORPHIC uppercase M logo. Keep the ivory-edged navy ink and tactile hand-painted teal, cobalt and golden yellow mural palette. Redesign the geometry as a clear upright capital M with two vertical stems and two connecting diagonal strokes, not a cube, folded box, shield, mask or face. Cobalt left stem, teal diagonals, golden yellow right stem, navy contour with thin ivory inset. The open space under the central vertex must be truly transparent and open all the way to the baseline: remove the ENTIRE dark central face area, cyan eyes AND the lower ivory chevron smile. No eyes, no mouth, no facial elements, no antennae, no extra symbols. Balanced strong readable M silhouette, measured hand-painted grain, reduced ragged edges, sophisticated street mural identity. One centered isolated mark only, generous margin, square canvas, genuine transparent background. Preserve alpha.",
+          "references": [
+            "mural-mark.png (previous revision)"
+          ]
+        },
+        {
+          "file": "mural-banner-light.png",
+          "prompt": "Use case: precise-object-edit. Image 1 is the exact light README banner to repair; image 2 is the NEW approved faceless M mark. Retain the wide 3:1 mural composition, wordmark placement, all spelling MURAL / PRESENTER, three robots, ladder, presentation panels, tools, warm ivory wall, paint texture and palette. Make only these careful repairs: (1) Replace the entire old M including its eyes and lower smile/chevron with the simple open-bottom capital M from image 2, matching the size and baseline of the existing lettering. No facial marks inside any M. (2) ALL THREE robots must have EXACTLY TWO antennae, each a SINGLE unbroken short stem attached visibly to the upper-left or upper-right head shell, one round ivory ball at its end, one golden collar at the shell. In particular remove the extra third stalk on the far-right book robot, and repair the squashed/fused antenna on the center robot. No dangling balls, extra stalks or detached nubs. (3) ALL THREE dark navy face screens have exactly TWO matching solid cyan vertical oval eyes, equal size per face with appropriate perspective, and ONE tiny curved cyan smile beneath them. No rings, C-shaped eyes, spiral eyes, crescent eyes, extra dots, pupils or eyebrows. Each face is simple and friendly. Carefully retain the heads and body silhouettes, aprons, hand poses and book, maintain natural complete limbs. Clean readable ink contours with subtle gouache texture, not blurry patches. No new objects or words. Deliver one repaired banner, opaque ivory background, original wide aspect ratio.",
+          "references": [
+            "mural-banner-light.png (previous revision)",
+            "mural-mark.png (revised)"
+          ]
+        },
+        {
+          "file": "mural-banner-dark.png",
+          "prompt": "Use case: precise-object-edit. Image 1 is the existing dark MURAL PRESENTER banner, image 2 is the newly corrected LIGHT banner and is authoritative for logo silhouette and robot anatomy. Correct image 1 to match image 2's repairs precisely while retaining image 1's dark navy plaster background, ivory U/A/PRESENTER and teal R/L, original layout and 3:1 aspect ratio. Replace M with the pure faceless open-bottom M of image 2, adding thin ivory outer separation for dark background. Remove old M eyes, dark face insert, lower smile chevron. Each of the THREE robots has EXACTLY TWO complete antenna stems attached to the shell with round ivory terminal balls and yellow bases, two clear solid cyan oval eyes and one small cyan curved smile. Match the repaired positions from image 2: especially remove the third antenna on the rightmost robot and fix center robot antenna. No curved/ring/spiral eyes. Preserve the robot poses, shared bar-chart and landscape panels, ladder, props, margins, typography and paint sweeps. No new objects or text, no glow. One finished opaque dark-mode banner.",
+          "references": [
+            "mural-banner-dark.png (previous revision)",
+            "mural-banner-light.png (revised)"
+          ]
+        },
+        {
+          "file": "mural-avatar.png",
+          "prompt": "Use case: precise-object-edit. Image 1 is the old square M avatar; image 2 is the approved NEW pure M logo. Replace the avatar's entire old emblem with the EXACT faceless M geometry of image 2: cobalt left stem, teal diagonals, gold right stem, navy and ivory contours, open space beneath vertex continuing down to baseline. Preserve ivory paper background, square framing, centered mark with generous padding, refined hand-painted texture. The open M cutout reveals the ivory background. Remove ALL eyes, central navy face inset and lower smile chevron. NO face, no mask, no extra graphic or lettering. One opaque square avatar.",
+          "references": [
+            "mural-avatar.png (previous revision)",
+            "mural-mark.png (revised)"
+          ]
+        },
+        {
+          "file": "mural-wordmark-light.png",
+          "prompt": "Use case: precise-object-edit. Repair image 1, the transparent light MURAL PRESENTER wordmark, by replacing ONLY its old M emblem with the NEW faceless open-bottom M in image 2. Match the original M bounding box, baseline and lettering scale; keep all U R A L letterforms, colors, texture, spacing and the navy PRESENTER line exactly as they are. The replacement M has cobalt left stem, teal diagonal strokes, golden yellow right stem, navy contour and ivory inset, with transparent negative space under its vertex continuing openly to bottom. Remove the old cyan eyes, central navy face inset, and ivory lower smile chevron completely. No facial details anywhere in the M, no extra icon. Keep wide 3:1 composition with clear margins and REAL transparent background, not opaque white or a checkerboard. One finished repaired wordmark.",
+          "references": [
+            "mural-wordmark-light.png (previous revision)",
+            "mural-mark.png (revised)"
+          ]
+        },
+        {
+          "file": "mural-wordmark-dark.png",
+          "prompt": "Use case: precise-object-edit. Image 1 is the old transparent dark-surface MURAL PRESENTER wordmark. Image 2 is the corrected light wordmark and defines the NEW faceless M silhouette. Repair ONLY the M in image 1 to match image 2's pure open-bottom M geometry. Keep the old dark edition's ivory outer contour for contrast, teal diagonals, cobalt left stem and gold right stem, navy inner contour. Remove cyan eyes AND old central face panel AND lower smile chevron, revealing true transparency under central vertex all the way down. Keep existing ivory U and A, teal R and L, ivory PRESENTER, all letter shapes, texture, spacing, wide 3:1 format and clear margins. No face or extra symbol. Genuinely transparent background, one final wordmark.",
+          "references": [
+            "mural-wordmark-dark.png (previous revision)",
+            "mural-wordmark-light.png (revised)"
+          ]
+        },
+        {
+          "file": "mural-mascot.png",
+          "prompt": "Use case: precise-object-edit. Image 1 is the transparent mascot asset to edit. Image 2 is the repaired banner and defines the canonical robot face and antenna anatomy. Preserve mascot's overall pose, full body, blue apron and simple M patch, roller in one hand and two presentation cards in the other, navy contours, handpainted ivory/teal/cobalt/gold palette, square framing and true transparent background. Change ONLY the facial glyphs to match banner: exactly TWO equal solid cyan vertical oval eyes, aligned naturally with the head tilt, and ONE tiny shallow cyan smile below. No arched, crescent, ring or spiral eyes, no extra dots. Ensure EXACTLY TWO clean short antennae, each connected visibly to head shell with a golden collar and a complete round ivory ball tip. Existing two antennae are positioned well, keep those. Keep hand anatomy clean, no extra limbs. No background, floor or extra text. One final transparent mascot.",
+          "references": [
+            "mural-mascot.png (previous revision)",
+            "mural-banner-light.png (revised)"
+          ]
+        },
+        {
+          "file": "mural-social-card.png",
+          "prompt": "Use case: precise-object-edit. Image 1 is the paper sharing card to repair. Image 2 is the already corrected wide banner: follow its new faceless M and robot anatomy. Preserve image 1's layout, size/aspect ratio approximately 1.91:1, ivory plaster, paint sweeps, 3-robot composition, panels and props. Preserve all text EXACTLY: MURAL / PRESENTER / Multi-Agent Units of Responsibility / for Authoring Long-Horizon / Presentations. Replace the M with image 2's clean pure open-bottom M, remove eyes, face inset and lower smile chevron, open space under vertex reveals ivory wall. Repair all THREE robots to EXACTLY TWO well-attached antennae per head (6 total), each a continuous short stem with a golden collar and a round ivory terminal. Remove extra third antenna from far-right book robot and any fused/squashed antenna. Each face: exactly two equal solid cyan oval eyes (natural head perspective), one tiny cyan curved smile, no ring eyes, no spirals or extra dots. Keep hands, clothing, poses, ladder, book and charts unchanged. Clear anatomically coherent handpainted lines, no new elements, no additional words. One corrected opaque card.",
+          "references": [
+            "mural-social-card.png (previous revision)",
+            "mural-banner-light.png (revised)"
+          ]
+        },
+        {
+          "file": "mural-brand-overview.png",
+          "prompt": "Use case: precise-object-edit. Update image 1, the existing 2-column x 3-row MURAL PRESENTER brand overview, using corrected production references: image 2 is the NEW PURE M mark, image 3 the corrected light banner, image 4 the corrected dark banner, image 5 the corrected mascot. Retain the original 1536x1024 landscape board layout, panel labels WORDMARK, DARK, MARK, MASCOT, CAMPAIGN, PALETTE and top title MURAL PRESENTER | STREET MURAL IDENTITY. Keep palette panel and labels IVORY NAVY TEAL COBALT GOLD. In EVERY panel replace ALL old M icons with image 2's faceless open-bottom M, with NO eyes, no navy face insert, no lower mouth chevron. This includes wordmark initials, standalone mark, circular avatar and campaign/banner M. In ALL robot illustrations use references' exactly TWO connected antennae per robot and two simple solid cyan oval eyes plus one small smile. No arched/spiral/ring eyes or third antenna. Match the corrected mascot. Match dark banner's ivory U/A and PRESENTER, teal R/L. Preserve campaign text exactly: Multi-Agent Units of Responsibility for Authoring Long-Horizon Presentations. No slogans, no added panels or words. This is an illustrative overview of the supplied corrected production masters; preserve their design faithfully and avoid new detail. One complete opaque ivory board.",
+          "references": [
+            "mural-brand-overview.png (previous revision)",
+            "mural-mark.png (revised)",
+            "mural-banner-light.png (revised)",
+            "mural-banner-dark.png (revised)",
+            "mural-mascot.png (revised)"
+          ]
+        }
+      ]
+    }
   ]
 }

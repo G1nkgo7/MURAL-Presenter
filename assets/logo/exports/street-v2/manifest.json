@@ -13,8 +13,8 @@
       "height": 1254,
       "mode": "RGB",
       "transparent": false,
-      "bytes": 1937598,
-      "sha256": "3ca6e84dbf878ddd4d53815a9a362a27e2e1565f3016d56166ad1958d533508f"
+      "bytes": 1873550,
+      "sha256": "f2d6c9310a43bf21f55dc5bc0158b4a6150e66b0a47034a983e6af08ab2873f7"
     },
     {
       "file": "mural-banner-dark.png",
@@ -22,8 +22,8 @@
       "height": 724,
       "mode": "RGB",
       "transparent": false,
-      "bytes": 2969171,
-      "sha256": "2410ecf24b7105dc2d9ba4005279d9a9ef68f96c9523053f1375c4ecc7704f64"
+      "bytes": 2700379,
+      "sha256": "309886c6f3168fa2da1f05b9b01e8c3b87375e801201fadbdf8d65136233f5e7"
     },
     {
       "file": "mural-banner-light.png",
@@ -31,8 +31,8 @@
       "height": 724,
       "mode": "RGB",
       "transparent": false,
-      "bytes": 3024701,
-      "sha256": "f2edd8ccf1a9fa65accd5f0e33b060466fb9a374e6b45e9017c8e09dd5651f49"
+      "bytes": 2748782,
+      "sha256": "57b2989f67983c1942bde056761725c179860f70aa5be4969552bf644c6389a3"
     },
     {
       "file": "mural-brand-overview.png",
@@ -40,8 +40,8 @@
       "height": 1024,
       "mode": "RGB",
       "transparent": false,
-      "bytes": 2725008,
-      "sha256": "2de21518587c6a4f0c1ab75507a004cadf05eaf0881ad638be8f5a67f3715f30"
+      "bytes": 2523490,
+      "sha256": "e33ed43f91aca64dd8e7494ef19556a6d7ba080152f4b60fa989213509b601e9"
     },
     {
       "file": "mural-mark.png",
@@ -49,8 +49,8 @@
       "height": 1254,
       "mode": "RGBA",
       "transparent": true,
-      "bytes": 1482784,
-      "sha256": "67a7930e6aa3900c55c9a53d0d9e50e2c71331caa4d3d1190899c47ba9c06ecd"
+      "bytes": 1206110,
+      "sha256": "b2529723dd1e55b979ddb608d3486e65071d5d6f0ed0f0dbb2b042cd8f1f4970"
     },
     {
       "file": "mural-mascot.png",
@@ -58,8 +58,8 @@
       "height": 1254,
       "mode": "RGBA",
       "transparent": true,
-      "bytes": 1230869,
-      "sha256": "8b055fc6cbbb6518754839d93ad3e1cfa4758dfdd65eaf319805dfd32bb0fd61"
+      "bytes": 1162178,
+      "sha256": "c3032796d0cb4044bdde9b503c82365a052e1c77e8d4c105bd254353d66a5774"
     },
     {
       "file": "mural-social-card.png",
@@ -67,8 +67,8 @@
       "height": 907,
       "mode": "RGB",
       "transparent": false,
-      "bytes": 3042756,
-      "sha256": "89393feff90717ff4984d37ce020e5ef03c9f2ba66abf815e742b8b9d20030a4"
+      "bytes": 2690645,
+      "sha256": "2d5465d5540b5b7b4372df428b922b756a9202cb7ee7083cc4bbc627d943a023"
     },
     {
       "file": "mural-wordmark-dark.png",
@@ -76,8 +76,8 @@
       "height": 724,
       "mode": "RGBA",
       "transparent": true,
-      "bytes": 1471002,
-      "sha256": "cc32309275be1d12d440b128fd9bc0d9723645426c205c5c6c4a6207c7f381ce"
+      "bytes": 1435184,
+      "sha256": "fbbb84e744771d30b0b56eee89eb76ccdb5a6f6707511149aa9e5c1abf03325b"
     },
     {
       "file": "mural-wordmark-light.png",
@@ -85,8 +85,15 @@
       "height": 724,
       "mode": "RGBA",
       "transparent": true,
-      "bytes": 1532280,
-      "sha256": "e570a9b0880cc81801447a79ec8eab7071b8215f078dca8e02314858a1ef019e"
+      "bytes": 1412087,
+      "sha256": "3644c15c311e116afa67eab23904308e20750b446e94a34ef2faf0f8220f1928"
     }
-  ]
+  ],
+  "revision": 2,
+  "updated": "2026-10-10",
+  "previous_revision_commit": "4b3e71ad1018cadff1ccf42b8da02a2c63de5e59",
+  "visual_rules": {
+    "mark": "Open uppercase M without facial features.",
+    "robot": "Two attached ball-tip antennae; two solid cyan oval eyes; one small curved smile."
+  }
 }

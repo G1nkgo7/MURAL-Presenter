@@ -27,6 +27,8 @@ alpha transparency. These are raster illustrations, not editable vector artwork.
 ## Use and composition
 
 - Use the M mark for small interface placements. Use the mascot where its tools and pose can remain readable.
+- Keep the M a pure letterform: its central opening has no eyes, face panel or lower smile-shaped chevron.
+- Draw each robot with two attached, round-tipped antennae, two solid cyan oval eyes and one small curved smile. Avoid extra antennae, detached tips and ring-shaped eyes.
 - Preserve aspect ratios and leave clear space around the mark. Avoid stretching, cropping letters or placing text across the robots' faces.
 - Pair the light wordmark with light surfaces and the dark wordmark with navy or similarly dark surfaces.
 - The banners carry the stable name **MURAL Presenter**. Keep the full paper title as selectable text below the banner.
@@ -52,6 +54,11 @@ Created on 2026-10-10 with the built-in `image_gen` tool, using the author's
 [manifest.json](manifest.json), alongside the dimensions, alpha status and SHA-256 of each master.
 The full generation and revision prompts are retained in [generation-prompts.json](generation-prompts.json).
 
+Revision 2 (2026-10-10) replaces the face-like M and repairs antennae and eye consistency
+across all nine assets. Filenames and dimensions are unchanged, so existing README references
+load the corrected artwork. The previous revision remains available in Git at
+[`4b3e71a`](https://github.com/G1nkgo7/MURAL-Presenter/tree/4b3e71ad1018cadff1ccf42b8da02a2c63de5e59/assets/logo/exports/street-v2).
+
 The root English and Chinese READMEs use the new banners. Website and WebUI application assets
 are a separate integration step. Earlier PNG/SVG exports in the parent directory remain intact;
 they are historical artwork and should not be mixed into new `street-v2` layouts.
@@ -59,3 +66,4 @@ Manuscript method figures retain their original scientific content and are maint
 
 中文说明：本套包含主标识、头像、吉祥物、两版透明字标、两版横幅、论文分享图及视觉总览。
 当前接入中英文 README；原网站、WebUI 与旧版素材保留，后续应用时以本目录的独立文件为准。
+第 2 次修订移除了 M 内部的人脸元素，并统一机器人的双天线、椭圆眼睛；上一版可从 Git 历史恢复。

@@ -1063,13 +1063,14 @@ body.history-search-open { overflow: hidden; }
 .mode-switching .static-settings { animation: mode-settings-swap .4s cubic-bezier(.22,.8,.3,1) both; }
 
 /* 输入台一级篇幅 / 风格 / 模型 / Skill 入口 */
-.length-control, .style-control, .font-control, .model-control, .skill-control, .thinking-control, .effort-control { position: relative; flex: 0 0 auto; }
-#length-trigger, #style-trigger, #font-trigger, #model-trigger, #skill-trigger, #thinking-toggle {
+.length-control, .style-control, .deck-language-control, .font-control, .model-control, .skill-control, .thinking-control, .effort-control { position: relative; flex: 0 0 auto; }
+#length-trigger, #style-trigger, #deck-language-trigger, #font-trigger, #model-trigger, #skill-trigger, #thinking-toggle {
   display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 5px 9px;
   border: 0; border-radius: 10px; background: transparent; color: #484351;
   font: 650 12px var(--sans); cursor: pointer; transition: background .15s ease, color .15s ease;
 }
 #length-trigger:hover, #length-trigger.active, #style-trigger:hover, #style-trigger.active, #font-trigger:hover, #font-trigger.active,
+#deck-language-trigger:hover, #deck-language-trigger.active,
 #model-trigger:hover, #model-trigger.active, #skill-trigger:hover, #skill-trigger.active,
 #thinking-toggle:hover, #thinking-toggle[aria-checked="true"] { color: var(--acc-deep); background: rgba(91,41,218,.08); }
 .length-trigger-icon, .style-trigger-icon, .font-trigger-icon, .model-trigger-icon, .skill-trigger-icon, .thinking-trigger-icon {
@@ -1082,7 +1083,7 @@ body.history-search-open { overflow: hidden; }
 .composer-dock[data-mode="dynamic"] .model-trigger-icon,
 .composer-dock[data-mode="dynamic"] .skill-trigger-icon,
 .composer-dock[data-mode="dynamic"] .thinking-trigger-icon { color: #00966d; }
-#length-trigger em, #style-trigger em, #font-trigger em, #model-trigger em, #skill-trigger em { max-width: 82px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-style: normal; font-weight: 500; }
+#length-trigger em, #style-trigger em, #deck-language-trigger em, #font-trigger em, #model-trigger em, #skill-trigger em { max-width: 82px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-style: normal; font-weight: 500; }
 #model-trigger em, #skill-trigger em { max-width: 150px; }
 #model-trigger em {
   max-width: none; overflow: visible; text-overflow: clip;
@@ -1125,6 +1126,7 @@ body.history-search-open { overflow: hidden; }
 }
 .length-chevron, .style-chevron, .font-chevron, .model-chevron, .skill-chevron { color: #9b96a4; transition: transform .16s ease; }
 #length-trigger.active .length-chevron, #style-trigger.active .style-chevron,
+#deck-language-trigger.active .length-chevron,
 #font-trigger.active .font-chevron,
 #model-trigger.active .model-chevron, #skill-trigger.active .skill-chevron { transform: rotate(180deg); }
 
@@ -1466,6 +1468,29 @@ html[data-theme="dark"] .user-menu .user-menu-font-control #font-trigger.active 
   height: 100%; width: 0; background: var(--grad); border-radius: 2px;
   box-shadow: 0 0 10px rgba(255, 122, 40, .6);
   transition: width .6s ease;
+}
+
+.case-context {
+  display: flex; align-items: flex-start; gap: 24px; flex-shrink: 0;
+  padding: 9px 22px; background: var(--surface); border-bottom: 1px solid var(--hairline-soft);
+  font-size: 12px; line-height: 1.6;
+}
+.case-context-label { flex-shrink: 0; color: var(--muted); font-weight: 400; }
+.case-model { display: flex; align-items: center; gap: 8px; max-width: 30%; min-width: 0; }
+.case-model strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.case-query { flex: 1; min-width: 0; }
+.case-query summary { display: flex; align-items: center; gap: 8px; cursor: pointer; list-style: none; }
+.case-query summary::-webkit-details-marker { display: none; }
+.case-query summary:focus-visible { outline: 2px solid var(--acc); outline-offset: 3px; border-radius: 3px; }
+.case-query-preview { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.case-query-toggle { flex-shrink: 0; color: var(--acc); }
+.case-query-toggle::after { content: "展开 ▾"; }
+.case-query[open] .case-query-toggle::after { content: "收起 ▴"; }
+.case-query-full { margin-top: 8px; max-height: min(220px, 30vh); overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
+@media (max-width: 760px) {
+  .case-context { flex-direction: column; gap: 4px; padding: 8px 14px; }
+  .case-model { max-width: 100%; }
+  .case-query { width: 100%; }
 }
 
 /* 主体:胶片条 + 画布 */
@@ -2401,6 +2426,17 @@ html[data-theme="dark"] .user-menu .user-menu-font-control #font-trigger.active 
   background: transparent; border-radius: 0; padding: 0; box-shadow: none;
   width: auto; max-width: 100%; margin: 0; flex: 1 1 520px;
 }
+@media (min-width: 761px) {
+  .composer-actions { gap: 6px; }
+  .composer-actions .model-pick { flex-wrap: nowrap; gap: 4px; }
+  .composer-actions .model-control { flex: 0 1 auto; min-width: 0; }
+  .composer-actions #model-trigger { max-width: 100%; }
+  .composer-actions #model-trigger em { min-width: 0; max-width: 144px; overflow: hidden; text-overflow: ellipsis; }
+}
+@media (min-width: 761px) and (max-width: 1000px) {
+  .composer-actions { flex-wrap: wrap; }
+  .composer-actions .static-settings { flex-basis: 420px; }
+}
 .mp-label { font-size: 12px; color: var(--muted); font-weight: 500; }
 .model-pick select {
   border: 0; background: transparent; font-family: inherit; font-size: 13px;
@@ -3099,6 +3135,7 @@ html[data-theme="dark"] .composer-dock[data-mode="dynamic"] .skill-trigger-icon,
 html[data-theme="dark"] .composer-dock[data-mode="dynamic"] .thinking-trigger-icon { color: #64d9b7; }
 html[data-theme="dark"] #length-trigger,
 html[data-theme="dark"] #style-trigger,
+html[data-theme="dark"] #deck-language-trigger,
 html[data-theme="dark"] #font-trigger,
 html[data-theme="dark"] #model-trigger,
 html[data-theme="dark"] #skill-trigger,
@@ -3112,6 +3149,8 @@ html[data-theme="dark"] #length-trigger:hover,
 html[data-theme="dark"] #length-trigger.active,
 html[data-theme="dark"] #style-trigger:hover,
 html[data-theme="dark"] #style-trigger.active,
+html[data-theme="dark"] #deck-language-trigger:hover,
+html[data-theme="dark"] #deck-language-trigger.active,
 html[data-theme="dark"] #font-trigger:hover,
 html[data-theme="dark"] #font-trigger.active,
 html[data-theme="dark"] #model-trigger:hover,
@@ -3124,6 +3163,7 @@ html[data-theme="dark"] .attach-btn:hover { color: #d8ceff; background: rgba(140
 html[data-theme="dark"] .skill-control.fixed #skill-trigger:hover { color: #d0d1d6; background: transparent; }
 html[data-theme="dark"] #length-trigger em,
 html[data-theme="dark"] #style-trigger em,
+html[data-theme="dark"] #deck-language-trigger em,
 html[data-theme="dark"] #font-trigger em,
 html[data-theme="dark"] #model-trigger em,
 html[data-theme="dark"] #skill-trigger em,

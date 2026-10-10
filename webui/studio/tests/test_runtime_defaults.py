@@ -188,6 +188,28 @@ def critic_settings_api(tmp_path, monkeypatch):
         con.close()
 
 
+@pytest.mark.parametrize("query,lang,expected", [
+    ("Create a bedtime dinosaur presentation", None, "en"),
+    ("Create a bedtime dinosaur presentation", "", "en"),
+    ("Create a bedtime dinosaur presentation", "auto", "en"),
+    ("制作一份睡前恐龙故事演示", None, "zh"),
+    ("制作一份睡前恐龙故事演示", "auto", "zh"),
+    ("Create a bedtime dinosaur presentation", "zh", "zh"),
+    ("制作一份睡前恐龙故事演示", "en", "en"),
+    ("制作一份关于 AI 和 UI 的演示", "auto", "zh"),
+    ("Create an AI presentation about 北京", "auto", "en"),
+])
+def test_deck_language_selection_and_query_detection(critic_settings_api, query, lang, expected):
+    request, con, _user = critic_settings_api
+    form = {"query": query}
+    if lang is not None:
+        form["lang"] = lang
+    deck = request("POST", "/api/decks", form, form=True)
+    seed = json.loads(con.execute("SELECT seed_json FROM decks WHERE id=?", (deck["deck_id"],)).fetchone()[0])
+    assert seed["lang"] == expected
+    assert seed["query"] == query
+
+
 def test_critic_setting_roundtrips_per_account_and_keeps_existing_deck(critic_settings_api):
     request, con, user = critic_settings_api
     endpoint = "/api/settings/services"
@@ -293,6 +315,7 @@ def test_critic_settings_browser(tmp_path):
 
     studio = Path(__file__).resolve().parents[1]
     html = main.templates.env.get_template("app.html").render(
+        request={"scope": {}},
         authenticated=True, auth_enabled=False, dynamic_enabled=False, edition="v1",
         user={"id": 17, "display_name": "测试用户", "role": "user"},
         models=[("deployment-model", "测试模型", "openai")], pipelines=[], skills=[],

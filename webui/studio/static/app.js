@@ -696,6 +696,22 @@ function setLengthMenu(open) {
   trigger.setAttribute("aria-expanded", open ? "true" : "false");
 }
 
+function syncDeckLanguagePicker(value = "") {
+  $("#deck-language-sel").value = value;
+  $("#deck-language-current").textContent = value === "zh" ? "中文" : value === "en" ? "English" : uiText("deck_language_auto_short");
+  $$("#deck-language-menu [data-deck-language]").forEach((item) => {
+    const selected = item.dataset.deckLanguage === value;
+    item.classList.toggle("selected", selected);
+    item.setAttribute("aria-checked", selected ? "true" : "false");
+  });
+}
+
+function setDeckLanguageMenu(open) {
+  $("#deck-language-menu").hidden = !open;
+  $("#deck-language-trigger").classList.toggle("active", open);
+  $("#deck-language-trigger").setAttribute("aria-expanded", open ? "true" : "false");
+}
+
 function syncModelPicker() {
   const select = $("#model-sel");
   const option = select?.selectedOptions?.[0];
@@ -1056,6 +1072,7 @@ const UI_COPY = {
     length: "篇幅", style: "风格", model: "模型", skill: "Skill", appearance: "外观",
     appearance_note: "选择适合当前环境的界面主题", light: "浅色", dark: "深色", language: "语言",
     language_note: "设置 Studio 的界面语言", expand_sidebar: "展开侧栏", collapse_sidebar: "收起侧栏",
+    deck_language: "PPT 语言", deck_language_short: "语言", deck_language_auto: "自动（跟随需求）", deck_language_auto_short: "自动",
     mode_static: "已选择静态演示", mode_dynamic: "已选择动态演示",
     static_hint: "静态演示约需 20–35 分钟 · 期间可关闭页面 · ⌘/Ctrl + Enter 发送",
     dynamic_hint: "动态演示会逐页编排动效并渲染检查 · 右侧实时预览 · ⌘/Ctrl + Enter 发送",
@@ -1070,6 +1087,7 @@ const UI_COPY = {
     length: "Length", style: "Style", model: "Model", skill: "Skill", appearance: "Appearance",
     appearance_note: "Choose a comfortable interface theme", light: "Light", dark: "Dark", language: "Language",
     language_note: "Set the Studio interface language", expand_sidebar: "Expand sidebar", collapse_sidebar: "Collapse sidebar",
+    deck_language: "PPT language", deck_language_short: "Language", deck_language_auto: "Auto (follow prompt)", deck_language_auto_short: "Auto",
     mode_static: "Static presentation selected", mode_dynamic: "Dynamic presentation selected",
     static_hint: "Static generation takes about 20–35 minutes · You may close this page · ⌘/Ctrl + Enter to send",
     dynamic_hint: "Dynamic generation choreographs and checks each slide · Live preview on the right · ⌘/Ctrl + Enter to send",
@@ -1094,6 +1112,7 @@ function setLanguage(language, { remember = true } = {}) {
   });
   const selector = $("#settings-language");
   if (selector) selector.value = currentLanguage;
+  syncDeckLanguagePicker($("#deck-language-sel").value);
   if (isAuthenticated && historyRows.length) {
     renderHistoryRows();
     renderHistorySearchResults();
@@ -2505,6 +2524,7 @@ async function send() {
   const slideCount = currentSlideCount();
   const body = new FormData();        // FormData:同时带表单字段 + 附件(multipart);FastAPI Form/File 都收
   body.set("query", q);
+  body.set("lang", $("#deck-language-sel").value);
   body.set("model", $("#model-sel").value);
   body.set("pipeline", $("#pipeline-sel").value);
   body.set("skill", $("#skill-sel").value);
@@ -2550,6 +2570,7 @@ async function sendSensePresentDazzle(query) {
   const button = $("#send");
   const body = new FormData();
   body.set("query", query);
+  body.set("lang", $("#deck-language-sel").value);
   body.set("model", $("#model-sel").value);
   body.set("skill", "sense-present-dazzle");
   body.set("ppt_output", "dynamic_html");
@@ -2805,6 +2826,10 @@ function closeEditor({ showComposerView = true } = {}) {
   cancelWorkflowAgentTraceRequest();
   stopLive();
   ed.id = null;
+  const context = $("#case-context");
+  if (context) context.hidden = true;
+  const queryDetails = $("#case-query");
+  if (queryDetails) queryDetails.open = false;
   ed.workflowToolOutputs = {};
   const frame = $("#canvas-deck");
   frame.hidden = true; frame.src = "about:blank";
@@ -2882,6 +2907,7 @@ async function openDeck(id) {
     if (!isCurrent()) return;
     $("#ed-title").textContent = p.title || "演示文稿";
     apply(p);
+    if (ed.status === "completed" && ed.staticDeckReady) setWorkspaceView("ppt");
     setTopbar(
       p.title || "演示文稿",
       `${editorPresentationKind() === "dynamic" ? "动态" : "静态"}演示 · AI 生成内容请注意核验`,
@@ -3001,6 +3027,7 @@ async function openDynamic(convId, { subscribeNow = false } = {}) {
   }
   renderDynamicChrome();
   renderDynamicConsole();
+  if (ed.status === "completed" && ed.dynamicDeckUrl) setWorkspaceView("ppt");
   await workspaceTransition;
   finishComposerLaunchMorph();
 }
@@ -3371,7 +3398,7 @@ function apply(p) {
   // 选中页的规划 md 可能刚写出来 → 补拉(含 00=deck.md)
   if (ed.sel != null && !ed.planCache[ed.sel]) loadPlan(ed.sel);
 
-  // 静态任务默认进入 Workflow，消息只在右侧栏呈现。
+  // 首次载入先准备 Workflow，完成任务重开后的默认视图由 openDeck 决定。
   if (ed.sel == null) select(0, { byUser: false });
 
   // 终态
@@ -3472,6 +3499,18 @@ function syncTaskConfig() {
   if (outlinePref) outlinePref.textContent = preferences || "—";
   if (outlinePrefRow) outlinePrefRow.hidden = !preferences;
   if (outlineSummary) outlineSummary.textContent = `${model} · ${skill} · 深度思考：${thinking === "开启" ? "已开启" : "未开启"}`;
+  syncCaseContext(model);
+}
+
+function syncCaseContext(model) {
+  const context = $("#case-context");
+  if (!context) return;
+  context.hidden = !ed.id;
+  const query = ed.briefMeta?.user_query || ed.fullQuery || "—";
+  $("#case-model").textContent = model;
+  $("#case-model").title = model;
+  $("#case-query-preview").textContent = query;
+  $("#case-query-full").textContent = query;
 }
 
 function renderStatus(p, phase) {
@@ -7132,12 +7171,12 @@ function setWorkspaceView(view) {
     syncViewToggle();
     return;
   }
-  setFollow(true);
+  setFollow(ed.status !== "completed");
   const readyPages = ed.kind === "dynamic" ? ed.rendered : ed.authored;
   const currentReady = Number(ed.sel) > 0 && readyPages.has(Number(ed.sel));
   const target = currentReady
     ? Number(ed.sel)
-    : (readyPages.size ? Math.max(...readyPages) : 1);
+    : (readyPages.size ? (ed.status === "completed" ? Math.min(...readyPages) : Math.max(...readyPages)) : 1);
   select(target, { byUser: false });
 }
 
@@ -11133,6 +11172,7 @@ $("#batch-effort")?.addEventListener("change", (event) => {
 });
 $("#style-trigger").addEventListener("click", (e) => {
   e.stopPropagation();
+  setDeckLanguageMenu(false);
   setLengthMenu(false);
   setModelMenu(false);
   setSkillMenu(false);
@@ -11142,6 +11182,7 @@ $("#style-trigger").addEventListener("click", (e) => {
 });
 $("#length-trigger").addEventListener("click", (e) => {
   e.stopPropagation();
+  setDeckLanguageMenu(false);
   setStyleGallery(false);
   setModelMenu(false);
   setSkillMenu(false);
@@ -11151,6 +11192,7 @@ $("#length-trigger").addEventListener("click", (e) => {
 });
 $("#model-trigger").addEventListener("click", async (e) => {
   e.stopPropagation();
+  setDeckLanguageMenu(false);
   setStyleGallery(false);
   setLengthMenu(false);
   setSkillMenu(false);
@@ -11165,12 +11207,45 @@ $("#model-trigger").addEventListener("click", async (e) => {
 });
 $("#skill-trigger").addEventListener("click", (e) => {
   e.stopPropagation();
+  setDeckLanguageMenu(false);
   setStyleGallery(false);
   setLengthMenu(false);
   setModelMenu(false);
   setAttachMenu(false);
   setFontPanel(false);
   setSkillMenu($("#skill-menu").hidden);
+});
+$("#deck-language-trigger").addEventListener("click", (e) => {
+  e.stopPropagation();
+  setStyleGallery(false);
+  setLengthMenu(false);
+  setModelMenu(false);
+  setSkillMenu(false);
+  setAttachMenu(false);
+  setFontPanel(false);
+  setDeckLanguageMenu($("#deck-language-menu").hidden);
+});
+$("#deck-language-menu").addEventListener("click", (e) => {
+  const item = e.target.closest("[data-deck-language]");
+  if (!item) return;
+  syncDeckLanguagePicker(item.dataset.deckLanguage);
+  setDeckLanguageMenu(false);
+  $("#deck-language-trigger").focus();
+});
+$("#deck-language-sel").addEventListener("change", (e) => syncDeckLanguagePicker(e.target.value));
+$(".deck-language-control").addEventListener("keydown", (e) => {
+  if (e.key === "Escape") {
+    setDeckLanguageMenu(false);
+    $("#deck-language-trigger").focus();
+  } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    e.preventDefault();
+    setDeckLanguageMenu(true);
+    const items = $$("#deck-language-menu [data-deck-language]");
+    const index = items.indexOf(document.activeElement);
+    const direction = e.key === "ArrowDown" ? 1 : -1;
+    const next = index < 0 ? (direction > 0 ? 0 : items.length - 1) : (index + direction + items.length) % items.length;
+    items[next].focus();
+  }
 });
 $("#model-menu").addEventListener("click", (e) => {
   const deleteButton = e.target.closest("[data-delete-model]");
@@ -11219,6 +11294,7 @@ $("#style-gallery").addEventListener("click", (e) => {
   localStorage.setItem("studio_style", $("#style-sel").value);
 });
 document.addEventListener("click", (e) => {
+  if (!e.target.closest(".deck-language-control")) setDeckLanguageMenu(false);
   if (!e.target.closest("#style-gallery") && !e.target.closest("#style-trigger")) setStyleGallery(false);
   if (!e.target.closest("#length-menu") && !e.target.closest("#length-trigger")) setLengthMenu(false);
   if (!e.target.closest("#model-menu") && !e.target.closest("#model-trigger")) setModelMenu(false);
@@ -11227,7 +11303,7 @@ document.addEventListener("click", (e) => {
   if (!e.target.closest("#font-panel") && !e.target.closest("#font-trigger")) setFontPanel(false);
 });
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape") { setStyleGallery(false); setLengthMenu(false); setModelMenu(false); setSkillMenu(false); setAttachMenu(false); setFontPanel(false); setUserMenu(false); }
+  if (e.key === "Escape") { setStyleGallery(false); setLengthMenu(false); setDeckLanguageMenu(false); setModelMenu(false); setSkillMenu(false); setAttachMenu(false); setFontPanel(false); setUserMenu(false); }
 });
 $("#suggestion-list").addEventListener("click", (e) => {
   const chip = e.target.closest(".suggestion-chip");
@@ -11499,6 +11575,7 @@ if ($("#attach-btn")) {              // 附件上传区交互(仅支持附件的
     if (creationMode !== "static") return;
     setStyleGallery(false);
     setLengthMenu(false);
+    setDeckLanguageMenu(false);
     setModelMenu(false);
     setSkillMenu(false);
     setAttachMenu($("#attach-menu").hidden);
@@ -11543,7 +11620,7 @@ if ($("#font-trigger")) {
   $("#font-trigger").addEventListener("click", (event) => {
     event.stopPropagation();
     if (creationMode !== "static" || !pipelineHasCap("custom_fonts")) return;
-    setStyleGallery(false); setLengthMenu(false); setModelMenu(false); setSkillMenu(false); setAttachMenu(false);
+    setStyleGallery(false); setLengthMenu(false); setDeckLanguageMenu(false); setModelMenu(false); setSkillMenu(false); setAttachMenu(false);
     setFontPanel($("#font-panel").hidden);
   });
   $("#font-upload").addEventListener("click", () => $("#font-input").click());

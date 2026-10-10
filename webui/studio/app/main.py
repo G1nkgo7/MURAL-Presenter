@@ -540,14 +540,16 @@ _LANG_ALIASES = {
 
 
 def _normalize_language_hint(value, location="query"):
-    """Normalize an optional user-supplied language field to zh/en."""
+    """规范可选语言；空值或 auto 随 Query 自动识别。"""
     if value is None or value == "":
         return ""
     if not isinstance(value, str):
-        raise ValueError(f"{location} 的 lang 必须是字符串 zh 或 en")
+        raise ValueError(f"{location} 的 lang 必须是字符串 auto、zh 或 en")
+    if value.strip().lower() in {"", "auto"}:
+        return ""
     normalized = _LANG_ALIASES.get(value.strip().lower().replace("_", "-"), "")
     if not normalized:
-        raise ValueError(f"{location} 的 lang 只支持 zh 或 en")
+        raise ValueError(f"{location} 的 lang 只支持 auto、zh 或 en")
     return normalized
 
 
@@ -1042,7 +1044,7 @@ def _apply_deck_attachments(
 def create_deck(
     request: Request,
     query: str = Form(...),
-    lang: str = Form("zh"),
+    lang: str = Form(""),
     slide_count: int = Form(0),
     theme: str = Form(""),
     style: str = Form(""),

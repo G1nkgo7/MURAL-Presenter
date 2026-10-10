@@ -288,6 +288,22 @@
             <option>活泼明快</option><option>极简</option>
           </select>
         </div>
+        <div class="deck-language-control">
+          <button type="button" id="deck-language-trigger" aria-haspopup="menu" aria-expanded="false" aria-controls="deck-language-menu" title="选择 PPT 输出语言">
+            <span class="length-trigger-icon" aria-hidden="true">文</span><span data-i18n="deck_language_short">语言</span><em id="deck-language-current">自动</em><span class="length-chevron" aria-hidden="true">⌃</span>
+          </button>
+          <div class="length-menu" id="deck-language-menu" role="menu" hidden>
+            <div class="length-menu-title" data-i18n="deck_language">PPT 语言</div>
+            <button type="button" class="selected" data-deck-language="" role="menuitemradio" aria-checked="true"><span>✦</span><strong data-i18n="deck_language_auto">自动（跟随需求）</strong><i>✓</i></button>
+            <button type="button" data-deck-language="zh" role="menuitemradio" aria-checked="false"><span>文</span><strong>中文</strong><i>✓</i></button>
+            <button type="button" data-deck-language="en" role="menuitemradio" aria-checked="false"><span>A</span><strong>English</strong><i>✓</i></button>
+          </div>
+          <select id="deck-language-sel" name="lang" hidden>
+            <option value="" selected data-i18n="deck_language_auto">自动（跟随需求）</option>
+            <option value="zh">中文</option>
+            <option value="en">English</option>
+          </select>
+        </div>
         <div class="static-settings" id="common-settings">
       <div class="model-pick" title="选择生成模型和 Skill；管线按当前适配版本自动使用">
         <div class="model-control">
@@ -508,6 +524,14 @@
       </header>
 
       <div class="ed-progressline"><div class="bar" id="ed-bar"></div></div>
+
+      <div class="case-context" id="case-context" hidden>
+        <div class="case-model"><span class="case-context-label">生成模型</span><strong id="case-model">—</strong></div>
+        <details class="case-query" id="case-query">
+          <summary><span class="case-context-label">原始 Query</span><span class="case-query-preview" id="case-query-preview"></span><span class="case-query-toggle" aria-hidden="true"></span></summary>
+          <div class="case-query-full" id="case-query-full"></div>
+        </details>
+      </div>
 
       <div class="ed-body">
         <div class="filmstrip" id="filmstrip"></div>

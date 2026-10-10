@@ -206,7 +206,7 @@ def test_browser_workflow_sidebar_full_app(tmp_path, monkeypatch):
 
     studio = Path(__file__).resolve().parents[1]
     template = Environment(loader=FileSystemLoader(studio / "templates"), autoescape=select_autoescape()).get_template("app.html")
-    html = template.render(authenticated=True, auth_enabled=False, dynamic_enabled=True,
+    html = template.render(request={"scope": {}}, authenticated=True, auth_enabled=False, dynamic_enabled=True,
                            edition="test", asset_ver="test", user={"display_name": "测试用户", "username": "test", "role": "user"})
     for name in ("TMPDIR", "TMP", "TEMP"):
         monkeypatch.setenv(name, str(tmp_path))
@@ -423,7 +423,7 @@ def test_browser_workflow_sidebar_full_app(tmp_path, monkeypatch):
             assert page.locator("#workflow-chat-send").is_disabled()
             assert "图片登记与预览" in page.locator("#workflow-message-list").inner_text()
             assert "AI 生成" in page.locator("#workflow-message-list").inner_text()
-            assert "真实图片" in page.locator("#workflow-message-list").inner_text()
+            assert "网络图片 · 已下载" in page.locator("#workflow-message-list").inner_text()
             page.locator('[data-workflow-pane="graph"]').click()
             slide_message = page.locator('#workflow-message-list [data-message-agent="slide_group_one"]')
             slide_message.click()

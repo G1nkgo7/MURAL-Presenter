@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/logo/exports/mural-paper-lockup-dark.svg">
-    <img src="assets/logo/exports/mural-paper-lockup-light.svg" width="1000" alt="MURAL Presenter — Multi-Agent Units of Responsibility for Authoring Long-Horizon Presentations">
+    <source media="(prefers-color-scheme: dark)" srcset="assets/logo/exports/street-v2/mural-banner-dark.png">
+    <img src="assets/logo/exports/street-v2/mural-banner-light.png" width="1000" alt="MURAL Presenter — Multi-Agent Units of Responsibility for Authoring Long-Horizon Presentations">
   </picture>
 </p>
 
@@ -194,7 +194,7 @@ batch size 为 64。监督策略对比使用训练 4 轮的 27B 模型，与主�
 | --- | --- |
 | 创作 Skill 与 Harness | 已提供：0919 冻结源码，按原始清单校验。 |
 | WebUI 与启动器 | 已提供：便携配置、命令行入口与 `/studio` 部署支持。 |
-| 正式 logo 与方法配图 | 已提供；[配图来源记录](assets/figures/README.md)区分当前稿件与历史版本。 |
+| 正式 logo 与方法配图 | 已提供：[街头壁画品牌素材](assets/logo/exports/street-v2/README.md)及[论文配图来源](assets/figures/README.md)。 |
 | 9B / 27B 模型权重 | 本仓库未附带，尚无公开 checkpoint 下载链接。 |
 | 训练数据、ThreadEval 案例与评测流水线 | 未纳入本次运行系统源码发布。 |
 | 论文链接与引用信息 | 等待作者提供最终公开元数据。 |

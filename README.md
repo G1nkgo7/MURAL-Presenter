@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/logo/exports/mural-paper-lockup-dark.svg">
-    <img src="assets/logo/exports/mural-paper-lockup-light.svg" width="1000" alt="MURAL Presenter — Multi-Agent Units of Responsibility for Authoring Long-Horizon Presentations">
+    <source media="(prefers-color-scheme: dark)" srcset="assets/logo/exports/street-v2/mural-banner-dark.png">
+    <img src="assets/logo/exports/street-v2/mural-banner-light.png" width="1000" alt="MURAL Presenter — Multi-Agent Units of Responsibility for Authoring Long-Horizon Presentations">
   </picture>
 </p>
 
@@ -206,7 +206,7 @@ Interpret the experiments under their recorded protocols:
 | --- | --- |
 | Authoring Skill and Harness | Included: frozen 0919 source pair, verified against its original inventory. |
 | WebUI and launchers | Included: portable configuration, CLI and `/studio` deployment support. |
-| Public logos and method figures | Included; [figure provenance](assets/figures/README.md) records current and historical versions. |
+| Public logos and method figures | Included: [street-mural brand kit](assets/logo/exports/street-v2/README.md) and [figure provenance](assets/figures/README.md). |
 | 9B / 27B model weights | Not included; no public checkpoint download is linked yet. |
 | Training data, ThreadEval cases and evaluation pipelines | Not included in this runtime release. |
 | Paper link and citation metadata | Awaiting final author-supplied publication metadata. |

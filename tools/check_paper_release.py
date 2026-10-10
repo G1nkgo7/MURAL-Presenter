@@ -9,8 +9,8 @@ import subprocess
 ROOT = Path(__file__).resolve().parents[1]
 PUBLIC_ASSET_ROOTS = ("assets/logo/exports/", "assets/figures/")
 README_ASSETS = {
-    "assets/logo/exports/mural-paper-lockup-light.svg",
-    "assets/logo/exports/mural-paper-lockup-dark.svg",
+    "assets/logo/exports/street-v2/mural-banner-light.png",
+    "assets/logo/exports/street-v2/mural-banner-dark.png",
     "assets/figures/cross-page-dependencies.png",
     "assets/figures/roles-and-tools.png",
     "assets/figures/ownership-workflow.png",

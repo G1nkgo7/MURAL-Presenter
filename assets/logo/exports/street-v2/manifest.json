@@ -1,0 +1,92 @@
+{
+  "version": "street-v2",
+  "created": "2026-10-10",
+  "generation_tool": "built-in image_gen",
+  "reference": {
+    "file": "mural-wall-handpainted-20261008.webp",
+    "sha256": "3f22a67342dac450474636faf1e49edd20bbfaec3e870fa60c27c77b5b298148"
+  },
+  "assets": [
+    {
+      "file": "mural-avatar.png",
+      "width": 1254,
+      "height": 1254,
+      "mode": "RGB",
+      "transparent": false,
+      "bytes": 1937598,
+      "sha256": "3ca6e84dbf878ddd4d53815a9a362a27e2e1565f3016d56166ad1958d533508f"
+    },
+    {
+      "file": "mural-banner-dark.png",
+      "width": 2172,
+      "height": 724,
+      "mode": "RGB",
+      "transparent": false,
+      "bytes": 2969171,
+      "sha256": "2410ecf24b7105dc2d9ba4005279d9a9ef68f96c9523053f1375c4ecc7704f64"
+    },
+    {
+      "file": "mural-banner-light.png",
+      "width": 2172,
+      "height": 724,
+      "mode": "RGB",
+      "transparent": false,
+      "bytes": 3024701,
+      "sha256": "f2edd8ccf1a9fa65accd5f0e33b060466fb9a374e6b45e9017c8e09dd5651f49"
+    },
+    {
+      "file": "mural-brand-overview.png",
+      "width": 1536,
+      "height": 1024,
+      "mode": "RGB",
+      "transparent": false,
+      "bytes": 2725008,
+      "sha256": "2de21518587c6a4f0c1ab75507a004cadf05eaf0881ad638be8f5a67f3715f30"
+    },
+    {
+      "file": "mural-mark.png",
+      "width": 1254,
+      "height": 1254,
+      "mode": "RGBA",
+      "transparent": true,
+      "bytes": 1482784,
+      "sha256": "67a7930e6aa3900c55c9a53d0d9e50e2c71331caa4d3d1190899c47ba9c06ecd"
+    },
+    {
+      "file": "mural-mascot.png",
+      "width": 1254,
+      "height": 1254,
+      "mode": "RGBA",
+      "transparent": true,
+      "bytes": 1230869,
+      "sha256": "8b055fc6cbbb6518754839d93ad3e1cfa4758dfdd65eaf319805dfd32bb0fd61"
+    },
+    {
+      "file": "mural-social-card.png",
+      "width": 1734,
+      "height": 907,
+      "mode": "RGB",
+      "transparent": false,
+      "bytes": 3042756,
+      "sha256": "89393feff90717ff4984d37ce020e5ef03c9f2ba66abf815e742b8b9d20030a4"
+    },
+    {
+      "file": "mural-wordmark-dark.png",
+      "width": 2172,
+      "height": 724,
+      "mode": "RGBA",
+      "transparent": true,
+      "bytes": 1471002,
+      "sha256": "cc32309275be1d12d440b128fd9bc0d9723645426c205c5c6c4a6207c7f381ce"
+    },
+    {
+      "file": "mural-wordmark-light.png",
+      "width": 2172,
+      "height": 724,
+      "mode": "RGBA",
+      "transparent": true,
+      "bytes": 1532280,
+      "sha256": "e570a9b0880cc81801447a79ec8eab7071b8215f078dca8e02314858a1ef019e"
+    }
+  ]
+}

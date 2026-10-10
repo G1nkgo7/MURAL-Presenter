@@ -15,7 +15,7 @@ The source PDFs and manuscript workspace are not included in this runtime releas
 `execution-topologies.{png,pdf}` and `authoring-lifecycle.{png,pdf}` are preserved historical
 illustrations. They use the earlier group-centric framing and are not the current README figures.
 The earlier logo lockups in `../logo/exports/` also contain the previous title expansion.
-The current README uses `mural-paper-lockup-{light,dark}.svg` in `../logo/exports/`.
-These self-contained SVG lockups reuse the original `mural-mascot-1024.png` without modifying it,
-with editable typography for the current name: Multi-Agent Units of Responsibility for
-Authoring Long-Horizon Presentations. Both older PNG lockups remain available.
+The current README uses the [street-mural identity](../logo/exports/street-v2/README.md),
+with separate light and dark banners. The full paper title remains selectable README text.
+The previous `mural-paper-lockup-{light,dark}.svg`, earlier PNG lockups and original mascots
+are preserved as historical exports. Paper method diagrams retain their manuscript content.

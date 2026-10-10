@@ -1,92 +1,92 @@
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/logo/exports/mural-logo-lockup-dark.png">
-    <img src="assets/logo/exports/mural-logo-lockup-light.png" width="1000" alt="MURAL Presenter — Multi-Agent Unified Revision-Aware Authoring for Long-Horizon Presentations">
-  </picture>
+  <img src="assets/logo/exports/mural-mark-256.png" width="144" alt="MURAL logo">
 </p>
 
-<p align="center"><strong>Lifecycle authoring for editable, long-horizon presentations.</strong></p>
+<h1 align="center">MuralPresenter</h1>
+<p align="center"><strong>Multi-Agent Units of Responsibility for<br>Authoring Long-Horizon Presentations</strong></p>
+<p align="center">Persistent deck state · Adaptive page ownership · Editable HTML presentations</p>
 
-# MURAL Presenter
+This repository accompanies **MuralPresenter: Multi-Agent Units of Responsibility for
+Authoring Long-Horizon Presentations**. It publishes the authoring Skill, its paired Harness,
+and the WebUI. The method, training and evaluation overview below follows the current manuscript.
 
-Paper implementation for **Multi-Agent Unified Revision-Aware Authoring for Long-Horizon Presentations**.
+The released runtime preserves the 0919 source snapshot: its 254 core files are byte-identical
+to `mural-presentbench-qwen35-9b-20260919T163556Z`. This source identity is separate from the
+trained 9B/27B checkpoints evaluated in the paper. Deployment paths are resolved at launch.
 
-This repository publishes the 0919 authoring Skill, its paired Harness and the WebUI.
-The 254 core source files are byte-identical to
-`mural-presentbench-qwen35-9b-20260919T163556Z`. Deployment paths are resolved at launch.
-
-[简体中文](README_zh-CN.md) · [Quick start](#quick-start) · [WebUI guide](webui/README_EN.md) · [Release scope](#experiment-scope) · [Contributing](CONTRIBUTING.md)
-
-## The name is the method
-
-| Letter | Stands for | Method implication |
-| :---: | --- | --- |
-| **M** | **Multi-Agent** | Specialist roles can run in parallel without making every slide an isolated task. |
-| **U** | **Unified** | A shared deck blueprint carries audience, evidence, terminology, narrative, and design decisions. |
-| **R** | **Revision-Aware** | Work resumes at page, group, or deck scope according to the edit's actual impact. |
-| **A** | **Authoring** | The reusable object is an executable lifecycle, not a one-shot image-generation prompt. |
-| **L** | **Long-Horizon Presentations** | Decisions must survive across stages, distant slides, and later revision turns. |
-
-> **MURAL does not merely split a long workflow. It aligns agent ownership with the deck's
-> dependency structure, then restores whole-deck closure after parallel production.**
+[简体中文](README_zh-CN.md) · [Quick start](#quick-start) · [WebUI guide](webui/README_EN.md) · [Models and training](#models-and-trajectory-training) · [Evaluation](#evaluation-and-release-scope) · [Contributing](CONTRIBUTING.md)
 
 ## At a glance
 
-**MURAL-Presenter** (MURAL for short) is a Skill-driven multi-agent framework for the full lifecycle of editable HTML
-presentations. It treats presentation creation as an authoring process rather than a one-shot
-rendering problem: understand the request, ground materials and facts, plan the deck, prepare
-assets, author related slides, inspect rendered pixels, review the assembled deck, revise it,
-and export the result.
+MuralPresenter is a Skill-driven multi-agent framework for authoring editable HTML presentations.
+It grounds evidence, plans the deck, prepares assets, produces pages, inspects rendered results,
+revises the presentation and exports deliverables. **Long horizon** describes decisions that
+must remain valid across stages, distant pages and later revision turns.
 
-Here, **long horizon** refers to the distance over which a decision must remain valid across
-stages, slides, and revision turns. An audience assumption set at the beginning may shape an
-entire deck; a definition introduced on slide 3 may be consumed on slide 18; a later edit may
-need to update several related slides without disturbing the rest.
+The central design is **unit-adaptive responsibility**: assign pages according to whether they
+need joint adjustment, and retain that ownership through authoring, inspection and revision.
 
-- **Shared state, scoped views.** Global decisions are externalized once and projected into
-  group and page briefs instead of being reconstructed from a growing conversation.
-- **Slide-group ownership.** Narratively or visually dependent pages have one accountable
-  producer and one joint render–inspect–revise loop, even when the pages are non-contiguous.
-- **Revision-aware continuation.** Later edits reuse the same lifecycle and restart only the
-  smallest scope that can reliably preserve deck-level decisions.
+- **Shared deck state** stores adopted knowledge, the production blueprint, design rules and asset records.
+- **Single Owners** produce independent pages whose required inputs and representations are settled.
+- **Group Owners** jointly produce pages with coupled content or design decisions, including nonadjacent pages.
+- **Persistent coordination** routes changes to the responsible Owners and reviews consistency across units.
 
-## The missing middle: deck → slide group → page
+## Why units of responsibility?
 
-Single-agent authoring preserves one continuous context, but its execution history grows with
-the deck and later edits. Per-slide parallelism shortens each trajectory, but moves cross-slide
-relationships into state handoffs between independent workers. This is a responsibility problem,
-not merely a scheduling problem. MURAL inserts a middle unit: the **slide group**.
-
-Slides that share a narrative responsibility, visual system, asset series, or explicit
-dependency are assigned to one Group Agent for joint authoring and inspection. Different groups
-can still run in parallel. After assembly, a whole-deck review restores the global view.
+A whole-deck Owner retains one production history that grows with the presentation and its edits.
+Per-slide Owners distribute production, while cross-page decisions require coordination between
+separate contexts. MuralPresenter supports both single-page and multi-page units within one deck.
+Topic or style similarity alone is insufficient for grouping: the relevant question is whether
+content or design choices still need to be adjusted together.
 
 <p align="center">
-  <img src="assets/figures/execution-topologies.png" width="100%" alt="Sequential, full-context parallel, and MURAL execution topologies">
+  <img src="assets/figures/cross-page-dependencies.png" width="880" alt="Cross-page factual, visual and narrative dependencies; growing whole-deck history and fragmented per-slide contexts">
 </p>
 
-<p align="center"><em>Figure 1. MURAL assigns dependency-related slides to shared Group Agents and restores whole-deck closure after parallel authoring.</em></p>
+<p align="center"><em>Cross-page dependencies motivate a responsibility assignment that combines shared deck state with bounded page ownership.</em></p>
 
-## Full-lifecycle authoring
+## Roles and tools
 
-MURAL externalizes the lifecycle as the reusable **MURAL Authoring Skill**:
+| Role | Responsibility |
+| --- | --- |
+| **Orchestrator** | Maintains shared knowledge and the blueprint, assigns units, reviews the deck and routes revisions; can also handle light research, routine assets and unassigned pages. |
+| **Research** | Retrieves and synthesizes evidence, preserving sources, factual conditions and unresolved questions. |
+| **Image** | Acquires or generates assets, inspects them and provides paths, intended uses, restrictions and target pages. |
+| **Slide** | Authors HTML, inspects renders and repairs assigned pages; Single and Group Owners use the same authoring capabilities. |
 
-1. **Material and research** organize optional attachments and close decision-relevant evidence gaps.
-2. **Plan and compile** establish a shared deck blueprint, design system, page map, and complete slide groups.
-3. **Group authoring** uses one centralized image stage, then lets Group Agents jointly author and inspect related slides.
-4. **Review, revise, and deliver** assemble the deck, run whole-deck review, route later edits by impact scope, and export deliverables.
+Tools handle retrieval, file operations, asset processing and rendering. Agents make content and
+design decisions. Handoffs carry artifact paths and usage information. Confirmed assets can reach
+page Owners before the entire asset batch is ready.
+
+<details>
+<summary>View the manuscript's role and tool diagram</summary>
 
 <p align="center">
-  <img src="assets/figures/authoring-lifecycle.png" width="100%" alt="MURAL full authoring and revision lifecycle">
+  <img src="assets/figures/roles-and-tools.png" width="680" alt="Orchestrator, Research, Image and Slide roles, their tools and shared deck state">
 </p>
 
-<p align="center"><em>Figure 2. The MURAL Authoring Skill spans material grounding, deck planning, group authoring, whole-deck review, impact-aware revision, and multi-format delivery.</em></p>
+</details>
 
-The revision router selects the smallest reliable scope:
+## Authoring and revision
 
-- **Page patch** for a precisely local change.
-- **Group replay** when several related slides or their shared visual language must change.
-- **Deck replan** only when the request changes deck-level decisions or structure.
+The paper describes five stages, which may overlap or recur:
+
+1. **Knowledge Grounding:** resolve factual questions and record adopted evidence, conditions and open questions.
+2. **Deck Planning:** establish the narrative, page briefs, notes, design rules and visual requests.
+3. **Asset Preparation:** acquire or create visuals, inspect them and record their intended use.
+4. **Parallel Authoring:** produce independent units as their shared inputs become ready, while preparation continues elsewhere.
+5. **Iterative Refinement:** render, inspect and repair pages; review the assembled deck and route findings to the responsible Owners.
+
+<p align="center">
+  <img src="assets/figures/ownership-workflow.png" width="100%" alt="Persistent coordination, adaptive Single and Group Owners, local refinement and deck-wide verification">
+</p>
+
+<p align="center"><em>Owners retain responsibility across authoring, inspection, revision and context recovery. The Orchestrator maintains shared state and reviews the assembled deck.</em></p>
+
+Content edits resume the relevant Owners. Structural edits can change units and ownership scopes.
+Shared-style edits update the common state before affected pages are revised. Updated pages are
+rendered and inspected again. Delivery assembles checked pages, assets and notes in deck order,
+checks file completeness and exports the requested formats.
 
 ## Quick start
 
@@ -145,7 +145,8 @@ MURAL-Presenter/
 
 The core directory names and internal assets, references, docs and tests are part of its frozen
 identity. Keep them intact. Public logos and diagrams live in `assets/logo/exports/` and
-`assets/figures/`; design drafts remain local. Root-level `benchmark/`, `docs/`, `examples/`,
+`assets/figures/`; [figure provenance](assets/figures/README.md) records the current manuscript exports.
+Design drafts remain local. Root-level `benchmark/`, `docs/`, `examples/`,
 `paper/`, training material and the independent `site/` are not included in this release.
 Deployment credentials, environments, databases and generated cases remain local and ignored.
 Necessary usage, provenance and validation information is consolidated in these READMEs.
@@ -171,16 +172,61 @@ This verifies the frozen core, active integration and tracked release boundaries
 Do not refresh core hashes to conceal source changes. Integration updates require their own
 review, tests and manifest; see [Contributing](CONTRIBUTING.md).
 
-## Experiment scope
+## Models and trajectory training
 
-This is the runtime source release, not the complete experiment artifact package.
-The reference 0919 experiment used Qwen3.5-9B, thinking enabled, Critic/search/image generation
-disabled, 238 PresentBench cases and at most three generation attempts per case.
-These settings do not define every WebUI model's defaults.
+The paper trains **MuralPresenter-9B** and **MuralPresenter-27B** on **9,000 quality-filtered
+execution segments from 686 native source records**. These counts describe segments and sources,
+not 9,000 completed presentations. Each segment keeps its preceding history as input context.
 
-Score reproduction additionally requires the exact inputs and checksums, model weights and
-chat template, evaluation adapter, font shim, Judge settings and result coverage records.
-Benchmark suites, training pipelines, checkpoints and paper result tables are not bundled here.
+| Supervision policy | Assistant actions receiving training loss |
+| --- | --- |
+| Full | Historical and current-segment actions. |
+| Global Selective | Only current-segment actions, for every role. |
+| Role-wise Selective | Current-segment actions for Slide; Full supervision for the other roles. |
+
+The public-benchmark checkpoints use **Global Selective**:
+
+| Model | Backbone | Evaluated checkpoint |
+| --- | --- | --- |
+| MuralPresenter-9B | Qwen-3.5-9B | 4 epochs, 128 optimizer steps |
+| MuralPresenter-27B | Qwen-3.8-27B | 2 epochs, 64 optimizer steps |
+
+Training uses MS-SWIFT, Megatron and BF16 with frozen vision encoders and mergers, a maximum
+sequence length of 131,072 tokens and batch size 64. The supervision-policy comparison uses
+four-epoch 27B models, distinct from the two-epoch 27B public-benchmark checkpoint.
+These are paper experiment settings, not WebUI generation defaults. Model weights are not
+bundled with this source release.
+
+## Evaluation and release scope
+
+| Evaluation | Coverage in the manuscript | What it measures |
+| --- | --- | --- |
+| PresentBench | 238 tasks | Delivered presentation quality under task-specific rubrics. |
+| SlidesGen-Bench | 189 tasks | Content accuracy and computational aesthetics. |
+| DECKBench | 294 tasks, five editing turns each | Response to multi-turn editing through benchmark-defined similarity changes. |
+| ThreadEval | 35 Chinese/English requests across six domains, requiring 20–40 pages | Long-deck final quality and separate process evidence. |
+
+**ThreadEval** separates two tracks. **Final = 70% Deck + 30% Page**; Knowledge is part of Deck.
+**Process** independently evaluates research support and adoption (**R**), executable planning
+(**P**), asset preparation and actual-use handoffs (**I**), and plan realization, render inspection
+and slide–speech alignment (**S**). Process is not included in Final. Missing compatible action
+records do not by themselves establish that an action was omitted.
+
+Interpret the experiments under their recorded protocols:
+
+- Ten PresentBench tasks and ten ThreadEval tasks informed checkpoint selection and remain in the respective reported means.
+- The 27B PresentBench result includes score-conditioned regeneration and output selection; it does not estimate a fine-tuning gain under an equal generation budget.
+- DECKBench imports preceding artifacts into a fresh workspace each turn, evaluating artifact continuity rather than persistent Owner history.
+- Adaptive and per-slide ownership achieve similar mean Final scores; both use more recorded production work than whole-deck ownership. The study does not establish elapsed-time speedup.
+- Search availability, image services and quotas differ across the supervision-study runs, limiting causal attribution to the training policy.
+
+This repository releases the **runtime source, WebUI and public illustrations**. Benchmark inputs
+and evaluator implementations, ThreadEval cases/rubrics, training pipelines, trajectory data,
+model weights and complete result records are not bundled here. The 0919 source pin does not
+establish that every later paper experiment used an identical runtime and configuration.
+
+Score reproduction additionally requires exact inputs and checksums, weights and chat templates,
+evaluation adapters, font shims, Judge settings and output-selection/coverage records.
 The original evaluation font inventory was larger than this repository's font bundle.
 Running the application or passing source checks does not reproduce the paper's scores.
 

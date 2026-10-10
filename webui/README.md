@@ -1,4 +1,4 @@
-# MURAL Presenter WebUI
+# MuralPresenter WebUI
 
 配套 0919 `mural-presenter-v1` Skill/Harness 的静态演示工作台。
 前端、服务端与推理桥接均保留；历史运行入口不对新任务开放。

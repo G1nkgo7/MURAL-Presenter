@@ -1,4 +1,4 @@
-# MURAL Presenter WebUI
+# MuralPresenter WebUI
 
 Use the [repository quick start](../README.md) and [WebUI operations guide](README.md).
 The root README records source provenance, release scope and known validation limits.

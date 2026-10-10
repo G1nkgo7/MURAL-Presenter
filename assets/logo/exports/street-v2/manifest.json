@@ -18,12 +18,12 @@
     },
     {
       "file": "mural-banner-dark.png",
-      "width": 2172,
+      "width": 2171,
       "height": 724,
       "mode": "RGB",
       "transparent": false,
-      "bytes": 2795123,
-      "sha256": "551a91dacd8609f573c9cca5b7073a24c85a47d322997fd8fb24267ab3c98bf2"
+      "bytes": 2624025,
+      "sha256": "5dae8b86caca026f8cd41e2525b05913b591a0edd0f8aecae484f4647cd9c096"
     },
     {
       "file": "mural-banner-light.png",
@@ -31,8 +31,8 @@
       "height": 724,
       "mode": "RGB",
       "transparent": false,
-      "bytes": 2998024,
-      "sha256": "94265514df7a805523f8d1d9322f8c4304b5ee30b6bdf3bca0e640e5a9beec76"
+      "bytes": 2646269,
+      "sha256": "89e66cbd63a3eafe9f96c8c4d0a9300db8530df8ad031e6d509a6ea7f0a1dba0"
     },
     {
       "file": "mural-brand-overview.png",
@@ -40,8 +40,8 @@
       "height": 1024,
       "mode": "RGB",
       "transparent": false,
-      "bytes": 2518902,
-      "sha256": "097a6f9ffbe286b02e930b2b6cbdc7566c7085f97e69d9b68e8849c81e710509"
+      "bytes": 2262597,
+      "sha256": "6d10885530291fd30c9f085781df2901f441deb3dab2ead707ee8f043735e4ef"
     },
     {
       "file": "mural-mark.png",
@@ -67,8 +67,8 @@
       "height": 907,
       "mode": "RGB",
       "transparent": false,
-      "bytes": 2877365,
-      "sha256": "b94b74ebe1f8c079ac668194dc768d077f2d25f08cd69c10d031ec5f9bc9b2bc"
+      "bytes": 2711202,
+      "sha256": "599e429e639d714a95a0c08a7c7810a83f2631d8bcac67bd9710fd89140a9500"
     },
     {
       "file": "mural-wordmark-dark.png",
@@ -89,14 +89,14 @@
       "sha256": "3644c15c311e116afa67eab23904308e20750b446e94a34ef2faf0f8220f1928"
     }
   ],
-  "revision": 6,
+  "revision": 7,
   "updated": "2026-10-10",
-  "previous_revision_commit": "e2823a4b51e8f8c11b341b40760e93dffd63b3d8",
+  "previous_revision_commit": "20815e409b75b16c266d0568b461605b743e907b",
   "visual_rules": {
     "mark": "Open uppercase M without facial features.",
-    "robot": "Two attached round-tipped antennae per robot. Painter has closed smiling arches; assembler and reader have expressive dark pupils, cyan irises, small catchlights and varied natural gazes.",
+    "robot": "Two attached round-tipped antennae per robot. Painter has closed smiling arches; assembler and reader have expressive dark pupils, cyan irises, small catchlights and varied natural gazes. Face screens have matte navy foreheads without blue or white specular patches; retain tiny catchlights inside the open eyes.",
     "quality": "Keep native lossless PNG masters. Start from original references for a new redraw, not a chain of patched outputs. No artificial upscaling, post-sharpening or lossy re-encoding."
   },
-  "last_edit_method": "Fresh redraw with built-in image_gen from original references; dark banner, sharing card and overview derived from the new light master.",
+  "last_edit_method": "Targeted built-in image_gen edits to remove forehead reflections from the four campaign images. Selected generated PNGs copied at native size without resizing or re-encoding.",
   "historical_repair_report": "pixel-repair.json (revision 5 only; superseded)"
 }

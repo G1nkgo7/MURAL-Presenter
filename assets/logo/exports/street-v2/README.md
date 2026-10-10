@@ -16,7 +16,7 @@ teal and cobalt strokes, warm ivory and small golden-yellow accents connect ever
 | [Light wordmark](mural-wordmark-light.png) | 2172 × 724 | Transparent | Wordmark on light surfaces. |
 | [Dark wordmark](mural-wordmark-dark.png) | 2172 × 724 | Transparent | Wordmark on dark surfaces. |
 | [Light banner](mural-banner-light.png) | 2172 × 724 | Ivory mural | README header and wide promotional placements. |
-| [Dark banner](mural-banner-dark.png) | 2172 × 724 | Navy mural | README header in dark mode. |
+| [Dark banner](mural-banner-dark.png) | 2171 × 724 | Navy mural | README header in dark mode. |
 | [Paper sharing card](mural-social-card.png) | 1733 × 907 | Ivory mural | Publicity graphic with the current full paper title. |
 | [Identity overview](mural-brand-overview.png) | 1536 × 1024 | Ivory | Visual direction and presentation of the system. |
 
@@ -29,6 +29,7 @@ alpha transparency. These are raster illustrations, not editable vector artwork.
 - Use the M mark for small interface placements. Use the mascot where its tools and pose can remain readable.
 - Keep the M a pure letterform: its central opening has no eyes, face panel or lower smile-shaped chevron.
 - Draw each robot with two attached, round-tipped antennae. Painters have closed smiling arches; the assembler and reader have substantial dark pupils, cyan irises, small catchlights and varied natural gazes. Do not simplify these into blank ovals or identical centered dots.
+- Keep the forehead area of each navy face screen matte, without blue or white specular patches. Preserve the small catchlights inside the open eyes.
 - Use the native PNG masters without artificial upscaling, post-sharpening or lossy re-encoding. For a new redraw, return to the original references instead of feeding repeatedly patched outputs into another generation.
 - Preserve aspect ratios and leave clear space around the mark. Avoid stretching, cropping letters or placing text across the robots' faces.
 - Pair the light wordmark with light surfaces and the dark wordmark with navy or similarly dark surfaces.
@@ -82,7 +83,7 @@ edits within its original eye shapes. No new image generation, whole-image resiz
 or lossy encoding was used. [pixel-repair.json](pixel-repair.json) records the source commits,
 repair regions, checksums and unchanged-pixel checks. The other five masters remain unchanged.
 
-Revision 6 is the current production artwork. At the author's request, the four promotional
+Revision 6 established the redrawn campaign artwork. At the author's request, the four promotional
 images were freshly drawn after the local eye repairs proved visually unsatisfactory. The light
 banner starts from the original campaign mural, original banner and faceless M reference; the
 dark banner, sharing card and overview follow that fresh master. Open eyes now have coherent
@@ -92,12 +93,22 @@ resizing, sharpening or re-encoding; the banners are 2172 × 724, not 4K. The ot
 remain byte-identical. Revision 5 and its repair report remain available for historical reference
 at [`e2823a4`](https://github.com/G1nkgo7/MURAL-Presenter/tree/e2823a4b51e8f8c11b341b40760e93dffd63b3d8/assets/logo/exports/street-v2).
 
+Revision 7 is the current production artwork. Targeted built-in `image_gen` edits remove the
+blue/white forehead reflections from the four campaign images while retaining the varied eye
+expressions and small catchlights inside open eyes. The overview also uses matte face screens.
+These are generated edits, not pixel-identical repairs outside a mask. Selected PNGs are saved
+at their native dimensions without resizing or re-encoding; the dark banner is now 2171 × 724.
+The other five masters are unchanged. Revision 6 remains in Git at
+[`20815e4`](https://github.com/G1nkgo7/MURAL-Presenter/tree/20815e4/assets/logo/exports/street-v2).
+
 中文说明：本套包含主标识、头像、吉祥物、两版透明字标、两版横幅、论文分享图及视觉总览。
 当前接入中英文 README；原网站、WebUI 与旧版素材保留，后续应用时以本目录的独立文件为准。
 第 2 次修订移除了 M 内部的人脸元素，并统一机器人的双天线、椭圆眼睛；上一版可从 Git 历史恢复。
 第 3 次修订恢复画家与独立吉祥物的眯眼笑，保留另外两位角色的睁眼表情，只要求睁眼画法协调，不统一所有表情。
 第 4 次修订恢复最初读书角色带瞳孔的灵动眼睛，并补齐中间角色的瞳孔；保留眯眼笑、修好的天线和无脸 M。
 第 5 次修订回到初版原始 PNG 做局部像素修补，原样保留读书角色的脸部；修补范围外的像素与初版完全一致，停止整图反复生成。
-当前采用第 6 次修订：因局部修补后的表情不协调，重新参考原始壁画绘制两版横幅、论文分享图和视觉总览。
+第 6 次修订：因局部修补后的表情不协调，重新参考原始壁画绘制两版横幅、论文分享图和视觉总览。
 保留画家的眯眼笑，为睁眼角色绘制协调的瞳孔、高光和不同视线；使用原生无损 PNG，不放大或锐化。
 其余五项独立素材保持原样；第 5 次修订及其像素报告仅为历史记录，不描述当前图像。
+当前采用第 7 次修订：去掉四张宣传图中机器人额头的块状反光，保留眼睛内的小高光和不同表情。
+使用 image_gen 定向编辑并保存原生无损 PNG，未进行放大、锐化或有损转码；不声称其他区域逐像素不变。

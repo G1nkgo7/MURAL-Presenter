@@ -277,6 +277,62 @@
           ]
         }
       ]
+    },
+    {
+      "revision": 7,
+      "date": "2026-10-10",
+      "base_commit": "20815e409b75b16c266d0568b461605b743e907b",
+      "method": "built-in image_gen precise-object-edit",
+      "summary": "Remove forehead glare from light and dark banners, sharing card and overview while retaining expressive eyes and in-eye catchlights. First overview candidate rejected for eye drift; second candidate selected. Other five masters unchanged.",
+      "prompts": [
+        {
+          "file": "mural-banner-light.png",
+          "prompt": "Use case: precise-object-edit. Edit this exact light MURAL PRESENTER banner with ONE extremely localized change: REMOVE the blue/white glossy glare patch on the forehead / upper navy face screen of ALL THREE robots. The painter at top, assembler at bottom center, reader at right each have a shiny cobalt/white blotch ABOVE their eyes inside the navy oval face screen. Replace only those forehead reflections with the surrounding uninterrupted matte deep navy face-screen color and subtle fine painted texture. No bright forehead patch, no shine stripe or glare dot above the eyes. DO NOT remove the tiny catchlights INSIDE the open eyes. Preserve EXACTLY the existing cyan eye shapes, navy pupils, pupil positions and gazes, tiny in-eye catchlights, smiling mouths and painter's closed smiling arches; the user has approved these eyes. Keep helmets ivory, both antennae per robot, body poses, fingers, tools, faceless M, all MURAL PRESENTER letters, wall texture, foliage, chart, scenery, paint strokes, framing and colors unchanged. This is reflection removal, not a redesign. Preserve sharp edges and original detailed quality, do not add grain or soften. Keep same 3:1 wide composition and native 2172x724 size. Output the complete banner, no comparison, no callouts.",
+          "referenced_image_paths": [
+            "/mnt/afs_vqa2/gaozhenxi/ppt_agent_static/MURAL-Presenter/.runtime/paper-public/assets/logo/exports/street-v2/mural-banner-light.png"
+          ],
+          "transparent_background": false
+        },
+        {
+          "file": "mural-banner-dark.png",
+          "prompt": "Use case: precise-object-edit. Image 1 is the DARK banner to edit; image 2 is only a reference for the corrected matte face screens. Remove ONLY the blue/white glossy FOREHEAD glare blotch ABOVE the eyes on each of the THREE robots in image 1. Fill those shiny forehead patches with uninterrupted matte deep navy matching the surrounding face screen. No sheen streak, white glare spot, cobalt reflective patch above the eyes. Keep the eyes EXACTLY as in image 1, including cyan shapes, dark pupils, pupil gaze directions, tiny catchlights INSIDE the eyes and smiling mouth; keep the painter's closed smiling arches. Image 2 demonstrates the desired matte navy forehead. Preserve image 1 dark navy wall, ivory typography, exact faceless M and MURAL PRESENTER text, layout, every object, all two-antenna pairs, poses, tools, outlines, detailed painted texture, foliage and colors. Do not convert to a light background, do not reinterpret or redesign anything. Minimal localized reflection removal only, preserve crisp high quality. Same 2172x724 native wide banner, no resizing or cropping. Output one complete dark banner.",
+          "referenced_image_paths": [
+            "/mnt/afs_vqa2/gaozhenxi/ppt_agent_static/MURAL-Presenter/.runtime/paper-public/assets/logo/exports/street-v2/mural-banner-dark.png",
+            "/mnt/afs/gaozhenxi/.codex/generated_images/01a1200e-c71e-7c40-b41b-1b886adeb1f1/exec-2d3a00c9-52b1-4ffb-84b8-ace4365d2e2d.png"
+          ],
+          "transparent_background": false
+        },
+        {
+          "file": "mural-social-card.png",
+          "prompt": "Use case: precise-object-edit. Image 1 is the paper sharing card to edit. Image 2 is a reference ONLY for matte robot foreheads. Make exactly one tiny kind of correction to image 1: remove the cobalt/white glossy REFLECTION PATCH on the FOREHEAD inside the navy face screen ABOVE the eyes of ALL THREE robots. Fill each shiny forehead patch with matching uninterrupted matte deep navy and fine painted texture. No shine stripe, glare dot or specular forehead blotch. Preserve the eyes exactly: cyan shapes, dark pupils, gaze, and small catchlights INSIDE the eyes; preserve smiles and the painter's closed smiling eye arches. Do not confuse eye catchlights with the forehead patches. Preserve ALL OTHER artwork: full composition, faceless M, typography, robot poses, two antennae per robot, tools, hands, paper illustrations, colors, background and crisp paint details. Exact title must remain 'Multi-Agent Units of Responsibility for Authoring Long-Horizon Presentations' with existing line breaks, and 'MURAL PRESENTER'. Keep original 1733x907 framing and resolution. No redesign, blur, extra grain or sharpening; high fidelity localized edit only. Output full sharing card.",
+          "referenced_image_paths": [
+            "/mnt/afs_vqa2/gaozhenxi/ppt_agent_static/MURAL-Presenter/.runtime/paper-public/assets/logo/exports/street-v2/mural-social-card.png",
+            "/mnt/afs/gaozhenxi/.codex/generated_images/01a1200e-c71e-7c40-b41b-1b886adeb1f1/exec-2d3a00c9-52b1-4ffb-84b8-ace4365d2e2d.png"
+          ],
+          "transparent_background": false
+        },
+        {
+          "file": "mural-brand-overview.png",
+          "prompt": "Use case: precise-object-edit. Image 1 is the exact 1536x1024 brand overview board to edit. Image 2 shows the approved matte robot face screens, ONLY as supporting reference. Remove the blue/white forehead specular glare from EVERY robot face on the overview: three robots inside DARK thumbnail, the large MASCOT, three robots inside CAMPAIGN thumbnail. The glare is on the upper navy face screen ABOVE their eyes. Replace ONLY that bright forehead patch with the surrounding matte deep navy and subtle painted texture. No bright forehead blotch, blue sheen stripe or white reflection above the eyes. Preserve the tiny highlights INSIDE the eyes, all existing cyan eye shapes, pupils and gazes, closed smiling arches, smiles and two antennae per robot. Do not change eyes. Preserve EXACTLY the overview's six-panel layout, typography, borders, marks, colors, illustrations and detailed quality. Exact labels: 'MURAL PRESENTER | STREET MURAL IDENTITY', 'WORDMARK', 'DARK', 'MARK', 'MASCOT', 'CAMPAIGN', 'PALETTE', 'IVORY', 'NAVY', 'TEAL', 'COBALT', 'GOLD'. Keep all MURAL PRESENTER wordmarks and embedded paper title unchanged. No layout redesign, cropping, extra grain, blur or artificial sharpening. Output complete same board at 1536x1024.",
+          "referenced_image_paths": [
+            "/mnt/afs_vqa2/gaozhenxi/ppt_agent_static/MURAL-Presenter/.runtime/paper-public/assets/logo/exports/street-v2/mural-brand-overview.png",
+            "/mnt/afs/gaozhenxi/.codex/generated_images/01a1200e-c71e-7c40-b41b-1b886adeb1f1/exec-2d3a00c9-52b1-4ffb-84b8-ace4365d2e2d.png"
+          ],
+          "transparent_background": false
+        },
+        {
+          "file": "mural-brand-overview.png",
+          "attempt": 2,
+          "prompt": "Use case: precise-object-edit. Precisely update the existing brand overview in image 1, preserving its 1536x1024 six-panel layout, ivory background, labels, borders, palette and M marks. Replace the artwork within its DARK panel with the complete exact corrected dark banner in image 2. Replace the artwork within its CAMPAIGN panel with the complete exact corrected sharing card in image 3. Fit these references faithfully within their existing panels; do not reimagine their robots or typography. Use image 4, the standalone matte-faced mascot, for the MASCOT panel, retaining the current placement/size. CRITICAL: no glossy cobalt or white REFLECTION PATCH on the forehead (upper navy face screen) of ANY robot; all face screens are MATTE deep navy. Eyes must remain exactly as reference images: painters have closed smiling arches; the yellow assembler and teal reader MUST BOTH have TWO OPEN CYAN EYES WITH DARK PUPILS AND TINY IN-EYE CATCHLIGHTS, with the same gaze as references. Do not close either eye on assembler or reader. No missing pupils, no winking on open-eyed characters. Preserve all two antennae pairs. Keep all labels verbatim from image1, all wordmarks MURAL PRESENTER, and full sharing-card title 'Multi-Agent Units of Responsibility for Authoring Long-Horizon Presentations'. Keep high quality fine paint texture and sharp outlines. No extraneous glare dots above the eyes. No changes to left wordmark/mark panels or palette. Output the complete brand overview board only.",
+          "referenced_image_paths": [
+            "/mnt/afs_vqa2/gaozhenxi/ppt_agent_static/MURAL-Presenter/.runtime/paper-public/assets/logo/exports/street-v2/mural-brand-overview.png",
+            "/mnt/afs/gaozhenxi/.codex/generated_images/01a1200e-c71e-7c40-b41b-1b886adeb1f1/exec-b50ee41d-a7d8-4d5b-b315-eb426a8584d0.png",
+            "/mnt/afs/gaozhenxi/.codex/generated_images/01a1200e-c71e-7c40-b41b-1b886adeb1f1/exec-8b5fa3eb-c20b-4f3b-b55d-23e06095b5be.png",
+            "/mnt/afs_vqa2/gaozhenxi/ppt_agent_static/MURAL-Presenter/.runtime/paper-public/assets/logo/exports/street-v2/mural-mascot.png"
+          ],
+          "transparent_background": false
+        }
+      ]
     }
   ]
 }

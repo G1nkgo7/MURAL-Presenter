@@ -22,8 +22,8 @@
       "height": 724,
       "mode": "RGB",
       "transparent": false,
-      "bytes": 2838095,
-      "sha256": "5537030ed91cf89833538fe55cf268a4ce9b7861f0eaec83a513159f4a6603a5"
+      "bytes": 2795123,
+      "sha256": "551a91dacd8609f573c9cca5b7073a24c85a47d322997fd8fb24267ab3c98bf2"
     },
     {
       "file": "mural-banner-light.png",
@@ -31,8 +31,8 @@
       "height": 724,
       "mode": "RGB",
       "transparent": false,
-      "bytes": 2879441,
-      "sha256": "c134448a37e8d28970b2c830648b10d97584b421811b448b8f370672d1a4cf66"
+      "bytes": 2998024,
+      "sha256": "94265514df7a805523f8d1d9322f8c4304b5ee30b6bdf3bca0e640e5a9beec76"
     },
     {
       "file": "mural-brand-overview.png",
@@ -40,8 +40,8 @@
       "height": 1024,
       "mode": "RGB",
       "transparent": false,
-      "bytes": 2629493,
-      "sha256": "a628c14a2732295eff05d3076d4da2a844ec8b91ff31360f232f2ca4a76a1c1b"
+      "bytes": 2518902,
+      "sha256": "097a6f9ffbe286b02e930b2b6cbdc7566c7085f97e69d9b68e8849c81e710509"
     },
     {
       "file": "mural-mark.png",
@@ -63,12 +63,12 @@
     },
     {
       "file": "mural-social-card.png",
-      "width": 1734,
+      "width": 1733,
       "height": 907,
       "mode": "RGB",
       "transparent": false,
-      "bytes": 2900922,
-      "sha256": "c0442aad924984253c5b6baa27d05e96915cd520b80bfd5744d74e91035dffd7"
+      "bytes": 2877365,
+      "sha256": "b94b74ebe1f8c079ac668194dc768d077f2d25f08cd69c10d031ec5f9bc9b2bc"
     },
     {
       "file": "mural-wordmark-dark.png",
@@ -89,14 +89,14 @@
       "sha256": "3644c15c311e116afa67eab23904308e20750b446e94a34ef2faf0f8220f1928"
     }
   ],
-  "revision": 5,
+  "revision": 6,
   "updated": "2026-10-10",
-  "previous_revision_commit": "24b4a8db38763ccdc39f395359583b9aae7658ad",
+  "previous_revision_commit": "e2823a4b51e8f8c11b341b40760e93dffd63b3d8",
   "visual_rules": {
     "mark": "Open uppercase M without facial features.",
-    "robot": "Preserve original reader eye pixels and painter closed smiles. Assembler uses larger off-center dark pupils in its original cyan eye shapes. Two attached antennae per robot.",
-    "quality": "Use original PNG masters for local repair; preserve all pixels outside explicit repair masks. Do not repeatedly regenerate the complete image."
+    "robot": "Two attached round-tipped antennae per robot. Painter has closed smiling arches; assembler and reader have expressive dark pupils, cyan irises, small catchlights and varied natural gazes.",
+    "quality": "Keep native lossless PNG masters. Start from original references for a new redraw, not a chain of patched outputs. No artificial upscaling, post-sharpening or lossy re-encoding."
   },
-  "last_edit_method": "User-authorized local pixel repair from original PNGs; no new image generation.",
-  "repair_report": "pixel-repair.json"
+  "last_edit_method": "Fresh redraw with built-in image_gen from original references; dark banner, sharing card and overview derived from the new light master.",
+  "historical_repair_report": "pixel-repair.json (revision 5 only; superseded)"
 }

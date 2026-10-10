@@ -873,5 +873,8 @@
       "changed_protected_text_pixels": 0,
       "output_sha256": "a628c14a2732295eff05d3076d4da2a844ec8b91ff31360f232f2ca4a76a1c1b"
     }
-  ]
+  ],
+  "status": "Historical; superseded by revision 6 fresh redraw.",
+  "applies_to_revision": 5,
+  "output_commit": "e2823a4b51e8f8c11b341b40760e93dffd63b3d8"
 }

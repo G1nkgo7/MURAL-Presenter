@@ -1,3 +1,12 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/logo/exports/mural-logo-lockup-dark.png">
+    <img src="assets/logo/exports/mural-logo-lockup-light.png" width="1000" alt="MURAL Presenter — Multi-Agent Unified Revision-Aware Authoring for Long-Horizon Presentations">
+  </picture>
+</p>
+
+<p align="center"><strong>Lifecycle authoring for editable, long-horizon presentations.</strong></p>
+
 # MURAL Presenter
 
 Paper implementation for **Multi-Agent Unified Revision-Aware Authoring for Long-Horizon Presentations**.
@@ -6,7 +15,78 @@ This repository publishes the 0919 authoring Skill, its paired Harness and the W
 The 254 core source files are byte-identical to
 `mural-presentbench-qwen35-9b-20260919T163556Z`. Deployment paths are resolved at launch.
 
-[简体中文](README_zh-CN.md) · [WebUI guide](webui/README.md) · [Contributing](CONTRIBUTING.md)
+[简体中文](README_zh-CN.md) · [Quick start](#quick-start) · [WebUI guide](webui/README_EN.md) · [Release scope](#experiment-scope) · [Contributing](CONTRIBUTING.md)
+
+## The name is the method
+
+| Letter | Stands for | Method implication |
+| :---: | --- | --- |
+| **M** | **Multi-Agent** | Specialist roles can run in parallel without making every slide an isolated task. |
+| **U** | **Unified** | A shared deck blueprint carries audience, evidence, terminology, narrative, and design decisions. |
+| **R** | **Revision-Aware** | Work resumes at page, group, or deck scope according to the edit's actual impact. |
+| **A** | **Authoring** | The reusable object is an executable lifecycle, not a one-shot image-generation prompt. |
+| **L** | **Long-Horizon Presentations** | Decisions must survive across stages, distant slides, and later revision turns. |
+
+> **MURAL does not merely split a long workflow. It aligns agent ownership with the deck's
+> dependency structure, then restores whole-deck closure after parallel production.**
+
+## At a glance
+
+**MURAL-Presenter** (MURAL for short) is a Skill-driven multi-agent framework for the full lifecycle of editable HTML
+presentations. It treats presentation creation as an authoring process rather than a one-shot
+rendering problem: understand the request, ground materials and facts, plan the deck, prepare
+assets, author related slides, inspect rendered pixels, review the assembled deck, revise it,
+and export the result.
+
+Here, **long horizon** refers to the distance over which a decision must remain valid across
+stages, slides, and revision turns. An audience assumption set at the beginning may shape an
+entire deck; a definition introduced on slide 3 may be consumed on slide 18; a later edit may
+need to update several related slides without disturbing the rest.
+
+- **Shared state, scoped views.** Global decisions are externalized once and projected into
+  group and page briefs instead of being reconstructed from a growing conversation.
+- **Slide-group ownership.** Narratively or visually dependent pages have one accountable
+  producer and one joint render–inspect–revise loop, even when the pages are non-contiguous.
+- **Revision-aware continuation.** Later edits reuse the same lifecycle and restart only the
+  smallest scope that can reliably preserve deck-level decisions.
+
+## The missing middle: deck → slide group → page
+
+Single-agent authoring preserves one continuous context, but its execution history grows with
+the deck and later edits. Per-slide parallelism shortens each trajectory, but moves cross-slide
+relationships into state handoffs between independent workers. This is a responsibility problem,
+not merely a scheduling problem. MURAL inserts a middle unit: the **slide group**.
+
+Slides that share a narrative responsibility, visual system, asset series, or explicit
+dependency are assigned to one Group Agent for joint authoring and inspection. Different groups
+can still run in parallel. After assembly, a whole-deck review restores the global view.
+
+<p align="center">
+  <img src="assets/figures/execution-topologies.png" width="100%" alt="Sequential, full-context parallel, and MURAL execution topologies">
+</p>
+
+<p align="center"><em>Figure 1. MURAL assigns dependency-related slides to shared Group Agents and restores whole-deck closure after parallel authoring.</em></p>
+
+## Full-lifecycle authoring
+
+MURAL externalizes the lifecycle as the reusable **MURAL Authoring Skill**:
+
+1. **Material and research** organize optional attachments and close decision-relevant evidence gaps.
+2. **Plan and compile** establish a shared deck blueprint, design system, page map, and complete slide groups.
+3. **Group authoring** uses one centralized image stage, then lets Group Agents jointly author and inspect related slides.
+4. **Review, revise, and deliver** assemble the deck, run whole-deck review, route later edits by impact scope, and export deliverables.
+
+<p align="center">
+  <img src="assets/figures/authoring-lifecycle.png" width="100%" alt="MURAL full authoring and revision lifecycle">
+</p>
+
+<p align="center"><em>Figure 2. The MURAL Authoring Skill spans material grounding, deck planning, group authoring, whole-deck review, impact-aware revision, and multi-format delivery.</em></p>
+
+The revision router selects the smallest reliable scope:
+
+- **Page patch** for a precisely local change.
+- **Group replay** when several related slides or their shared visual language must change.
+- **Deck replan** only when the request changes deck-level decisions or structure.
 
 ## Quick start
 
@@ -39,6 +119,13 @@ webui/inference/.venv/bin/python scripts/run_inference.py \
 Use `--help` for arguments or `--doctor --json artifacts/doctor.json` for diagnostics.
 Use a new workspace; preserve historical workspaces and their pinned runtime.
 
+## Why HTML?
+
+MURAL uses HTML/CSS/SVG as its authoring source so that text, layout, graphics, media, and
+interactions remain separately addressable. Browser rendering provides the pixel-level ground
+truth for inspection, while the structured source supports targeted revision. PPTX, PDF, and
+images are delivery adapters; export fidelity is evaluated rather than assumed.
+
 ## Repository layout
 
 ```text
@@ -47,6 +134,7 @@ MURAL-Presenter/
 ├── skills/mural-presenter-v1/       # Frozen authoring Skill and tools
 ├── harnesses/mural-presenter-v1/    # Frozen inference and delivery runtime
 ├── webui/                          # UI, server, dependency locks and launchers
+├── assets/                         # Public logos, icons and method diagrams
 ├── configs/                        # Runtime template, MinerU and release provenance
 ├── fonts/                          # Bundled rendering fonts
 ├── scripts/                        # Portable CLI and configuration adapters
@@ -56,7 +144,8 @@ MURAL-Presenter/
 ```
 
 The core directory names and internal assets, references, docs and tests are part of its frozen
-identity. Keep them intact. Root-level `benchmark/`, `docs/`, `examples/`, branding `assets/`,
+identity. Keep them intact. Public logos and diagrams live in `assets/logo/exports/` and
+`assets/figures/`; design drafts remain local. Root-level `benchmark/`, `docs/`, `examples/`,
 `paper/`, training material and the independent `site/` are not included in this release.
 Deployment credentials, environments, databases and generated cases remain local and ignored.
 Necessary usage, provenance and validation information is consolidated in these READMEs.

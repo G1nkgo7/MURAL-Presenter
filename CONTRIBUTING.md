@@ -16,7 +16,9 @@ See the root README for tested scope and known failures; a passing packaging CI 
 claim that the complete experimental suite or benchmark has passed.
 
 The public branch contains the runtime, WebUI and their maintenance files. Keep benchmark,
-root docs, examples, branding assets, training and paper workspaces local; do not force-add them.
+root docs, examples, design drafts, training and paper workspaces local; do not force-add them.
+Keep public brand exports in `assets/logo/exports/` and method figures in `assets/figures/`.
+Both README editions should retain the project identity and method overview alongside current usage.
 The frozen core's own docs, tests and assets remain part of its original inventory.
 After reviewing and testing integration changes, commit the source changes, then run
 `python tools/freeze_paper_integration.py` and `python tools/check_paper_release.py`.

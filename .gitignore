@@ -62,10 +62,14 @@ node_modules/
 /benchmark/ThreadBench/
 /benchmark/PresentBench/data/
 
-# Public runtime release: research and presentation material remain local.
+# Research material and design drafts remain local.
 /benchmark/
 /docs/
 /examples/
-/assets/
+/assets/*
+!/assets/logo/
+/assets/logo/*
+!/assets/logo/exports/
+!/assets/figures/
 /configs/experiments/
 /webui/docs/

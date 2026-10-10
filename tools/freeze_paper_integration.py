@@ -34,7 +34,7 @@ def main() -> None:
     release["integration"]["files"] = sorted(files)
     release["integration"]["tree_sha256"] = core["guard"]["integration_digest"](ROOT, sorted(files))
     release["lineage"]["upstream_release"] = original["release"]
-    release["lineage"]["note"] = "Skill/Harness unchanged; portable WebUI source release excludes local benchmark, documentation and branding trees."
+    release["lineage"]["note"] = "Skill/Harness unchanged; portable WebUI and public brand assets included; benchmark and internal documentation remain local."
     release["validation"] = {
         "scope": "Original core inventory and current integration digests verified. Test results are documented separately.",
         "model_requests": "not_run",

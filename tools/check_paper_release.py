@@ -7,6 +7,13 @@ import runpy
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
+PUBLIC_ASSET_ROOTS = ("assets/logo/exports/", "assets/figures/")
+README_ASSETS = {
+    "assets/logo/exports/mural-logo-lockup-light.png",
+    "assets/logo/exports/mural-logo-lockup-dark.png",
+    "assets/figures/execution-topologies.png",
+    "assets/figures/authoring-lifecycle.png",
+}
 
 
 def check_core(root: Path = ROOT) -> dict:
@@ -39,13 +46,16 @@ def main() -> None:
     assert not report["mismatches"], "Release verification must not rely on a dirty override"
     tracked = subprocess.check_output(["git", "ls-files", "-z"], cwd=ROOT).decode().split("\0")
     forbidden = ("site/", ".snapshots/", ".secrets/", ".runtime/", "archive/", "paper/",
-                 "research/", "mainline/", "benchmark/", "docs/", "examples/", "assets/",
+                 "research/", "mainline/", "benchmark/", "docs/", "examples/",
                  "train/", "data/", "artifacts/", "configs/experiments/", "webui/docs/")
     for name in filter(None, tracked):
         parts = Path(name).parts
         assert not name.startswith(forbidden), f"Local-only path is tracked: {name}"
+        if name.startswith("assets/"):
+            assert name.startswith(PUBLIC_ASSET_ROOTS), f"Design draft is tracked: {name}"
         assert ".git" not in parts and ".venv" not in parts and "node_modules" not in parts
         assert not (Path(name).name.startswith(".env") and Path(name).name != ".env.example"), name
+    assert README_ASSETS <= set(tracked), "README logos or method diagrams are not tracked"
     release = json.loads((ROOT / "configs/releases/mural-paper-v1.json").read_text())
     missing = set(release["integration"]["files"]) - set(tracked)
     assert not missing, f"Release depends on untracked files: {sorted(missing)}"

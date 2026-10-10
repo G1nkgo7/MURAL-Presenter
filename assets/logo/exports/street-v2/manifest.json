@@ -22,8 +22,8 @@
       "height": 724,
       "mode": "RGB",
       "transparent": false,
-      "bytes": 2606220,
-      "sha256": "e9f3da1b5f58bb6bae76d158e2cbfd410810d318411cae4234888001a98ee254"
+      "bytes": 2585051,
+      "sha256": "a19cc63c9da13741287b68d2192cc6b6dc47cd2fa4ae47bb9b55bb98c681a3d0"
     },
     {
       "file": "mural-banner-light.png",
@@ -31,8 +31,8 @@
       "height": 724,
       "mode": "RGB",
       "transparent": false,
-      "bytes": 2640488,
-      "sha256": "7682a97fb9cb4b18a1bd7406875c62d969b825f2dbe83904baca6538a7512003"
+      "bytes": 2661693,
+      "sha256": "aea3fde51e3d7405de7198b6625d5743554bf53490a2c7c23fd1f4b399f3e87e"
     },
     {
       "file": "mural-brand-overview.png",
@@ -40,8 +40,8 @@
       "height": 1024,
       "mode": "RGB",
       "transparent": false,
-      "bytes": 2413646,
-      "sha256": "66121b1a58ec0679f1027af88acbe27383c76b55b1f2c6e83804bc365dc1eec1"
+      "bytes": 2263604,
+      "sha256": "25bc98766c93b2394280f97b99d822abd64868cadc68fb5078f0c744898910c6"
     },
     {
       "file": "mural-mark.png",
@@ -67,8 +67,8 @@
       "height": 907,
       "mode": "RGB",
       "transparent": false,
-      "bytes": 2575596,
-      "sha256": "d3bd91d07af3e69f0b0443d125fad700610f7ec17aa54881e249e9480c706f31"
+      "bytes": 2536553,
+      "sha256": "8014d3c9d88df91bab44bd60955c640e23790695f49a33788b1660e97800ea6c"
     },
     {
       "file": "mural-wordmark-dark.png",
@@ -89,11 +89,11 @@
       "sha256": "3644c15c311e116afa67eab23904308e20750b446e94a34ef2faf0f8220f1928"
     }
   ],
-  "revision": 3,
+  "revision": 4,
   "updated": "2026-10-10",
-  "previous_revision_commit": "8061b207e0a0ee13a0921aa33258653fd635f75e",
+  "previous_revision_commit": "f1558a1409f8f2bfc69abbef08c1cb1b8ca13702",
   "visual_rules": {
     "mark": "Open uppercase M without facial features.",
-    "robot": "Two attached ball-tip antennae. Preserve expression variety: closed smiling arch eyes for painters; consistent paired open oval eyes for assembler and reader, adjusted naturally to head perspective."
+    "robot": "Two attached ball-tip antennae. Preserve the original closed smiling arch eyes for painters. Reader and assembler have expressive cyan open eyes with visible dark navy pupils and natural gaze, not blank solid cyan ovals."
   }
 }

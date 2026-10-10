@@ -185,6 +185,46 @@
           "reason": "Restore original smiling closed-eye mascot without regenerating it."
         }
       ]
+    },
+    {
+      "revision": 4,
+      "date": "2026-10-10",
+      "base_commit": "f1558a1409f8f2bfc69abbef08c1cb1b8ca13702",
+      "summary": "Restore the original reader eye design with dark pupils and give the assembler the same lively pupil-bearing construction; preserve closed-eye painter, corrected antennae and faceless M.",
+      "prompts": [
+        {
+          "file": "mural-banner-light.png",
+          "prompt": "Use case: precise-object-edit. IMAGE 1 is the current LIGHT banner to edit. IMAGE 2 is the ORIGINAL expressive banner, supplied only as the eye-design reference. The user wants the original lively eyes back, NOT the blank solid cyan eye discs of image 1. Make these eye-only changes: restore the FAR-RIGHT TEAL-APRON BOOK READER's expressive open eyes from image 2, including the dark navy pupils/offset inner cutouts within the round cyan eyes, giving a directed lively gaze. For the CENTER YELLOW-APRON ASSEMBLER, replace its blank solid cyan eye discs with the SAME family of expressive round cyan eyes with visible dark navy pupils, so it too has a lively gaze toward the shared presentation. Both open-eyed robots need two coherent pupil-bearing eyes, each pupil visibly surrounded by cyan except where stylized eyelid meets it. No vacant flat cyan blobs, no mechanically identical staring ovals, no spirals. Preserve natural perspective and charming asymmetry of the original hand-drawn expression. The LADDER PAINTER should retain the original joyful closed cyan arch eyes and little smile, as seen in image 2. Do not change any other element: KEEP the current corrected TWO antennae per robot (never restore the original extra third antenna), KEEP current faceless open-bottom M (do not restore its old eyes), keep text MURAL PRESENTER, head and body shapes, all props, poses, colors, wall texture, layout and 3:1 framing. The original is an EYE REFERENCE only. Output one finished opaque light banner.",
+          "references": [
+            "mural-banner-light.png (revision 3)",
+            "mural-banner-light.png (4b3e71a, eye reference only)"
+          ]
+        },
+        {
+          "file": "mural-banner-dark.png",
+          "prompt": "Use case: precise-object-edit. Image 1 is the DARK mural banner edit target. Image 2 is the newly corrected LIGHT banner, authoritative ONLY for eyes. Copy the lively pupil-bearing open eyes from image 2 to the two corresponding ground-level robots in image 1: center yellow-apron assembler and far-right teal-apron reader each have round cyan eyes with visible DARK NAVY PUPILS / offset inner cutouts and a directed lively gaze, not blank solid cyan ovals. Match the hand-drawn original expressive construction. Keep painter's happy CLOSED cyan arch eyes and all smiles unchanged. Make eye-only changes. Preserve dark navy wall, ivory U/A/PRESENTER, teal R/L, faceless M, exactly two corrected antennae on each robot, all poses, props, illustration, lettering, colors and original wide 3:1 framing. Do not add antennae or a face to the M. One opaque dark banner.",
+          "references": [
+            "mural-banner-dark.png (revision 3)",
+            "mural-banner-light.png (revision 4)"
+          ]
+        },
+        {
+          "file": "mural-social-card.png",
+          "prompt": "Use case: precise-object-edit. Image 1 is the paper sharing card target; image 2 is the repaired light banner and the EYE reference. Change ONLY the eyes of the two ground-level robots in image 1. Restore the reader's original lively eyes: round cyan eye forms with clearly visible dark navy pupils/offset inner cutouts and natural gaze, matching image 2's far-right robot. Give the center yellow-apron assembler that SAME pupil-bearing expressive eye style instead of empty solid cyan ovals. Two eyes per face, pupils agree in gaze direction, natural hand-drawn perspective. Keep upper ladder painter's cheerful CLOSED arch eyes and smile unchanged. All existing antennae (two per head), faceless M, characters, positions, props, palette, texture, typography and margins unchanged. Exact words remain MURAL / PRESENTER / Multi-Agent Units of Responsibility / for Authoring Long-Horizon / Presentations. No new objects. Preserve 1.91:1 framing, one opaque card.",
+          "references": [
+            "mural-social-card.png (revision 3)",
+            "mural-banner-light.png (revision 4)"
+          ]
+        },
+        {
+          "file": "mural-brand-overview.png",
+          "prompt": "Use case: precise-object-edit. Image 1 is the existing brand overview board, image 2 is the corrected banner showing the desired expressive eyes. ONLY edit the OPEN eyes of the ground-level yellow-apron and teal-apron robots in the DARK and CAMPAIGN panels of image 1: each has round cyan eyes containing visible dark navy pupils/offset inner cutouts, with lively directed gaze exactly as corresponding characters in image 2. No blank solid cyan eye blobs. Keep the ladder painters' closed smiling arch eyes, and keep the big standalone mascot's original closed smiling arch eyes untouched. Preserve exactly two antennae on every robot and ALL existing faceless M logos, layout, panel labels, colors, palette, textures, typography and all other image content. Do not add new features or change the visual design. One opaque 1536x1024 overview.",
+          "references": [
+            "mural-brand-overview.png (revision 3)",
+            "mural-banner-light.png (revision 4)"
+          ]
+        }
+      ]
     }
   ]
 }

@@ -28,7 +28,7 @@ alpha transparency. These are raster illustrations, not editable vector artwork.
 
 - Use the M mark for small interface placements. Use the mascot where its tools and pose can remain readable.
 - Keep the M a pure letterform: its central opening has no eyes, face panel or lower smile-shaped chevron.
-- Draw each robot with two attached, round-tipped antennae. Preserve varied expressions: painters have closed smiling arch eyes; the assembler and reader have open oval eyes with consistent construction and natural head perspective. Avoid extra antennae, detached tips or unintentionally mismatched open eyes.
+- Draw each robot with two attached, round-tipped antennae. Preserve the original expressive eyes: painters have closed smiling arches; the reader and assembler have cyan open eyes with visible dark navy pupils and natural gaze. Do not replace these with blank solid cyan ovals. Avoid extra antennae, detached tips or unintentionally mismatched eye construction.
 - Preserve aspect ratios and leave clear space around the mark. Avoid stretching, cropping letters or placing text across the robots' faces.
 - Pair the light wordmark with light surfaces and the dark wordmark with navy or similarly dark surfaces.
 - The banners carry the stable name **MURAL Presenter**. Keep the full paper title as selectable text below the banner.
@@ -69,7 +69,13 @@ are a separate integration step. Earlier PNG/SVG exports in the parent directory
 they are historical artwork and should not be mixed into new `street-v2` layouts.
 Manuscript method figures retain their original scientific content and are maintained separately.
 
+Revision 4 uses the original reader's pupil-bearing eyes as the expression reference and gives
+the assembler the same lively eye construction. The closed-eye painter, repaired antennae and
+faceless M are retained. Both banners, the sharing card and the overview are updated; the other
+five masters are unchanged from revision 3.
+
 中文说明：本套包含主标识、头像、吉祥物、两版透明字标、两版横幅、论文分享图及视觉总览。
 当前接入中英文 README；原网站、WebUI 与旧版素材保留，后续应用时以本目录的独立文件为准。
 第 2 次修订移除了 M 内部的人脸元素，并统一机器人的双天线、椭圆眼睛；上一版可从 Git 历史恢复。
 第 3 次修订恢复画家与独立吉祥物的眯眼笑，保留另外两位角色的睁眼表情，只要求睁眼画法协调，不统一所有表情。
+第 4 次修订恢复最初读书角色带瞳孔的灵动眼睛，并补齐中间角色的瞳孔；保留眯眼笑、修好的天线和无脸 M。

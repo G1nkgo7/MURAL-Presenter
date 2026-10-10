@@ -37,3 +37,9 @@ benchmark/ThreadBench
 benchmark/PresentBench/data
 *.log
 *.db*
+benchmark
+docs
+examples
+assets
+configs/experiments
+webui/docs

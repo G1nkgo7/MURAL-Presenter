@@ -1,13 +1,13 @@
 # 字体清单(family name = CSS `font-family` 里要写的精确名)
 
 本库随仓库自带、`bash install.sh` 装进 `~/.fonts`、经 fontconfig 供 headless chromium 使用(**零网络、无 `@import`、断网也稳渲**)。
-当前双语 Clean Skill 的字体 token 位于 `../skills/ppt-skill-html-clean-{zh,en}/assets/base.css`；优先直接引用其中的 `--font-*` token。
+当前冻结 Skill 的基础样式位于 `../skills/mural-presenter-v1/assets/base.css`，字体选择以该版本的创作协议为准。
 
 ## 正文基础(始终作正文 / 兜底,永远排在字体栈末尾)
 | family name | 文件 | 说明 | 授权 |
 |---|---|---|---|
 | `Noto Sans SC` | NotoSansSC.ttf | 黑体,正文 / 数据 / 图表标注首选 | OFL ✅ |
-| `Noto Serif SC` | 由仓库级 `scripts/install.sh` 安装 | 宋体,标题 / 引言 | OFL ✅ |
+| `Noto Serif SC` | NotoSerifSC.ttf | 宋体,标题 / 引言 | OFL ✅ |
 
 ## 中文展示 / 书法体(封面 / hero / 大标题 / 章节页,按主题选)
 | family name | 文件 | base.css token | 风格 / 适用主题 | 授权 |
@@ -30,7 +30,7 @@
 | `Architects Daughter` | ArchitectsDaughter-Regular.ttf | — | 英文手写 · 工整 | OFL ✅ |
 | `Indie Flower` | IndieFlower-Regular.ttf | — | 英文手写 · 随性 | OFL ✅ |
 
-> `--font-mono`(IBM Plex Mono)本库未带,渲染时回退到系统等宽(仅用于代码/数据标注,影响小);需要精确等宽可自行补 `IBMPlexMono-*.ttf`。
+> 本目录包含 `IBMPlexMono-Regular.ttf` 和 `IBMPlexMono-SemiBold.ttf`，可用于等宽代码及数据标注。
 
 ## 用法规约
 - 写法:`font-family: var(--font-brush);`(token 已含正确本地栈 + Noto 兜底);或手写栈 `"Ma Shan Zheng", "Noto Serif SC", cursive;` —— **展示体在前、Noto 永远兜底**(缺字不豆腐)。

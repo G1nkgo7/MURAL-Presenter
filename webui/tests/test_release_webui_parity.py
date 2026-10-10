@@ -14,8 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class ReleaseWebUIParityTests(unittest.TestCase):
-    def test_public_v1_digest_includes_shared_skill_scripts_with_runtime_path_checks(self):
-        checker = runpy.run_path(str(ROOT.parent / "tools/check_public_release.py"))
+    def test_v1_digest_includes_shared_skill_scripts_with_runtime_path_checks(self):
         guard = runpy.run_path(str(ROOT.parent / "harnesses/mural-presenter-v1/runtime/release_guard.py"))
         with tempfile.TemporaryDirectory() as temporary:
             skills = Path(temporary) / "skills"
@@ -28,10 +27,7 @@ class ReleaseWebUIParityTests(unittest.TestCase):
             (alpha / "SKILL.md").write_text("selected Skill\n")
             (alpha / "scripts").symlink_to("../mural-presenter-v1/scripts", target_is_directory=True)
             def digest():
-                actual = checker["release_tree_digest"]((alpha,), relative_to=alpha,
-                    ignored_parts=checker["V1_RELEASE_IGNORED_PARTS"])
-                self.assertEqual(actual, guard["release_tree_digest"]((alpha,), relative_to=alpha))
-                return actual
+                return guard["release_tree_digest"]((alpha,), relative_to=alpha)
             before = digest()
             source.write_text("version = 2\n")
             self.assertNotEqual(before, digest())

@@ -12,7 +12,7 @@ deck 渲染用的**扩展字体库**——在 `Noto Sans SC` / `Noto Serif SC`(�
 bash install.sh    # 复制到 ~/.fonts + fc-cache;渲染用的 headless chromium 经 fontconfig 找到
 fc-list | grep "LXGW WenKai"   # 验证:能看到即安装成功
 ```
-仓库级 `../scripts/install.sh` 会统一安装字体。字体经 fontconfig(`~/.fonts`)加载，装完即用、无需让生产 Agent 修改 render 代码。
+WebUI 启动器会配置本目录供渲染使用。需要安装为当前用户字体时，可从仓库根目录运行 `bash fonts/install.sh`，字体通过 fontconfig(`~/.fonts`)加载。
 
 ## 目录内容
 - `*.ttf` / `*.otf` — 字体文件。

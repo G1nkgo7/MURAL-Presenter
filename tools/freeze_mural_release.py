@@ -12,16 +12,10 @@ import runpy
 import time
 
 try:
-    from check_public_release import (
-        ROOT,
-        check_mural_snapshot,
-    )
+    from check_paper_release import ROOT, check_core
     from content_archive import atomic_json, verify_tar_zst, write_tar_zst
 except ModuleNotFoundError:
-    from tools.check_public_release import (
-        ROOT,
-        check_mural_snapshot,
-    )
+    from tools.check_paper_release import ROOT, check_core
     from tools.content_archive import atomic_json, verify_tar_zst, write_tar_zst
 
 
@@ -107,9 +101,10 @@ def main() -> None:
         print(json.dumps(report, ensure_ascii=False, indent=2))
         return
 
-    errors = check_mural_snapshot(release_path)
-    if errors:
-        raise SystemExit("release snapshot is not frozen:\n- " + "\n- ".join(errors))
+    core = check_core()
+    core["guard"]["verify_runtime_release"](
+        "webui", repository_root=ROOT, manifest_path=release_path,
+    )
 
     output_dir.mkdir(parents=True, exist_ok=True)
     output_dir.chmod(0o755)

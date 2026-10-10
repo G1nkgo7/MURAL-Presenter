@@ -14,7 +14,8 @@ def main() -> None:
     original = json.loads((ROOT / "configs/releases/upstream-0919/release.json").read_text())
     release = json.loads(json.dumps(original))
     files = set(original["integration"]["files"])
-    files = {name for name in files if not name.startswith("configs/data_pipeline/")}
+    files = {name for name in files if name.startswith(("webui/", "configs/mineru/"))}
+    files.add("configs/runtime.json")
     files.update(str(path.relative_to(ROOT)) for path in (ROOT / "webui/studio/app").glob("*.py"))
     for directory in ("webui/studio/static", "webui/studio/templates"):
         files.update(str(path.relative_to(ROOT)) for path in (ROOT / directory).rglob("*") if path.is_file())
@@ -22,8 +23,9 @@ def main() -> None:
                   "webui/start.sh", "webui/start.ps1", "webui/RELEASE_MANIFEST.json",
                   "webui/scripts/cci-gateway.mjs"})
     files.update({"scripts/runtime_environment.py", "scripts/run_inference.py",
-                  "tools/check_paper_release.py", "tools/freeze_paper_integration.py"})
-    release["release"] = "mural-paper-0919-portable-v2"
+                  "tools/check_paper_release.py", "tools/freeze_paper_integration.py",
+                  "tools/content_archive.py", "tools/freeze_mural_release.py"})
+    release["release"] = "mural-paper-0919-public-v3"
     release["channel"] = "paper-release-candidate"
     release["git"] = {
         "source_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
@@ -32,7 +34,7 @@ def main() -> None:
     release["integration"]["files"] = sorted(files)
     release["integration"]["tree_sha256"] = core["guard"]["integration_digest"](ROOT, sorted(files))
     release["lineage"]["upstream_release"] = original["release"]
-    release["lineage"]["note"] = "Skill/Harness unchanged; portable launch configuration and matching WebUI integrated."
+    release["lineage"]["note"] = "Skill/Harness unchanged; portable WebUI source release excludes local benchmark, documentation and branding trees."
     release["validation"] = {
         "scope": "Original core inventory and current integration digests verified. Test results are documented separately.",
         "model_requests": "not_run",

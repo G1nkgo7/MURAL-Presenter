@@ -1,7 +1,0 @@
-trash/
-__pycache__/
-log/
-.env
-*.log
-/results
-/data

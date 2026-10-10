@@ -1,12 +1,9 @@
 # Security policy
 
-MURAL is currently a documentation-only research preview. Please do not disclose credentials,
-private endpoints, proprietary documents, or unreleased model artifacts in public issues.
+MURAL Presenter runs a local presentation authoring service. Use access control when exposing
+it beyond a trusted local environment; the default single-user WebUI does not require login.
 
-If a report involves sensitive information, contact the maintainers through the private channel
-listed on the future public organization profile. Until that channel is available, retain the
-report rather than posting exploit details publicly.
-
-Public bug reports should use synthetic or redistributable inputs and remove all access tokens,
-cookies, internal hostnames, and personally identifiable information.
-
+Do not post credentials, private documents, endpoints or exploitable sensitive details in public
+issues. A dedicated private reporting contact is not yet published; arrange a private channel
+with the maintainers before sharing sensitive details. Ordinary bug reports should use synthetic
+or redistributable inputs and remove tokens, cookies and personal information.

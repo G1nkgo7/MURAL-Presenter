@@ -12,5 +12,12 @@ validation commands in README.md. Licensing and final paper metadata remain auth
 The root `pytest.ini` selects portable integration tests. The CI workflow explicitly selects
 the release/configuration contracts and current WebUI tests as well. Upstream historical tests
 may require archived runtimes or external canary assets that are not part of this source package.
-See `docs/validation.md` for tested scope and known failures; a passing packaging CI is not a
+See the root README for tested scope and known failures; a passing packaging CI is not a
 claim that the complete experimental suite or benchmark has passed.
+
+The public branch contains the runtime, WebUI and their maintenance files. Keep benchmark,
+root docs, examples, branding assets, training and paper workspaces local; do not force-add them.
+The frozen core's own docs, tests and assets remain part of its original inventory.
+After reviewing and testing integration changes, commit the source changes, then run
+`python tools/freeze_paper_integration.py` and `python tools/check_paper_release.py`.
+Commit the resulting manifest separately so its source commit identifies the reviewed source.

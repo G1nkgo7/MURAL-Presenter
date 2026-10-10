@@ -1,11 +1,6 @@
 # MURAL Presenter WebUI
 
-The bundled Studio uses the frozen 0919 `mural-presenter-v1` Skill and Harness.
-See the [root quick start](../README.md), [configuration](docs/CONFIGURATION.md),
-[deployment](docs/DEPLOYMENT.md) and [release provenance](../docs/release-provenance.md).
-
-Launch with `bash webui/start.sh` from the repository root (PowerShell: `webui/start.ps1`).
-For a read-only dependency/release check use
-`python webui/scripts/launch.py --check --no-install --no-browser-install`.
-The launcher may create the ignored local runtime configuration on first use.
-Existing credentials, databases, workspaces and website files are not migrated or deleted.
+Use the [repository quick start](../README.md) and [WebUI operations guide](README.md).
+The root README records source provenance, release scope and known validation limits.
+For reverse proxies, set `STUDIO_BASE_PATH=/studio` and strip that prefix before forwarding.
+Leave it empty when serving at the root. Configuration is local; no credentials are bundled.

@@ -43,4 +43,34 @@ python webui/scripts/launch.py --check --no-install --no-browser-install
 镜像包含 0919 运行代码与配套启动层，数据保存在独立 volume。
 Docker 构建仍需网络下载依赖和 Chromium；本次本机验证不等同于容器端到端验证。
 
-[版本来源](../docs/release-provenance.md) · [实验复现边界](../docs/reproduction.md)
+[版本来源与实验范围](../README_zh-CN.md)
+
+## 子路径部署
+
+设置 `STUDIO_BASE_PATH=/studio`，反向代理转发时去掉 `/studio` 前缀；应用为静态资源、API、
+预览、下载和 cookie 生成对应路径。独立根路径部署时留空。
+
+可选 Node.js 网关 `scripts/cci-gateway.mjs` 支持共享端口：
+
+| 外部路径 | 本机上游 | 转发规则 |
+| --- | --- | --- |
+| `/` 及其他路径 | `DASHBOARD_PORT`，默认 8002 | 保留路径 |
+| `/mural-presenter/` | `MURAL_PORT`，默认 3102 | 保留路径 |
+| `/studio/` | `STUDIO_PORT`，默认 8010 | 去掉 `/studio` |
+
+在仓库根目录分别启动 Studio 和网关；确认监听端口未被占用，已有网关应保留其路由。
+
+```bash
+STUDIO_BASE_PATH=/studio python webui/scripts/launch.py --host 127.0.0.1 --port 8010
+STUDIO_BASE_PATH=/studio PORT=8001 DASHBOARD_PORT=8002 MURAL_PORT=3102 STUDIO_PORT=8010 \
+  node webui/scripts/cci-gateway.mjs
+```
+
+## 排查问题
+
+- 版本不匹配：运行 `python tools/check_paper_release.py`，恢复目标版本，不在生产环境绕过哈希检查。
+- 配置或依赖缺失：通过正式启动器启动，检查 `MURAL_RUNTIME_CONFIG` 并同步两个锁定环境。
+- Chromium 缺失：允许启动器安装，或设置 `PLAYWRIGHT_BROWSERS_PATH`。
+- 附件解析失败：检查本地配置中有序且不同的 MinerU GPU/CPU 地址。
+- 模型鉴权失败：检查本地模型配置，提交问题时移除凭据。
+- 历史工作区不兼容：保留历史数据，为新版本新建工作区。

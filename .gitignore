@@ -61,3 +61,11 @@ node_modules/
 /fonts/
 /benchmark/ThreadBench/
 /benchmark/PresentBench/data/
+
+# Public runtime release: research and presentation material remain local.
+/benchmark/
+/docs/
+/examples/
+/assets/
+/configs/experiments/
+/webui/docs/

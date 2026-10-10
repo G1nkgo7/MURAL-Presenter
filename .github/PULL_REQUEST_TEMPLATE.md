@@ -1,15 +1,13 @@
-## Summary
+## Change
 
-Describe the single conceptual change in this pull request.
-
-## Evidence
-
-- [ ] I linked the issue or reproducible example motivating the change.
-- [ ] I updated both language editions when changing a shared public claim.
-- [ ] I rebuilt derived public assets when their source changed.
-- [ ] I did not add private paths, endpoints, credentials, proprietary material, or unsupported results.
+Describe the problem and resulting runtime or WebUI behavior.
 
 ## Validation
 
-Describe how the changed documentation, asset, or site behavior was checked.
+- [ ] The frozen 0919 Skill/Harness remains unchanged, or a new baseline is explicitly documented.
+- [ ] Relevant tests and `python tools/check_paper_release.py` pass.
+- [ ] Integration changes have a reviewed source commit and refreshed manifest.
+- [ ] Credentials, workspaces, datasets and local-only research directories remain excluded.
+- [ ] Both README languages reflect changes to public usage or release scope.
 
+Record test commands, results and remaining limits.

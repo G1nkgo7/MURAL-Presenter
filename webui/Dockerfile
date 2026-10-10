@@ -14,7 +14,6 @@ COPY harnesses/mural-presenter-v1 /workspace/harnesses/mural-presenter-v1
 COPY configs /workspace/configs
 COPY scripts /workspace/scripts
 COPY tools /workspace/tools
-COPY benchmark/PresentBench /workspace/benchmark/PresentBench
 COPY fonts /workspace/fonts
 
 RUN set -eu; \

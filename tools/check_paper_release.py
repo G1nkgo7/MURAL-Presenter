@@ -38,12 +38,17 @@ def main() -> None:
     report = core["guard"]["verify_runtime_release"]("webui", repository_root=ROOT)
     assert not report["mismatches"], "Release verification must not rely on a dirty override"
     tracked = subprocess.check_output(["git", "ls-files", "-z"], cwd=ROOT).decode().split("\0")
-    forbidden = ("site/", ".snapshots/", ".secrets/", "archive/", "paper/", "research/", "mainline/")
+    forbidden = ("site/", ".snapshots/", ".secrets/", ".runtime/", "archive/", "paper/",
+                 "research/", "mainline/", "benchmark/", "docs/", "examples/", "assets/",
+                 "train/", "data/", "artifacts/", "configs/experiments/", "webui/docs/")
     for name in filter(None, tracked):
         parts = Path(name).parts
         assert not name.startswith(forbidden), f"Local-only path is tracked: {name}"
         assert ".git" not in parts and ".venv" not in parts and "node_modules" not in parts
         assert not (Path(name).name.startswith(".env") and Path(name).name != ".env.example"), name
+    release = json.loads((ROOT / "configs/releases/mural-paper-v1.json").read_text())
+    missing = set(release["integration"]["files"]) - set(tracked)
+    assert not missing, f"Release depends on untracked files: {sorted(missing)}"
     print(json.dumps({"release": report["release"], "frozen_core_files": core["source_files"],
                       "pair_tree_sha256": core["pair_tree_sha256"], "integration": "verified"}, indent=2))
 

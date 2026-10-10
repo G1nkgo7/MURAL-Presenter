@@ -3,7 +3,7 @@
   "edition": "V1 static / no authentication",
   "version": "v1.0.1-paper.0919",
   "built_at_utc": "2026-09-14T15:10:42Z",
-  "source_revision": "mural-paper-0919-portable-v2",
+  "source_revision": "mural-paper-0919-public-v3",
   "source_worktree": "Matching 0919 backend with portable deployment boundary",
   "default_skill": "mural-presenter-v1",
   "skills": [

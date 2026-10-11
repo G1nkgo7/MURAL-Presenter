@@ -6,7 +6,7 @@
 </p>
 
 <h1 align="center"><img src="assets/logo/exports/street-v2/mural-avatar-circle.png" width="40" height="40" align="absmiddle" alt=""> MuralPresenter</h1>
-<p align="center"><strong>Multi-Agent Units of Responsibility for<br>Authoring Long-Horizon Presentations</strong></p>
+<p align="center"><strong>Multi-Agent Units of Responsibility for Authoring Long-Horizon Presentations</strong></p>
 <p align="center">可编辑 HTML 演示文稿 · 持续负责的页面 Owner · 视觉检查与修订</p>
 
 <p align="center">
@@ -15,7 +15,7 @@
 <p align="center">
   <a href="#生成与修改示例">🖼️ 效果示例</a> ·
   <a href="#安装与启动">🚀 快速开始</a> ·
-  <a href="webui/README.md">🖥️ WebUI</a>
+  <a href="webui/README.md"><img src="webui/studio/static/logo.svg" width="18" height="18" align="absmiddle" alt=""> WebUI</a>
 </p>
 
 **MuralPresenter 根据需求和来源材料制作可编辑 HTML 演示文稿，支持证据整理、视觉检查和后续修改。**

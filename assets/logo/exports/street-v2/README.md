@@ -66,7 +66,9 @@ while retaining coherent open eyes on the assembler and reader. Expression varie
 the faceless M and repaired antennae are retained. The full revision-2 artwork remains in Git at
 [`8061b20`](https://github.com/G1nkgo7/MURAL-Presenter/tree/8061b207e0a0ee13a0921aa33258653fd635f75e/assets/logo/exports/street-v2).
 
-The root English and Chinese READMEs use the new banners. Website and WebUI application assets
+The root English and Chinese READMEs use the banners and standalone M title mark. Their brand
+sections preview the mark, avatar and mascot, with theme-aware wordmarks and a sharing-card download.
+Website and WebUI application assets
 are a separate integration step. Earlier PNG/SVG exports in the parent directory remain intact;
 they are historical artwork and should not be mixed into new `street-v2` layouts.
 Manuscript method figures retain their original scientific content and are maintained separately.
@@ -102,7 +104,8 @@ The other five masters are unchanged. Revision 6 remains in Git at
 [`20815e4`](https://github.com/G1nkgo7/MURAL-Presenter/tree/20815e4/assets/logo/exports/street-v2).
 
 中文说明：本套包含主标识、头像、吉祥物、两版透明字标、两版横幅、论文分享图及视觉总览。
-当前接入中英文 README；原网站、WebUI 与旧版素材保留，后续应用时以本目录的独立文件为准。
+中英文 README 已接入横幅、标题旁的 M 标识、主标识／头像／吉祥物预览、深浅色字标和分享图下载。
+原网站、WebUI 与旧版素材保留，后续应用时以本目录的独立文件为准。
 第 2 次修订移除了 M 内部的人脸元素，并统一机器人的双天线、椭圆眼睛；上一版可从 Git 历史恢复。
 第 3 次修订恢复画家与独立吉祥物的眯眼笑，保留另外两位角色的睁眼表情，只要求睁眼画法协调，不统一所有表情。
 第 4 次修订恢复最初读书角色带瞳孔的灵动眼睛，并补齐中间角色的瞳孔；保留眯眼笑、修好的天线和无脸 M。

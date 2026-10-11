@@ -5,7 +5,7 @@
   </picture>
 </p>
 
-<h1 align="center">MuralPresenter</h1>
+<h1 align="center"><img src="assets/logo/exports/street-v2/mural-mark.png" width="40" height="40" align="absmiddle" alt=""> MuralPresenter</h1>
 <p align="center"><strong>Multi-Agent Units of Responsibility for<br>Authoring Long-Horizon Presentations</strong></p>
 <p align="center">Editable HTML decks · Persistent page Owners · Visual inspection and revision</p>
 
@@ -18,7 +18,8 @@
   <a href="#results-at-a-glance">Results</a> ·
   <a href="#models-and-trajectory-training">Models</a> ·
   <a href="#evaluation">Evaluation</a> ·
-  <a href="#release-status">Release status</a>
+  <a href="#release-status">Release status</a> ·
+  <a href="#brand-assets">Brand assets</a>
 </p>
 
 **MuralPresenter turns a request and source materials into an editable HTML presentation,
@@ -262,6 +263,37 @@ Interpret the experiments under their recorded protocols:
 - Search availability, image services and quotas differ across the supervision-study runs, limiting causal attribution to the training policy.
 
 </details>
+
+## Brand assets
+
+The standalone mark, avatar and painter mascot share the banner’s street-mural identity. Click a preview to open its original PNG.
+
+<table>
+  <tr><th width="33%">Primary mark · Transparent</th><th width="33%">Avatar · Square</th><th width="33%">Painter mascot · Transparent</th></tr>
+  <tr><td align="center"><a href="assets/logo/exports/street-v2/mural-mark.png"><img src="assets/logo/exports/street-v2/mural-mark.png" width="160" alt="Primary mark · Transparent"></a></td><td align="center"><a href="assets/logo/exports/street-v2/mural-avatar.png"><img src="assets/logo/exports/street-v2/mural-avatar.png" width="160" alt="Avatar · Square"></a></td><td align="center"><a href="assets/logo/exports/street-v2/mural-mascot.png"><img src="assets/logo/exports/street-v2/mural-mascot.png" width="160" alt="Painter mascot · Transparent"></a></td></tr>
+</table>
+
+<details>
+<summary>Wordmarks and paper sharing card</summary>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/logo/exports/street-v2/mural-wordmark-dark.png">
+    <img src="assets/logo/exports/street-v2/mural-wordmark-light.png" width="440" alt="MURAL Presenter">
+  </picture>
+</p>
+
+The wordmark follows your reader’s light or dark theme.
+
+<p align="center">
+  <a href="assets/logo/exports/street-v2/mural-social-card.png"><img src="assets/logo/exports/street-v2/mural-social-card.png" width="640" alt="MuralPresenter — Multi-Agent Units of Responsibility for Authoring Long-Horizon Presentations"></a>
+</p>
+
+[Light wordmark](assets/logo/exports/street-v2/mural-wordmark-light.png) · [Dark wordmark](assets/logo/exports/street-v2/mural-wordmark-dark.png) · [Paper sharing card](assets/logo/exports/street-v2/mural-social-card.png)
+
+</details>
+
+See the [brand guide](assets/logo/exports/street-v2/README.md) for the full asset set, usage and version history.
 
 ## Release status
 

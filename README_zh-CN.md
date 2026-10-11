@@ -5,7 +5,7 @@
   </picture>
 </p>
 
-<h1 align="center">MuralPresenter</h1>
+<h1 align="center"><img src="assets/logo/exports/street-v2/mural-mark.png" width="40" height="40" align="absmiddle" alt=""> MuralPresenter</h1>
 <p align="center"><strong>Multi-Agent Units of Responsibility for<br>Authoring Long-Horizon Presentations</strong></p>
 <p align="center">可编辑 HTML 演示文稿 · 持续负责的页面 Owner · 视觉检查与修订</p>
 
@@ -18,7 +18,8 @@
   <a href="#实验结果速览">实验结果</a> ·
   <a href="#模型与轨迹训练">模型</a> ·
   <a href="#评测">评测</a> ·
-  <a href="#发布状态">发布状态</a>
+  <a href="#发布状态">发布状态</a> ·
+  <a href="#品牌素材">品牌素材</a>
 </p>
 
 **MuralPresenter 根据需求和来源材料制作可编辑 HTML 演示文稿，支持证据整理、视觉检查和后续修改。**
@@ -244,6 +245,37 @@ PresentBench 覆盖 238 个任务，SlidesGen-Bench 覆盖 189 个任务，各�
 - 监督策略实验中的搜索可用性、生图服务和配额存在差异，限制了将结果变化单独归因于训练策略。
 
 </details>
+
+## 品牌素材
+
+独立标识、头像与画家吉祥物沿用顶部横幅的壁画风格。点击图片可打开原始 PNG。
+
+<table>
+  <tr><th width="33%">主标识 · 透明背景</th><th width="33%">头像 · 方形画布</th><th width="33%">画家吉祥物 · 透明背景</th></tr>
+  <tr><td align="center"><a href="assets/logo/exports/street-v2/mural-mark.png"><img src="assets/logo/exports/street-v2/mural-mark.png" width="160" alt="主标识 · 透明背景"></a></td><td align="center"><a href="assets/logo/exports/street-v2/mural-avatar.png"><img src="assets/logo/exports/street-v2/mural-avatar.png" width="160" alt="头像 · 方形画布"></a></td><td align="center"><a href="assets/logo/exports/street-v2/mural-mascot.png"><img src="assets/logo/exports/street-v2/mural-mascot.png" width="160" alt="画家吉祥物 · 透明背景"></a></td></tr>
+</table>
+
+<details>
+<summary>字标与论文分享图</summary>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/logo/exports/street-v2/mural-wordmark-dark.png">
+    <img src="assets/logo/exports/street-v2/mural-wordmark-light.png" width="440" alt="MURAL Presenter">
+  </picture>
+</p>
+
+字标随阅读器深浅色主题切换。
+
+<p align="center">
+  <a href="assets/logo/exports/street-v2/mural-social-card.png"><img src="assets/logo/exports/street-v2/mural-social-card.png" width="640" alt="MuralPresenter — Multi-Agent Units of Responsibility for Authoring Long-Horizon Presentations"></a>
+</p>
+
+[浅色字标](assets/logo/exports/street-v2/mural-wordmark-light.png) · [深色字标](assets/logo/exports/street-v2/mural-wordmark-dark.png) · [论文分享图](assets/logo/exports/street-v2/mural-social-card.png)
+
+</details>
+
+完整素材、使用说明与版本记录见[品牌指南](assets/logo/exports/street-v2/README.md)。
 
 ## 发布状态
 

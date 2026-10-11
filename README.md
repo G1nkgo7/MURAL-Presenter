@@ -1,3 +1,4 @@
+<a name="overview"></a>
 <a name="readme-en"></a>
 
 <p align="center">
@@ -19,19 +20,6 @@
   <a href="#quick-start">🚀 Quick start</a> ·
   <a href="webui/README_EN.md"><img src="webui/studio/static/logo.svg" width="18" height="18" align="absmiddle" alt=""> WebUI</a>
 </p>
-
-<a name="overview"></a>
-
-## About
-
-**MuralPresenter turns your request and source materials into an editable HTML presentation.**
-It researches the topic, creates slides, checks how they look, and handles follow-up edits.
-
-- **Start in the WebUI:** enter a request and optionally attach documents.
-- **Keep editing:** ask for content or design changes in the same case.
-- **Inspect and export:** preview the slides and download the deliverables.
-
-The repository includes the authoring Skill, execution Harness and WebUI. Model weights are not bundled.
 
 ## News
 

@@ -1,3 +1,4 @@
+<a name="项目概览"></a>
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="assets/logo/exports/street-v2/mural-banner-dark.png">
@@ -17,19 +18,6 @@
   <a href="#安装与启动">🚀 快速开始</a> ·
   <a href="webui/README.md"><img src="webui/studio/static/logo.svg" width="18" height="18" align="absmiddle" alt=""> WebUI</a>
 </p>
-
-<a name="项目概览"></a>
-
-## About · 项目介绍
-
-**MuralPresenter 根据你的需求和资料制作可编辑的 HTML 演示文稿。**
-它会调研内容、制作页面、检查视觉效果，并根据后续反馈继续修改。
-
-- **从 WebUI 开始：** 输入需求，可按需附上参考资料。
-- **继续修改：** 在同一个 case 中提出内容或设计调整。
-- **预览与导出：** 查看页面效果，下载交付文件。
-
-仓库包含创作 Skill、执行 Harness 和 WebUI；模型权重暂未附带。
 
 ## News · 最新动态
 

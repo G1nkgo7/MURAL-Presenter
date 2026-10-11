@@ -100,7 +100,8 @@ test -f webui/.env || cp webui/.env.example webui/.env
 bash webui/start.sh
 ```
 
-Open the address printed by the launcher, normally `http://127.0.0.1:8001`, and configure a model.
+Open the address printed by the launcher, normally `http://127.0.0.1:8001`.
+Add a multimodal model with its API base URL, model name and API key.
 
 <details>
 <summary>Configuration, attachment parsing and optional services</summary>
@@ -114,11 +115,21 @@ Search and image generation require separately configured providers.
 
 </details>
 
-**First task:** configure a model, create a case with your request and optional attachments,
-follow the execution in the workspace, then inspect the deck preview and download the deliverables.
-Use the [WebUI guide](webui/README_EN.md) for data paths, Docker, `/studio` deployment and troubleshooting.
+**Try a short task.** Create a case and send:
 
-## Command-line inference
+> Create a six-slide lesson on how animals use magnetic, sun and star compasses.
+> Include explanatory diagrams and a comparison table.
+
+**Then revise it.** Once generation finishes, send in the same case:
+
+> Reduce the text and make the direction conventions consistent across the diagrams and comparison table. Keep six slides.
+
+Preview and download the result. For deployment, data paths and troubleshooting, see the [WebUI guide](webui/README_EN.md).
+
+<a name="command-line-inference"></a>
+
+<details>
+<summary>Command-line inference</summary>
 
 ```bash
 webui/inference/.venv/bin/python scripts/run_inference.py \
@@ -128,6 +139,8 @@ webui/inference/.venv/bin/python scripts/run_inference.py \
 
 Use `--help` for arguments or `--doctor --json artifacts/doctor.json` for diagnostics.
 Use a new workspace; preserve historical workspaces and their pinned runtime.
+
+</details>
 
 ## Method
 
@@ -224,8 +237,7 @@ Model weights are not bundled with this source release.
 Training uses MS-SWIFT, Megatron and BF16 with frozen vision encoders and mergers, a maximum
 sequence length of 131,072 tokens and batch size 64. The supervision-policy comparison uses
 four-epoch 27B models, distinct from the two-epoch 27B public-benchmark checkpoint.
-These are paper experiment settings, not WebUI generation defaults. Model weights are not
-bundled with this source release.
+These are paper experiment settings, not WebUI generation defaults.
 
 </details>
 
@@ -267,6 +279,9 @@ tool conditions; they do not isolate the effect of training.
 
 ## Evaluation
 
+<details>
+<summary>Benchmark coverage, metrics and interpretation</summary>
+
 | Evaluation | Coverage in the manuscript | What it measures |
 | --- | --- | --- |
 | PresentBench | 238 tasks | Delivered presentation quality under task-specific rubrics. |
@@ -281,8 +296,7 @@ and slide–speech alignment (**S**). Process is not included in Overall. The cu
 analysis excludes criteria requiring authoring trajectories and includes formal and diagnostic
 records. Missing compatible action records do not by themselves establish that an action was omitted.
 
-<details>
-<summary>Experiment protocols and interpretation</summary>
+**Experiment protocols and interpretation**
 
 Interpret the experiments under their recorded protocols:
 
@@ -384,59 +398,8 @@ portable integration updates are recorded separately in `configs/releases/mural-
 python tools/check_paper_release.py
 ```
 
-See [Contributing](CONTRIBUTING.md) for the source and manifest workflow, and
-[packaging CI](.github/workflows/public-surface.yml) for the tested scope.
-
-<details>
-<summary>Source inventory and hash verification</summary>
-
-The active manifest is `configs/releases/mural-paper-v1.json`.
-`configs/releases/upstream-0919/` retains the original 319-file publication inventory,
-its pin and its release hashes. Historical inventory entries record provenance; they do not
-require publishing the original internal pipeline configurations or benchmark scripts.
-
-All 55 Skill and 199 Harness files retain the original combined SHA-256:
-`378c3ac7fa26d06b91f5408c7a25e7350b9b37e712611a322e387ae13a2d64e3`.
-Historical examples and links inside that frozen source may refer to the original environment;
-use this README's portable launch instructions. Two unreadable upstream WebUI tests were not
-imported. The portable integration has a separate release identity and digest.
-
-```bash
-python tools/check_paper_release.py
-```
-
-This verifies the frozen core, active integration and tracked release boundaries.
-Do not refresh core hashes to conceal source changes. Integration updates require their own
-review, tests and manifest; see [Contributing](CONTRIBUTING.md).
-
-</details>
-
-<details>
-<summary>Validation record and known limits</summary>
-
-CI commands are in [.github/workflows/public-surface.yml](.github/workflows/public-surface.yml).
-They cover portable configuration, HTTP and `/studio` routing, release/configuration contracts,
-and active WebUI configuration. Use isolated test data, not an existing Studio database.
-
-The compact public tree was checked on Linux on 2026-10-10: 10 portable/source-digest tests,
-95 release/configuration tests and 139 WebUI tests passed; one browser test was skipped.
-The example launcher preflight passed. These checks used an isolated Git worktree and existing
-locked-dependency test environments, without model requests or production data.
-
-The complete historical suite has not passed. The frozen source retains these known failures:
-
-- `test_agent_runtime.py::test_resume_preserves_inspect_feedback_as_tool_context_without_reconciliation`:
-  resumed tool content is a string where the assertion expects text/image parts.
-- `test_creation_config_runtime.py::test_presentation_change_requires_new_render_and_real_visual_consumption`:
-  the second inspection returns `inspection_limit_reached` after a language change.
-
-Two historical tests cannot collect without unpublished canary modules
-(`test_real_webui_canary.py`, `test_refero_font_audit.py`); some legacy WebUI tests require archived
-runtimes. Packaging CI deliberately selects its documented scope. Docker builds, Windows/macOS
-startup and the complete 238-case experiment have not been validated by these packaging checks.
-Local deployment smoke tests are not paper-score reproduction.
-
-</details>
+Source hashes, historical test results and known failures are recorded in
+[Contributing](CONTRIBUTING.md#release-verification-record); see [packaging CI](.github/workflows/public-surface.yml) for the tested scope.
 
 ## License and citation
 

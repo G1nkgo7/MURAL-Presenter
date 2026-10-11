@@ -34,8 +34,9 @@ records the experiment runtime, which differs from the frozen 0919 source releas
 show generated outputs, not the illustrative edit sequence.
 The paper-to-presentation revision gallery remains a separate qualitative execution case.
 
-Three [capability icons](icons/README.md) reuse original manuscript PNGs alongside the overview's
-text labels. Their separate [manifest](icons/manifest.json) records byte-identical copies.
+Three [capability icons](icons/README.md) remain available as manuscript artwork; they are no longer
+used in the homepage overview. The compact header uses standard pictograms beside its three
+primary navigation links. The icons' [manifest](icons/manifest.json) records byte-identical copies.
 
 ## Export quality and provenance
 

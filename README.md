@@ -12,15 +12,12 @@
 <p align="center">Editable HTML decks · Persistent page Owners · Visual inspection and revision</p>
 
 <p align="center">
-  <strong>English</strong> ·
-  <a href="README_zh-CN.md">简体中文</a> ·
-  <a href="#see-it-in-action">Examples</a> ·
-  <a href="#quick-start">Quick start</a> ·
-  <a href="webui/README_EN.md">WebUI</a> ·
-  <a href="#method">Method</a> ·
-  <a href="#results-at-a-glance">Results</a> ·
-  <a href="#release-status">Release status</a> ·
-  <a href="#brand-assets">Brand assets</a>
+  <strong>English</strong> · <a href="README_zh-CN.md">简体中文</a>
+</p>
+<p align="center">
+  <a href="#see-it-in-action">🖼️ Examples</a> ·
+  <a href="#quick-start">🚀 Quick start</a> ·
+  <a href="webui/README_EN.md">🖥️ WebUI</a>
 </p>
 
 **MuralPresenter turns a request and source materials into an editable HTML presentation,
@@ -32,9 +29,9 @@ and **WebUI**. See [release status](#release-status) for the scope of the availa
 
 ## Overview
 
-<p><img src="assets/figures/icons/research.png" width="36" align="absmiddle" alt=""> <strong>Grounded content.</strong> Research findings, sources and factual conditions become shared inputs for page authoring.</p>
-<p><img src="assets/figures/icons/group-owner.png" width="36" align="absmiddle" alt=""> <strong>Adaptive responsibility.</strong> Single Owners handle independent pages; Group Owners coordinate pages that need joint decisions.</p>
-<p><img src="assets/figures/icons/inspect.png" width="36" align="absmiddle" alt=""> <strong>Visual revision.</strong> Owners render, inspect and revise their pages, and retain responsibility for later edits.</p>
+- **Grounded content.** Research findings, sources and factual conditions become shared inputs for page authoring.
+- **Adaptive responsibility.** Single Owners handle independent pages; Group Owners coordinate pages that need joint decisions.
+- **Visual revision.** Owners render, inspect and revise their pages, and retain responsibility for later edits.
 
 ## See it in action
 

@@ -10,15 +10,12 @@
 <p align="center">可编辑 HTML 演示文稿 · 持续负责的页面 Owner · 视觉检查与修订</p>
 
 <p align="center">
-  <a href="https://github.com/G1nkgo7/MURAL-Presenter#readme-en">English</a> ·
-  <strong>简体中文</strong> ·
-  <a href="#生成与修改示例">效果示例</a> ·
-  <a href="#安装与启动">快速启动</a> ·
-  <a href="webui/README.md">WebUI</a> ·
-  <a href="#方法详解">方法</a> ·
-  <a href="#实验结果速览">实验结果</a> ·
-  <a href="#发布状态">发布状态</a> ·
-  <a href="#品牌素材">品牌素材</a>
+  <a href="https://github.com/G1nkgo7/MURAL-Presenter#readme-en">English</a> · <strong>简体中文</strong>
+</p>
+<p align="center">
+  <a href="#生成与修改示例">🖼️ 效果示例</a> ·
+  <a href="#安装与启动">🚀 快速开始</a> ·
+  <a href="webui/README.md">🖥️ WebUI</a>
 </p>
 
 **MuralPresenter 根据需求和来源材料制作可编辑 HTML 演示文稿，支持证据整理、视觉检查和后续修改。**
@@ -29,9 +26,9 @@
 
 ## 项目概览
 
-<p><img src="assets/figures/icons/research.png" width="36" align="absmiddle" alt=""> <strong>有依据的内容。</strong> 将研究结论、来源与适用条件纳入共享状态，为页面创作提供依据。</p>
-<p><img src="assets/figures/icons/group-owner.png" width="36" align="absmiddle" alt=""> <strong>自适应责任分配。</strong> 独立页面交给 Single Owner，需要共同决策的页面交给 Group Owner。</p>
-<p><img src="assets/figures/icons/inspect.png" width="36" align="absmiddle" alt=""> <strong>持续视觉修订。</strong> Owner 渲染、检查和修改自己负责的页面，并继续承担后续修改。</p>
+- **有依据的内容。** 将研究结论、来源与适用条件纳入共享状态，为页面创作提供依据。
+- **自适应责任分配。** 独立页面交给 Single Owner，需要共同决策的页面交给 Group Owner。
+- **持续视觉修订。** Owner 渲染、检查和修改自己负责的页面，并继续承担后续修改。
 
 ## 生成与修改示例
 

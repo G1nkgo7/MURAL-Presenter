@@ -17,8 +17,6 @@
   <a href="webui/README.md">WebUI</a> ·
   <a href="#方法详解">方法</a> ·
   <a href="#实验结果速览">实验结果</a> ·
-  <a href="#模型与轨迹训练">模型</a> ·
-  <a href="#评测">评测</a> ·
   <a href="#发布状态">发布状态</a> ·
   <a href="#品牌素材">品牌素材</a>
 </p>
@@ -31,30 +29,37 @@
 
 ## 项目概览
 
-- **自适应责任分配**：独立页面交给 Single Owner，需要共同调整内容或设计的页面交给 Group Owner。
-- **持续创作与修改**：共享知识、规划和素材支撑局部渲染检查、定向修订与整册复审。
-- **轨迹训练与评测**：论文研究基于执行片段训练的 9B/27B 模型、三个公共 benchmark，以及 35 个长演示任务的独立质量与过程评测。
-
-<p align="center">
-  <a href="assets/figures/ownership-workflow.png"><img src="assets/figures/ownership-workflow.png" width="100%" alt="持续协调、自适应单页与多页责任分配、局部迭代和整册验证"></a>
-</p>
-
-<p align="center"><em>共享整册状态 → Single / Group Owner → 视觉检查与修订 → 复审后交付。</em></p>
+<p><img src="assets/figures/icons/research.png" width="36" align="absmiddle" alt=""> <strong>有依据的内容。</strong> 将研究结论、来源与适用条件纳入共享状态，为页面创作提供依据。</p>
+<p><img src="assets/figures/icons/group-owner.png" width="36" align="absmiddle" alt=""> <strong>自适应责任分配。</strong> 独立页面交给 Single Owner，需要共同决策的页面交给 Group Owner。</p>
+<p><img src="assets/figures/icons/inspect.png" width="36" align="absmiddle" alt=""> <strong>持续视觉修订。</strong> Owner 渲染、检查和修改自己负责的页面，并继续承担后续修改。</p>
 
 ## 生成与修改示例
 
+### 动物罗盘 · 论文贯穿案例
+
+> **需求摘要：** 为生命科学高年级本科生制作 40 页教学演示，讲解地磁、太阳与星辰罗盘，
+> 包含科学示意图、真实照片和对比表。
+
+- **改一处，影响多页。** 将航向参照从正北改为太阳，导航图的角度标注与对比表中的解释就需要一起调整。
+- **让共同决策有负责人。** 校准页与对比页的约定尚未确定时，由一个 Group Owner 协同制作；依据已确定的页面可交给 Single Owner 独立推进。
+- **修改仍找原 Owner。** 后续反馈交回相应 Owner，修改后再次进行视觉检查。
+
+<p align="center">
+  <a href="assets/figures/ownership-workflow.png"><img src="assets/figures/ownership-workflow.png" width="100%" alt="动物罗盘方法示意：共享证据与计划、单页和多页责任分配、视觉检查与持续修改"></a>
+</p>
+
+这是论文中的任务与方法示例，不是一次运行的轨迹记录或完整 40 页成品展示。
+
+### 从论文到演示 · 实际修改对照
+
 **同一份演示文稿，由原有 Owner 继续修改。** 论文中的定性案例先将介绍本论文的演示文稿从
-10 页扩展到 12 页，再从黑板风格改为浅蓝白色，并调整解释性图示。下方展示第 3、5 页的修改前后对照。
+10 页扩展到 12 页，再从黑板风格改为浅蓝白色，并调整解释性图示。下方展示第 3 页的前后对照，完整画廊保留六组。
 
 <table>
   <tr><th width="50%">修改前 · 黑板风格</th><th width="50%">修改后 · 浅蓝白色</th></tr>
   <tr>
     <td><a href="assets/figures/revision-case/before-03.png"><img src="assets/figures/revision-case/before-03.png" width="100%" alt="修改前：第 3 页解释 Single Owner 与 Group Owner"></a></td>
     <td><a href="assets/figures/revision-case/after-03.png"><img src="assets/figures/revision-case/after-03.png" width="100%" alt="修改后：第 3 页采用蓝白风格并更新责任单元图示"></a></td>
-  </tr>
-  <tr>
-    <td><a href="assets/figures/revision-case/before-05.png"><img src="assets/figures/revision-case/before-05.png" width="100%" alt="修改前：第 5 页说明执行、验证与修复"></a></td>
-    <td><a href="assets/figures/revision-case/after-05.png"><img src="assets/figures/revision-case/after-05.png" width="100%" alt="修改后：第 5 页更新执行、验证和修复图示"></a></td>
   </tr>
 </table>
 
@@ -74,11 +79,17 @@ test -f webui/.env || cp webui/.env.example webui/.env
 bash webui/start.sh
 ```
 
-仅首次部署复制示例配置；已有 `.env` 应保留。打开启动器打印的地址，默认
-`http://127.0.0.1:8001`。模型可在 WebUI 或部署环境中配置；Windows 使用 `webui/start.ps1`。
+打开启动器打印的地址，默认 `http://127.0.0.1:8001`，然后配置模型。
+
+<details>
+<summary>配置、附件解析与可选服务</summary>
+
+仅首次部署复制示例配置；已有 `.env` 应保留。Windows 使用 `webui/start.ps1`。
 首次启动可能下载 Chromium。启动器生成被忽略的 `configs/runtime.local.json`，不会覆盖已有配置。
 在其中设置并发及按顺序排列的 MinerU GPU/CPU 服务地址，或用 `MURAL_RUNTIME_CONFIG` 指定已有文件。
 PDF、Office、图片附件解析需要 MinerU；纯文本任务不需要附件解析服务。搜索和生图服务分别配置。
+
+</details>
 
 **第一个任务**：配置模型，创建 case 并填写需求和可选附件，在工作区查看执行过程，
 然后检查演示文稿预览并下载产物。

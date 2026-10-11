@@ -19,8 +19,6 @@
   <a href="webui/README_EN.md">WebUI</a> ·
   <a href="#method">Method</a> ·
   <a href="#results-at-a-glance">Results</a> ·
-  <a href="#models-and-trajectory-training">Models</a> ·
-  <a href="#evaluation">Evaluation</a> ·
   <a href="#release-status">Release status</a> ·
   <a href="#brand-assets">Brand assets</a>
 </p>
@@ -34,31 +32,38 @@ and **WebUI**. See [release status](#release-status) for the scope of the availa
 
 ## Overview
 
-- **Adaptive responsibility.** Independent pages receive Single Owners; pages needing joint content or design adjustment share a Group Owner.
-- **Persistent authoring.** Shared knowledge, plans and assets support local render–inspect–revise loops and deck-wide review.
-- **Trajectory training and evaluation.** The paper studies 9B/27B models trained on execution segments, three public benchmarks and separate quality/process evaluation on 35 long-deck tasks.
-
-<p align="center">
-  <a href="assets/figures/ownership-workflow.png"><img src="assets/figures/ownership-workflow.png" width="100%" alt="Persistent coordination, adaptive Single and Group Owners, local refinement and deck-wide verification"></a>
-</p>
-
-<p align="center"><em>Shared deck state → Single / Group Owners → visual refinement → reviewed delivery.</em></p>
+<p><img src="assets/figures/icons/research.png" width="36" align="absmiddle" alt=""> <strong>Grounded content.</strong> Research findings, sources and factual conditions become shared inputs for page authoring.</p>
+<p><img src="assets/figures/icons/group-owner.png" width="36" align="absmiddle" alt=""> <strong>Adaptive responsibility.</strong> Single Owners handle independent pages; Group Owners coordinate pages that need joint decisions.</p>
+<p><img src="assets/figures/icons/inspect.png" width="36" align="absmiddle" alt=""> <strong>Visual revision.</strong> Owners render, inspect and revise their pages, and retain responsibility for later edits.</p>
 
 ## See it in action
 
+### Animal compasses · the paper's running example
+
+> **Request, condensed:** Create 40 teaching slides for senior life-sciences undergraduates on
+> geomagnetic, sun and star compasses, with scientific diagrams, real photographs and a comparison table.
+
+- **One change, several pages.** Changing a heading reference from north to the Sun affects both the navigation diagram's angle labels and the comparison table's explanation.
+- **Assign the joint decision.** A Group Owner handles calibration and comparison pages while their conventions remain unresolved. Pages based on settled decisions can proceed with Single Owners.
+- **Continue with the same Owners.** Later feedback returns to the responsible Owners for revision and another visual inspection.
+
+<p align="center">
+  <a href="assets/figures/ownership-workflow.png"><img src="assets/figures/ownership-workflow.png" width="100%" alt="Animal-compass illustration: shared evidence and plans, Single and Group Owners, and visual revision"></a>
+</p>
+
+This is the paper's task and method illustration, not a captured execution trace or a completed 40-slide gallery.
+
+### From paper to slides · actual revision
+
 **The same deck, revised through its existing Owners.** The manuscript's qualitative case expands
 a presentation of this paper from ten to twelve slides, then changes its blackboard styling to
-light blue and white while refining diagrams. Below are pages 3 and 5 before and after revision.
+light blue and white while refining diagrams. Below is page 3 before and after revision; the gallery contains six pairs.
 
 <table>
   <tr><th width="50%">Before · Blackboard</th><th width="50%">After · Blue and white</th></tr>
   <tr>
     <td><a href="assets/figures/revision-case/before-03.png"><img src="assets/figures/revision-case/before-03.png" width="100%" alt="Before revision: page 3 explaining Single and Group Owners"></a></td>
     <td><a href="assets/figures/revision-case/after-03.png"><img src="assets/figures/revision-case/after-03.png" width="100%" alt="After revision: page 3 with blue and white styling and updated responsibility diagrams"></a></td>
-  </tr>
-  <tr>
-    <td><a href="assets/figures/revision-case/before-05.png"><img src="assets/figures/revision-case/before-05.png" width="100%" alt="Before revision: page 5 on execution, verification and repair"></a></td>
-    <td><a href="assets/figures/revision-case/after-05.png"><img src="assets/figures/revision-case/after-05.png" width="100%" alt="After revision: page 5 with revised execution, verification and repair diagrams"></a></td>
   </tr>
 </table>
 
@@ -79,14 +84,19 @@ test -f webui/.env || cp webui/.env.example webui/.env
 bash webui/start.sh
 ```
 
-Copy the example only on first setup; preserve an existing `.env`.
-Open the address printed by the launcher, normally `http://127.0.0.1:8001`.
-Configure the model in the UI or deployment environment. On Windows use `webui/start.ps1`.
+Open the address printed by the launcher, normally `http://127.0.0.1:8001`, and configure a model.
+
+<details>
+<summary>Configuration, attachment parsing and optional services</summary>
+
+Copy the example only on first setup; preserve an existing `.env`. On Windows use `webui/start.ps1`.
 The first launch can install Chromium. It creates ignored `configs/runtime.local.json`
 without overwriting an existing configuration. Edit that file for concurrency and ordered
 GPU/CPU MinerU endpoints, or select an existing file with `MURAL_RUNTIME_CONFIG`.
 PDF/Office/image attachments require MinerU; text-only tasks do not require an attachment parser.
 Search and image generation require separately configured providers.
+
+</details>
 
 **First task:** configure a model, create a case with your request and optional attachments,
 follow the execution in the workspace, then inspect the deck preview and download the deliverables.

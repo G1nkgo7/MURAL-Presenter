@@ -1,0 +1,22 @@
+{
+  "copied_on": "2026-10-12",
+  "manuscript_head": "70a08266d96f9c6cff90b6282d49e7d5e6be7818",
+  "method": "Original transparent PNGs copied byte-for-byte; displayed at small size using README image attributes.",
+  "assets": [
+    {
+      "file": "research.png",
+      "source": "figure_sources/transparent_icons/research.png",
+      "sha256": "2edeb1d410e03b3da1909943639dbe8088df483885e4ed21348ece99bc48788b"
+    },
+    {
+      "file": "group-owner.png",
+      "source": "figure_sources/transparent_icons/group.png",
+      "sha256": "19c29396341bf4b9b0ce6b118843e299b2997fed0234206680e7c85aa44298c5"
+    },
+    {
+      "file": "inspect.png",
+      "source": "figure_sources/transparent_icons/objects/inspect.png",
+      "sha256": "7c7f53bc867a857e1c4547d33c93a2fec81f7fb8ab6df1a7f1f328ec6d32dfe8"
+    }
+  ]
+}

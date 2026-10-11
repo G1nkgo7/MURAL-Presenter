@@ -21,6 +21,17 @@ Figure 3 is included through `figures/fig3_authoring_process.tex`; that wrapper 
 The appendix shows pages 1–6 of a twelve-slide deck before and after revision. It does not show
 all twelve slides in either state. The qualitative case is excluded from benchmark means.
 
+## Running example and README icons
+
+The homepage explains the animal-compass task with Figure 3 and a short request summary.
+Its sources are `chapters_en/01_introduction.tex`, `chapters_en/02_muralpresenter.tex` and the
+animal-compass requirements in `chapters_en/appendix.tex`. This illustrates the task and
+responsibility assignment; it is not a trace-backed demonstration of realized grouping or repair.
+The paper-to-presentation revision gallery remains a separate qualitative execution case.
+
+Three [capability icons](icons/README.md) reuse original manuscript PNGs alongside the overview's
+text labels. Their separate [manifest](icons/manifest.json) records byte-identical copies.
+
 ## Export quality and provenance
 
 - The five main figures are complete PDF pages rendered at 2,400 pixels wide with PyMuPDF.

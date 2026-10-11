@@ -23,6 +23,10 @@ Keep the large light/dark MURAL header visible. When the paper name changes, upd
 while preserving the existing mascot and historical exports. Put detailed provenance and validation
 records in expandable sections so the overview and quick start remain easy to find.
 Keep paper terminology, training checkpoints and evaluation scope consistent across both editions.
+The repository homepage README contains both languages. Keep the Chinese section between
+`BEGIN HOMEPAGE ZH-CN` and `END HOMEPAGE ZH-CN` aligned with `README_zh-CN.md`,
+except for its homepage navigation and shared header. Language links on the homepage must use
+`#readme-en` / `#readme-zh`, not a Markdown file path. Preserve these anchors when editing.
 Record manuscript figure sources in `assets/figures/README.md`; keep the runtime source pin separate
 from model checkpoint identities and do not imply that unpublished experiment artifacts are bundled.
 The frozen core's own docs, tests and assets remain part of its original inventory.

@@ -1,6 +1,6 @@
 # Presentation revision · 修改前后对照
 
-[Project overview](../../../README.md) · [中文介绍](../../../README_zh-CN.md) · [Figure provenance](../README.md)
+[Project overview](https://github.com/G1nkgo7/MURAL-Presenter#readme-en) · [中文介绍](https://github.com/G1nkgo7/MURAL-Presenter#readme-zh) · [Figure provenance](../README.md)
 
 The manuscript follows a MuralPresenter-27B presentation of the paper: it expands from ten to twelve
 slides, then changes from blackboard styling to light blue and white while revising explanatory diagrams.

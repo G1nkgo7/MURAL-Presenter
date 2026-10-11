@@ -1,0 +1,54 @@
+{
+  "published_on": "2026-10-12",
+  "case_id": "Education-lh-Animal_navigation",
+  "source_run": "Education/Education-lh-Animal_navigation/outputs/qwen38-27b-sft-global-selective-ep2-ckpt64-tp8/thread35_oldpresenter_selective_ep2_tp8_20260929_r02",
+  "run_id": "thread35_oldpresenter_selective_ep2_tp8_20260929_r02",
+  "model_tag": "qwen38-27b-sft-global-selective-ep2-ckpt64-tp8",
+  "model": "Qwen3.8-27B",
+  "checkpoint": {
+    "training_policy": "Global Selective",
+    "epochs": 2,
+    "optimizer_steps": 64
+  },
+  "generation_status": "completed",
+  "finished_at": "2026-09-30T09:23:38Z",
+  "slide_count": 40,
+  "instruction_sha256": "aed6ab0948ea190f716303c855bd31d0d4b87ab9505a8ba81c8f3243b631b4d2",
+  "generation_metadata_sha256": "032191dad1b5abd48c71bfd0fd11abc89ce4214bea63eeec32b4d2edff265f5b",
+  "pipeline_version": "mural-v1-r3-bench-template-medium-20260927",
+  "presenter_source_sha256": "2e117935c50eef59eab74ecda8cc70832308401386147b7568e4a64133b95dc4",
+  "method": "Original archived PNG renders copied byte-for-byte; no cropping, redraw, re-encoding or rerun. Each selected PNG matches the native source-run render.",
+  "selection": "Pages selected to show a mechanism diagram, the requested comparison table, and cross-compass calibration. Qualitative output examples, not a before/after edit sequence or a benchmark result.",
+  "assets": [
+    {
+      "file": "slide-19.png",
+      "page": 19,
+      "title": "Time-compensated sun compass",
+      "source": "renders/slide_19.png",
+      "sha256": "c803b8d7bb41f737cf8e4f3fbdb1f95aea1140fa87147b79b60ffd9de3275825",
+      "source_html_sha256": "8cc46ef8690b93165f2efac6205819eef1bc664c82fae88def42697c17e145c0",
+      "width": 1600,
+      "height": 900
+    },
+    {
+      "file": "slide-35.png",
+      "page": 35,
+      "title": "Three-compass comparison",
+      "source": "renders/slide_35.png",
+      "sha256": "e6a72f79a8ea65a71876ae07e0c33d22d3d1c62ef2cd69a08b1a8d9e6341a070",
+      "source_html_sha256": "acbd53c8f9a619a34a834fee9eb8dec1a97aac4fa80f8a6e6ce8f62bed594f4a",
+      "width": 1600,
+      "height": 900
+    },
+    {
+      "file": "slide-37.png",
+      "page": 37,
+      "title": "Calibration and redundancy",
+      "source": "renders/slide_37.png",
+      "sha256": "d7ee9c78f9e3ad976566b94271f048ef05b1fdda81cb813881d903d13a5b1de8",
+      "source_html_sha256": "c8b024987e68601bd41b30a8e4b99fdf9ecf8eae883f0766f7d3a215b462ffb8",
+      "width": 1600,
+      "height": 900
+    }
+  ]
+}

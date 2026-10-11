@@ -23,10 +23,15 @@ all twelve slides in either state. The qualitative case is excluded from benchma
 
 ## Running example and README icons
 
-The homepage explains the animal-compass task with Figure 3 and a short request summary.
+The homepage presents a short animal-compass request, selected actual outputs and an expandable
+method explanation with Figure 3.
 Its sources are `chapters_en/01_introduction.tex`, `chapters_en/02_muralpresenter.tex` and the
 animal-compass requirements in `chapters_en/appendix.tex`. This illustrates the task and
 responsibility assignment; it is not a trace-backed demonstration of realized grouping or repair.
+The [animal-compass gallery](animal-compass/README.md) adds three original output pages from a
+completed 40-slide run using the 27B Global Selective two-epoch checkpoint. Its separate manifest
+records the experiment runtime, which differs from the frozen 0919 source release. These pages
+show generated outputs, not the illustrative edit sequence.
 The paper-to-presentation revision gallery remains a separate qualitative execution case.
 
 Three [capability icons](icons/README.md) reuse original manuscript PNGs alongside the overview's

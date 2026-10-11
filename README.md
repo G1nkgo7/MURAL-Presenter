@@ -43,6 +43,23 @@ and **WebUI**. See [release status](#release-status) for the scope of the availa
 > **Request, condensed:** Create 40 teaching slides for senior life-sciences undergraduates on
 > geomagnetic, sun and star compasses, with scientific diagrams, real photographs and a comparison table.
 
+**Actual output · MuralPresenter-27B (Global Selective, 2 epochs / checkpoint-64).**
+Pages 19 and 37 from one completed 40-slide Chinese deck; click to view the original renders.
+
+<table>
+  <tr><th width="50%">Page 19 · Sun-compass mechanism</th><th width="50%">Page 37 · Calibration and redundancy</th></tr>
+  <tr>
+    <td><a href="assets/figures/animal-compass/slide-19.png"><img src="assets/figures/animal-compass/slide-19.png" width="100%" alt="Actual generated page 19: time-compensated sun compass, diagram and explanation"></a></td>
+    <td><a href="assets/figures/animal-compass/slide-37.png"><img src="assets/figures/animal-compass/slide-37.png" width="100%" alt="Actual generated page 37: calibration and redundancy among three compass systems"></a></td>
+  </tr>
+</table>
+
+[View all three selected pages, including the comparison table](assets/figures/animal-compass/README.md) ·
+Original 1600 × 900 renders, copied without editing from an archived run.
+
+<details>
+<summary>How this task illustrates shared decisions and persistent Owners</summary>
+
 - **One change, several pages.** Changing a heading reference from north to the Sun affects both the navigation diagram's angle labels and the comparison table's explanation.
 - **Assign the joint decision.** A Group Owner handles calibration and comparison pages while their conventions remain unresolved. Pages based on settled decisions can proceed with Single Owners.
 - **Continue with the same Owners.** Later feedback returns to the responsible Owners for revision and another visual inspection.
@@ -51,7 +68,9 @@ and **WebUI**. See [release status](#release-status) for the scope of the availa
   <a href="assets/figures/ownership-workflow.png"><img src="assets/figures/ownership-workflow.png" width="100%" alt="Animal-compass illustration: shared evidence and plans, Single and Group Owners, and visual revision"></a>
 </p>
 
-This is the paper's task and method illustration, not a captured execution trace or a completed 40-slide gallery.
+The bullets and workflow figure illustrate the paper's method; they do not reconstruct the archived run's exact Owner assignments or a recorded north-to-Sun edit.
+
+</details>
 
 ### From paper to slides · actual revision
 

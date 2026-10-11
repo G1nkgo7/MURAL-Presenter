@@ -40,6 +40,23 @@
 > **需求摘要：** 为生命科学高年级本科生制作 40 页教学演示，讲解地磁、太阳与星辰罗盘，
 > 包含科学示意图、真实照片和对比表。
 
+**实际输出 · MuralPresenter-27B（Global Selective，2 epoch／checkpoint-64）。**
+下方是同一次已完成的 40 页中文演示中的第 19、37 页，点击图片可查看原始渲染。
+
+<table>
+  <tr><th width="50%">第 19 页 · 太阳罗盘机制</th><th width="50%">第 37 页 · 相互校准与冗余</th></tr>
+  <tr>
+    <td><a href="assets/figures/animal-compass/slide-19.png"><img src="assets/figures/animal-compass/slide-19.png" width="100%" alt="实际生成的第 19 页：时间补偿太阳罗盘的机制图与讲解"></a></td>
+    <td><a href="assets/figures/animal-compass/slide-37.png"><img src="assets/figures/animal-compass/slide-37.png" width="100%" alt="实际生成的第 37 页：三种罗盘的校准与冗余关系"></a></td>
+  </tr>
+</table>
+
+[查看三张代表页及来源，含三种罗盘对比表](assets/figures/animal-compass/README.md) ·
+直接采用归档批次的 1600 × 900 原始渲染，未进行图片修饰。
+
+<details>
+<summary>这个任务如何体现共同决策与持续负责的 Owner</summary>
+
 - **改一处，影响多页。** 将航向参照从正北改为太阳，导航图的角度标注与对比表中的解释就需要一起调整。
 - **让共同决策有负责人。** 校准页与对比页的约定尚未确定时，由一个 Group Owner 协同制作；依据已确定的页面可交给 Single Owner 独立推进。
 - **修改仍找原 Owner。** 后续反馈交回相应 Owner，修改后再次进行视觉检查。
@@ -48,7 +65,9 @@
   <a href="assets/figures/ownership-workflow.png"><img src="assets/figures/ownership-workflow.png" width="100%" alt="动物罗盘方法示意：共享证据与计划、单页和多页责任分配、视觉检查与持续修改"></a>
 </p>
 
-这是论文中的任务与方法示例，不是一次运行的轨迹记录或完整 40 页成品展示。
+以上文字与流程图用于解释论文方法，不代表归档批次的具体 Owner 分组，也不代表该批次执行过“正北改为太阳”的修改。
+
+</details>
 
 ### 从论文到演示 · 实际修改对照
 

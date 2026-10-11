@@ -11,7 +11,7 @@
 
 <p align="center">
   <a href="https://github.com/G1nkgo7/MURAL-Presenter#readme-en">English</a> ·
-  <a href="https://github.com/G1nkgo7/MURAL-Presenter#readme-zh">仓库首页 · 简体中文</a> ·
+  <strong>简体中文</strong> ·
   <a href="#生成与修改示例">效果示例</a> ·
   <a href="#安装与启动">快速启动</a> ·
   <a href="webui/README.md">WebUI</a> ·

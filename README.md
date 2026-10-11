@@ -7,11 +7,15 @@
 
 <h1 align="center">MuralPresenter</h1>
 <p align="center"><strong>Multi-Agent Units of Responsibility for<br>Authoring Long-Horizon Presentations</strong></p>
+<p align="center">Editable HTML decks · Persistent page Owners · Visual inspection and revision</p>
 
 <p align="center">
   <a href="README_zh-CN.md">简体中文</a> ·
+  <a href="#see-it-in-action">Examples</a> ·
   <a href="#quick-start">Quick start</a> ·
   <a href="webui/README_EN.md">WebUI</a> ·
+  <a href="#method">Method</a> ·
+  <a href="#results-at-a-glance">Results</a> ·
   <a href="#models-and-trajectory-training">Models</a> ·
   <a href="#evaluation">Evaluation</a> ·
   <a href="#release-status">Release status</a>
@@ -28,13 +32,35 @@ and **WebUI**. See [release status](#release-status) for the scope of the availa
 
 - **Adaptive responsibility.** Independent pages receive Single Owners; pages needing joint content or design adjustment share a Group Owner.
 - **Persistent authoring.** Shared knowledge, plans and assets support local render–inspect–revise loops and deck-wide review.
-- **Trajectory training and evaluation.** The paper studies 9B/27B models trained on execution segments, public presentation benchmarks and separate Final/Process evaluation with ThreadEval.
+- **Trajectory training and evaluation.** The paper studies 9B/27B models trained on execution segments, three public benchmarks and separate quality/process evaluation on 35 long-deck tasks.
 
 <p align="center">
-  <img src="assets/figures/ownership-workflow.png" width="100%" alt="Persistent coordination, adaptive Single and Group Owners, local refinement and deck-wide verification">
+  <a href="assets/figures/ownership-workflow.png"><img src="assets/figures/ownership-workflow.png" width="100%" alt="Persistent coordination, adaptive Single and Group Owners, local refinement and deck-wide verification"></a>
 </p>
 
 <p align="center"><em>Shared deck state → Single / Group Owners → visual refinement → reviewed delivery.</em></p>
+
+## See it in action
+
+**The same deck, revised through its existing Owners.** The manuscript's qualitative case expands
+a presentation of this paper from ten to twelve slides, then changes its blackboard styling to
+light blue and white while refining diagrams. Below are pages 3 and 5 before and after revision.
+
+<table>
+  <tr><th width="50%">Before · Blackboard</th><th width="50%">After · Blue and white</th></tr>
+  <tr>
+    <td><a href="assets/figures/revision-case/before-03.png"><img src="assets/figures/revision-case/before-03.png" width="100%" alt="Before revision: page 3 explaining Single and Group Owners"></a></td>
+    <td><a href="assets/figures/revision-case/after-03.png"><img src="assets/figures/revision-case/after-03.png" width="100%" alt="After revision: page 3 with blue and white styling and updated responsibility diagrams"></a></td>
+  </tr>
+  <tr>
+    <td><a href="assets/figures/revision-case/before-05.png"><img src="assets/figures/revision-case/before-05.png" width="100%" alt="Before revision: page 5 on execution, verification and repair"></a></td>
+    <td><a href="assets/figures/revision-case/after-05.png"><img src="assets/figures/revision-case/after-05.png" width="100%" alt="After revision: page 5 with revised execution, verification and repair diagrams"></a></td>
+  </tr>
+</table>
+
+[View all six before/after pairs](assets/figures/revision-case/README.md) ·
+[Figure sources](assets/figures/README.md). These are manuscript exports, not a live WebUI demo;
+the qualitative case is excluded from benchmark means.
 
 ## Quick start
 
@@ -45,7 +71,7 @@ git clone https://github.com/G1nkgo7/MURAL-Presenter.git
 cd MURAL-Presenter
 uv sync --project webui/studio --frozen
 uv sync --project webui/inference --frozen
-cp webui/.env.example webui/.env
+test -f webui/.env || cp webui/.env.example webui/.env
 bash webui/start.sh
 ```
 
@@ -60,7 +86,7 @@ Search and image generation require separately configured providers.
 
 **First task:** configure a model, create a case with your request and optional attachments,
 follow the execution in the workspace, then inspect the deck preview and download the deliverables.
-Use the [WebUI guide](webui/README.md) for data paths, Docker, `/studio` deployment and troubleshooting.
+Use the [WebUI guide](webui/README_EN.md) for data paths, Docker, `/studio` deployment and troubleshooting.
 
 ## Command-line inference
 
@@ -113,15 +139,16 @@ page Owners before the entire asset batch is ready.
 </details>
 
 <details>
-<summary>Five-stage authoring and revision</summary>
+<summary>Authoring, responsibility assignment and revision</summary>
 
-The paper describes five stages, which may overlap or recur:
+The current workflow figure shows six activities, which may overlap or recur:
 
 1. **Knowledge Grounding:** resolve factual questions and record adopted evidence, conditions and open questions.
 2. **Deck Planning:** establish the narrative, page briefs, notes, design rules and visual requests.
 3. **Asset Preparation:** acquire or create visuals, inspect them and record their intended use.
-4. **Parallel Authoring:** produce independent units as their shared inputs become ready, while preparation continues elsewhere.
-5. **Iterative Refinement:** render, inspect and repair pages; review the assembled deck and route findings to the responsible Owners.
+4. **Delegate Page Units:** assign independent slides or coupled groups to their Owners.
+5. **Parallel Authoring:** produce independent units as their shared inputs become ready, while preparation continues elsewhere.
+6. **Iterative Refinement:** render, inspect and repair pages; review the assembled deck and route findings to the responsible Owners.
 
 Content edits resume the relevant Owners. Structural edits can change units and ownership scopes.
 Shared-style edits update the common state before affected pages are revised. Updated pages are
@@ -172,6 +199,42 @@ bundled with this source release.
 
 </details>
 
+## Results at a glance
+
+Scores below are transcribed from the current manuscript's public-benchmark tables, not new
+runs of this repository. All four rows use the MuralPresenter authoring framework.
+
+| Backbone / trained model | PresentBench Overall ↑ | SlidesGen Content (%) ↑ | SlidesGen Aesthetics ↑ |
+| --- | ---: | ---: | ---: |
+| Qwen-3.5-9B | 41.1 | 74.71 | 14.46 |
+| **MuralPresenter-9B** | **47.3** | **90.21** | **18.38** |
+| Qwen-3.8-27B | 69.4 | 93.33 | 18.58 |
+| **MuralPresenter-27B** | **72.6** | **94.92** | **19.12** |
+
+PresentBench covers 238 tasks; SlidesGen-Bench covers 189. The metrics use different scales.
+Checkpoint selection and generation conditions matter; see [evaluation protocols](#evaluation).
+
+<details>
+<summary><strong>Analysis figures · responsibility workload and selective supervision</strong></summary>
+
+**Responsibility workload.** Mean recorded production input and output tokens per task across
+35 matched tasks, excluding shared preparation. Counts are lower bounds and do not measure
+elapsed-time speedup.
+
+<p align="center">
+  <a href="assets/figures/responsibility-workload.png"><img src="assets/figures/responsibility-workload.png" width="800" alt="Recorded production tokens by role for Whole-deck, All-Single and Unit-adaptive policies"></a>
+</p>
+
+**Selective supervision.** Global versus Full quality differences with paired 95% bootstrap
+intervals, alongside input tokens by role. These exploratory results describe runs with differing
+tool conditions; they do not isolate the effect of training.
+
+<p align="center">
+  <a href="assets/figures/supervision-ablation.png"><img src="assets/figures/supervision-ablation.png" width="640" alt="Global versus Full supervision: quality differences and input tokens by agent role"></a>
+</p>
+
+</details>
+
 ## Evaluation
 
 | Evaluation | Coverage in the manuscript | What it measures |
@@ -179,23 +242,23 @@ bundled with this source release.
 | PresentBench | 238 tasks | Delivered presentation quality under task-specific rubrics. |
 | SlidesGen-Bench | 189 tasks | Content accuracy and computational aesthetics. |
 | DECKBench | 294 tasks, five editing turns each | Response to multi-turn editing through benchmark-defined similarity changes. |
-| ThreadEval | 35 Chinese/English requests across six domains, requiring 20–40 pages | Long-deck final quality and separate process evidence. |
+| Internal long-deck tasks | 35 Chinese/English requests across six domains, requiring 20–40 pages | Long-deck final quality and separate process evidence. |
 
-**ThreadEval** separates two tracks. **Final = 70% Deck + 30% Page**; Knowledge is part of Deck.
+The internal evaluation separates quality and process. **Overall = 70% Deck + 30% Page**; Knowledge is part of Deck.
 **Process** independently evaluates research support and adoption (**R**), executable planning
 (**P**), asset preparation and actual-use handoffs (**I**), and plan realization, render inspection
-and slide–speech alignment (**S**). Process is not included in Final. Missing compatible action
-records do not by themselves establish that an action was omitted.
+and slide–speech alignment (**S**). Process is not included in Overall. The current process
+analysis excludes criteria requiring authoring trajectories and includes formal and diagnostic
+records. Missing compatible action records do not by themselves establish that an action was omitted.
 
 <details>
 <summary>Experiment protocols and interpretation</summary>
 
 Interpret the experiments under their recorded protocols:
 
-- Ten PresentBench tasks and ten ThreadEval tasks informed checkpoint selection and remain in the respective reported means.
-- The 27B PresentBench result includes score-conditioned regeneration and output selection; it does not estimate a fine-tuning gain under an equal generation budget.
+- Ten PresentBench tasks and ten internal long-deck tasks informed checkpoint selection and remain in the respective reported means. The complete selection history has not been reconstructed.
 - DECKBench imports preceding artifacts into a fresh workspace each turn, evaluating artifact continuity rather than persistent Owner history.
-- Adaptive and per-slide ownership achieve similar mean Final scores; both use more recorded production work than whole-deck ownership. The study does not establish elapsed-time speedup.
+- Adaptive and per-slide ownership achieve similar mean Overall scores; both use more recorded production work than whole-deck ownership. The study does not establish elapsed-time speedup.
 - Search availability, image services and quotas differ across the supervision-study runs, limiting causal attribution to the training policy.
 
 </details>
@@ -208,7 +271,7 @@ Interpret the experiments under their recorded protocols:
 | WebUI and launchers | Included: portable configuration, CLI and `/studio` deployment support. |
 | Public logos and method figures | Included: [street-mural brand kit](assets/logo/exports/street-v2/README.md) and [figure provenance](assets/figures/README.md). |
 | 9B / 27B model weights | Not included; no public checkpoint download is linked yet. |
-| Training data, ThreadEval cases and evaluation pipelines | Not included in this runtime release. |
+| Training data, internal evaluation cases and evaluation pipelines | Not included in this runtime release. |
 | Paper link and citation metadata | Awaiting final author-supplied publication metadata. |
 
 The runtime source pin and trained model checkpoints are separate version identities.

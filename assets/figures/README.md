@@ -1,21 +1,56 @@
 # Manuscript figures
 
-The root READMEs use the following figures from the manuscript
-**MuralPresenter: Multi-Agent Units of Responsibility for Authoring Long-Horizon Presentations**,
-synchronized on 2026-10-10. Each PNG is a direct rendering of the complete single-page source PDF
-with PyMuPDF, scaled to 2,400 pixels wide with an opaque background. No figure content was redrawn.
-The source PDFs and manuscript workspace are not included in this runtime release.
+Current exports from **MuralPresenter: Multi-Agent Units of Responsibility for Authoring
+Long-Horizon Presentations**, synchronized on **2026-10-11** from the manuscript working tree.
+The inventory follows the figures actually included by `main_en.tex` and its chapters, including
+uncommitted author edits. Draft plots and unused figure variants are not selected by modification time.
 
-| Public PNG | Manuscript source filename | Source PDF SHA-256 |
+## Figure index
+
+| Manuscript figure | Public image | Active source PDF |
 | --- | --- | --- |
-| [cross-page-dependencies.png](cross-page-dependencies.png) | `figure1-cross-page-dependencies.pdf` | `5a1a932b66c19d9e85cdf44d402f5c0a7d13baef22efab49bda736f90c82f60f` |
-| [roles-and-tools.png](roles-and-tools.png) | `fig2_MURAL-role-tools-two-versions.pdf` | `939e6d7323980bfc5e399634ad93c9f0c0919b951e2339cdf5bef73e4e6271ba` |
-| [ownership-workflow.png](ownership-workflow.png) | `03-workflow-v6.pdf` | `b6d27142eb8715ba8bdf74e066a63c62193caa49098e9499b144a29f23ea76f0` |
+| 1 · Cross-page dependencies | [Preview](cross-page-dependencies.png) | `figures/fig1_cross_page_dependencies.pdf` |
+| 2 · Agent roles and tools | [Preview](roles-and-tools.png) | `figures/fig2_framework.pdf` |
+| 3 · Authoring and revision | [Preview](ownership-workflow.png) | `figures/fig3_workflow_preparation_group.pdf` |
+| 4 · Responsibility workload | [Preview](responsibility-workload.png) | `figures/fig4_responsibility_workload.pdf` |
+| 5 · Selective supervision | [Preview](supervision-ablation.png) | `figures/fig5_supervision_ablation.pdf` |
+| Appendix · Revision case | [Six before/after pairs](revision-case/README.md) | `figures/revision_case.pdf`, pages 1–12 |
 
-`execution-topologies.{png,pdf}` and `authoring-lifecycle.{png,pdf}` are preserved historical
-illustrations. They use the earlier group-centric framing and are not the current README figures.
-The earlier logo lockups in `../logo/exports/` also contain the previous title expansion.
-The current README uses the [street-mural identity](../logo/exports/street-v2/README.md),
-with separate light and dark banners. The full paper title remains selectable README text.
-The previous `mural-paper-lockup-{light,dark}.svg`, earlier PNG lockups and original mascots
-are preserved as historical exports. Paper method diagrams retain their manuscript content.
+Figure 3 is included through `figures/fig3_authoring_process.tex`; that wrapper selects
+`fig3_workflow_preparation_group.pdf`, not the similarly named standalone PDF.
+The appendix shows pages 1–6 of a twelve-slide deck before and after revision. It does not show
+all twelve slides in either state. The qualitative case is excluded from benchmark means.
+
+## Export quality and provenance
+
+- The five main figures are complete PDF pages rendered at 2,400 pixels wide with PyMuPDF.
+- The twelve case previews are complete PDF pages rendered at 1,200 × 675 pixels.
+- All exports use an opaque background and lossless PNG. No labels, data, colors or diagrams are redrawn.
+- [manifest.json](manifest.json) records source PDF hashes, page mappings, output hashes, dimensions,
+  renderer version and the manuscript Git HEAD. The per-file hashes identify working-tree sources
+  more precisely than the Git HEAD when the manuscript has uncommitted changes.
+- Source PDFs and the manuscript workspace remain outside this runtime release.
+
+To reproduce an export, use the manifest's source and page with PyMuPDF:
+
+```python
+import fitz
+
+with fitz.open(source_pdf) as document:
+    page = document[source_page - 1]
+    scale = output_width / page.rect.width
+    page.get_pixmap(matrix=fitz.Matrix(scale, scale), alpha=False).save(output_png)
+```
+
+## Historical artwork
+
+`execution-topologies.{png,pdf}` and `authoring-lifecycle.{png,pdf}` remain historical illustrations.
+They use the earlier group-centric framing and are not the current README figures. Earlier versions
+of the three replaced PNGs remain in Git history.
+
+The README header retains the approved [street-mural identity](../logo/exports/street-v2/README.md).
+Earlier `mural-paper-lockup-{light,dark}.svg`, PNG lockups and mascots remain historical exports.
+Manuscript figures retain their scientific content independently of the promotional brand artwork.
+
+中文：本次同步正文实际引用的五张图和附录六组修改前后对照，共 17 张 PNG。只转换文件格式，
+不改图中科学内容；未被正文引用的试绘版本留在论文工作区。旧品牌素材与 Git 历史保留。

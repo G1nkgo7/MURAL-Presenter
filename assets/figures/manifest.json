@@ -1,0 +1,162 @@
+{
+  "synchronized": "2026-10-11",
+  "manuscript_head": "70a08266d96f9c6cff90b6282d49e7d5e6be7818",
+  "source_state": "Current manuscript working tree; includes uncommitted author edits. Source PDF checksums identify the exported figures.",
+  "renderer": "PyMuPDF 1.28.0",
+  "method": "Complete PDF pages rendered on an opaque background; no cropping or redrawing.",
+  "assets": [
+    {
+      "file": "cross-page-dependencies.png",
+      "source": "figures/fig1_cross_page_dependencies.pdf",
+      "source_page": 1,
+      "source_sha256": "c43ec0a1adfdca1491c2c1aa1db72671c7867ad761d864fb6e9e98ce56848aeb",
+      "sha256": "38347420578f2396db73859dbb6e7d37b2874ecaa08c118371907407bbe45a18",
+      "width": 2400,
+      "height": 1949
+    },
+    {
+      "file": "roles-and-tools.png",
+      "source": "figures/fig2_framework.pdf",
+      "source_page": 1,
+      "source_sha256": "939e6d7323980bfc5e399634ad93c9f0c0919b951e2339cdf5bef73e4e6271ba",
+      "sha256": "182fd283bb8c8854e52c2c34b8d716734e88d9957e053c33ecb03c0a66dc80a5",
+      "width": 2400,
+      "height": 4832
+    },
+    {
+      "file": "ownership-workflow.png",
+      "source": "figures/fig3_workflow_preparation_group.pdf",
+      "source_page": 1,
+      "source_sha256": "81e074db9926781b4063bc9aa50b1efb9fc7dd089c848959ab06563699b8822f",
+      "sha256": "81f395bd60575f32a74a6180515fb20be19737b7e1d91335d57b2ed1e2e8693a",
+      "width": 2400,
+      "height": 1219
+    },
+    {
+      "file": "responsibility-workload.png",
+      "source": "figures/fig4_responsibility_workload.pdf",
+      "source_page": 1,
+      "source_sha256": "06b4ef817a86466bf77d590da910a6026b4b199974e5d46652ef502894b27725",
+      "sha256": "1e19fc22b7960af8bfd3005b3644d4f9aee82b6e3a11af7694e254383f870339",
+      "width": 2400,
+      "height": 1268
+    },
+    {
+      "file": "supervision-ablation.png",
+      "source": "figures/fig5_supervision_ablation.pdf",
+      "source_page": 1,
+      "source_sha256": "1437d607f68a35cc395aeefda923e071149c77b4a6dfee1f1606ddd6030ec67c",
+      "sha256": "ebc4077092ca9b4a5f522b685817decb72e3ca8831514bc39343873fae088d9f",
+      "width": 2400,
+      "height": 2733
+    },
+    {
+      "file": "revision-case/before-01.png",
+      "source": "figures/revision_case.pdf",
+      "source_page": 1,
+      "source_sha256": "8807964c19aa52aaa069fb06724a568bfd3d2febd9b9edcc7ad0377415af1f4d",
+      "sha256": "46f7ed14b7f0ec220f0d6dca76b9436a45fc8b443ba0063359ca48d83e190896",
+      "width": 1200,
+      "height": 675
+    },
+    {
+      "file": "revision-case/before-02.png",
+      "source": "figures/revision_case.pdf",
+      "source_page": 2,
+      "source_sha256": "8807964c19aa52aaa069fb06724a568bfd3d2febd9b9edcc7ad0377415af1f4d",
+      "sha256": "e9646c2cebb2a63e2be9dd985d01e87c474e2977ef8d94431b98bc757e974acb",
+      "width": 1200,
+      "height": 675
+    },
+    {
+      "file": "revision-case/before-03.png",
+      "source": "figures/revision_case.pdf",
+      "source_page": 3,
+      "source_sha256": "8807964c19aa52aaa069fb06724a568bfd3d2febd9b9edcc7ad0377415af1f4d",
+      "sha256": "bd54b8492f57b894ece714231ddd71e57cdf935ef977f8771569182f3f8a2722",
+      "width": 1200,
+      "height": 675
+    },
+    {
+      "file": "revision-case/before-04.png",
+      "source": "figures/revision_case.pdf",
+      "source_page": 4,
+      "source_sha256": "8807964c19aa52aaa069fb06724a568bfd3d2febd9b9edcc7ad0377415af1f4d",
+      "sha256": "5e682f2f7e8425e6d59662bf1ef0f69de4ceb8d16fc588ca8f074bf79be90f07",
+      "width": 1200,
+      "height": 675
+    },
+    {
+      "file": "revision-case/before-05.png",
+      "source": "figures/revision_case.pdf",
+      "source_page": 5,
+      "source_sha256": "8807964c19aa52aaa069fb06724a568bfd3d2febd9b9edcc7ad0377415af1f4d",
+      "sha256": "175b453e74e6080650f8d1e3fc694726d909f1ccfed8112c3ed1be9af0cf4637",
+      "width": 1200,
+      "height": 675
+    },
+    {
+      "file": "revision-case/before-06.png",
+      "source": "figures/revision_case.pdf",
+      "source_page": 6,
+      "source_sha256": "8807964c19aa52aaa069fb06724a568bfd3d2febd9b9edcc7ad0377415af1f4d",
+      "sha256": "4895434ec0f109eb2e374352eb5073535076e45bd3e56fd67954f803533868ad",
+      "width": 1200,
+      "height": 675
+    },
+    {
+      "file": "revision-case/after-01.png",
+      "source": "figures/revision_case.pdf",
+      "source_page": 7,
+      "source_sha256": "8807964c19aa52aaa069fb06724a568bfd3d2febd9b9edcc7ad0377415af1f4d",
+      "sha256": "26742d3424ff0edd52e539b650139612a14fe7c1b8b2b8ac73734b478004806f",
+      "width": 1200,
+      "height": 675
+    },
+    {
+      "file": "revision-case/after-02.png",
+      "source": "figures/revision_case.pdf",
+      "source_page": 8,
+      "source_sha256": "8807964c19aa52aaa069fb06724a568bfd3d2febd9b9edcc7ad0377415af1f4d",
+      "sha256": "747f4462f4b708f36ffde265e6c1de61dc7cb126049faed266ef564ca73a2151",
+      "width": 1200,
+      "height": 675
+    },
+    {
+      "file": "revision-case/after-03.png",
+      "source": "figures/revision_case.pdf",
+      "source_page": 9,
+      "source_sha256": "8807964c19aa52aaa069fb06724a568bfd3d2febd9b9edcc7ad0377415af1f4d",
+      "sha256": "6a9c27dbcd86c7e8183141e3a9ab4c5c54fc0bd867668a11e81dfbd2ccebdccd",
+      "width": 1200,
+      "height": 675
+    },
+    {
+      "file": "revision-case/after-04.png",
+      "source": "figures/revision_case.pdf",
+      "source_page": 10,
+      "source_sha256": "8807964c19aa52aaa069fb06724a568bfd3d2febd9b9edcc7ad0377415af1f4d",
+      "sha256": "e5b40c325e01bc409d813f167793bbf292cf30079e20c5f7a4c7b7350be19b52",
+      "width": 1200,
+      "height": 675
+    },
+    {
+      "file": "revision-case/after-05.png",
+      "source": "figures/revision_case.pdf",
+      "source_page": 11,
+      "source_sha256": "8807964c19aa52aaa069fb06724a568bfd3d2febd9b9edcc7ad0377415af1f4d",
+      "sha256": "c837a91074b1843177e155b4d0c604e0ba3e5cc2695fc06e42240b5608ded7fe",
+      "width": 1200,
+      "height": 675
+    },
+    {
+      "file": "revision-case/after-06.png",
+      "source": "figures/revision_case.pdf",
+      "source_page": 12,
+      "source_sha256": "8807964c19aa52aaa069fb06724a568bfd3d2febd9b9edcc7ad0377415af1f4d",
+      "sha256": "d637059b6a5ec51cc05a7fc5804ff2eb1678f6d1f543d618a376351081a9c4e2",
+      "width": 1200,
+      "height": 675
+    }
+  ]
+}

@@ -7,11 +7,15 @@
 
 <h1 align="center">MuralPresenter</h1>
 <p align="center"><strong>Multi-Agent Units of Responsibility for<br>Authoring Long-Horizon Presentations</strong></p>
+<p align="center">可编辑 HTML 演示文稿 · 持续负责的页面 Owner · 视觉检查与修订</p>
 
 <p align="center">
   <a href="README.md">English</a> ·
+  <a href="#生成与修改示例">效果示例</a> ·
   <a href="#安装与启动">快速启动</a> ·
   <a href="webui/README.md">WebUI</a> ·
+  <a href="#方法详解">方法</a> ·
+  <a href="#实验结果速览">实验结果</a> ·
   <a href="#模型与轨迹训练">模型</a> ·
   <a href="#评测">评测</a> ·
   <a href="#发布状态">发布状态</a>
@@ -27,13 +31,33 @@
 
 - **自适应责任分配**：独立页面交给 Single Owner，需要共同调整内容或设计的页面交给 Group Owner。
 - **持续创作与修改**：共享知识、规划和素材支撑局部渲染检查、定向修订与整册复审。
-- **轨迹训练与评测**：论文研究基于执行片段训练的 9B/27B 模型、公共演示文稿 benchmark，以及 ThreadEval 的独立 Final／Process 评测。
+- **轨迹训练与评测**：论文研究基于执行片段训练的 9B/27B 模型、三个公共 benchmark，以及 35 个长演示任务的独立质量与过程评测。
 
 <p align="center">
-  <img src="assets/figures/ownership-workflow.png" width="100%" alt="持续协调、自适应单页与多页责任分配、局部迭代和整册验证">
+  <a href="assets/figures/ownership-workflow.png"><img src="assets/figures/ownership-workflow.png" width="100%" alt="持续协调、自适应单页与多页责任分配、局部迭代和整册验证"></a>
 </p>
 
 <p align="center"><em>共享整册状态 → Single / Group Owner → 视觉检查与修订 → 复审后交付。</em></p>
+
+## 生成与修改示例
+
+**同一份演示文稿，由原有 Owner 继续修改。** 论文中的定性案例先将介绍本论文的演示文稿从
+10 页扩展到 12 页，再从黑板风格改为浅蓝白色，并调整解释性图示。下方展示第 3、5 页的修改前后对照。
+
+<table>
+  <tr><th width="50%">修改前 · 黑板风格</th><th width="50%">修改后 · 浅蓝白色</th></tr>
+  <tr>
+    <td><a href="assets/figures/revision-case/before-03.png"><img src="assets/figures/revision-case/before-03.png" width="100%" alt="修改前：第 3 页解释 Single Owner 与 Group Owner"></a></td>
+    <td><a href="assets/figures/revision-case/after-03.png"><img src="assets/figures/revision-case/after-03.png" width="100%" alt="修改后：第 3 页采用蓝白风格并更新责任单元图示"></a></td>
+  </tr>
+  <tr>
+    <td><a href="assets/figures/revision-case/before-05.png"><img src="assets/figures/revision-case/before-05.png" width="100%" alt="修改前：第 5 页说明执行、验证与修复"></a></td>
+    <td><a href="assets/figures/revision-case/after-05.png"><img src="assets/figures/revision-case/after-05.png" width="100%" alt="修改后：第 5 页更新执行、验证和修复图示"></a></td>
+  </tr>
+</table>
+
+[查看全部六组前后对照](assets/figures/revision-case/README.md) · [配图来源](assets/figures/README.md)。
+这些图片直接导出自论文附录，不是在线 WebUI 演示；该定性案例不计入 benchmark 均值。
 
 ## 安装与启动
 
@@ -44,7 +68,7 @@ git clone https://github.com/G1nkgo7/MURAL-Presenter.git
 cd MURAL-Presenter
 uv sync --project webui/studio --frozen
 uv sync --project webui/inference --frozen
-cp webui/.env.example webui/.env
+test -f webui/.env || cp webui/.env.example webui/.env
 bash webui/start.sh
 ```
 
@@ -106,15 +130,16 @@ webui/inference/.venv/bin/python scripts/run_inference.py \
 </details>
 
 <details>
-<summary>五阶段创作与修改流程</summary>
+<summary>创作、责任分配与修改流程</summary>
 
-论文将创作分为五个可重叠、可重复进入的阶段：
+当前流程图展示六项可重叠、可重复进入的活动：
 
 1. **Knowledge Grounding（知识奠基）**：解决事实问题，记录采纳的证据、成立条件与开放问题。
 2. **Deck Planning（整册规划）**：确定叙事、页面 brief、讲稿、设计规则与视觉需求。
 3. **Asset Preparation（素材准备）**：获取或生成视觉素材，检查并记录使用方式。
-4. **Parallel Authoring（并行创作）**：各独立单元在输入就绪后开始制作，其他页面的准备工作可以继续。
-5. **Iterative Refinement（迭代修订）**：渲染、检查和修复页面，复审整册，并将发现的问题交给对应 Owner。
+4. **Delegate Page Units（分配页面单元）**：将独立页面或需要共同调整的页面组交给对应 Owner。
+5. **Parallel Authoring（并行创作）**：各独立单元在输入就绪后开始制作，其他页面的准备工作可以继续。
+6. **Iterative Refinement（迭代修订）**：渲染、检查和修复页面，复审整册，并将发现的问题交给对应 Owner。
 
 内容修改由相关 Owner 继续处理；结构修改可以调整责任单元和归属；共享风格修改先更新公共状态，
 再修改受影响页面。修改后的页面重新渲染和检查。交付阶段按整册顺序汇总已检查的页面、素材和讲稿，
@@ -161,6 +186,39 @@ batch size 为 64。监督策略对比使用训练 4 轮的 27B 模型，与主�
 
 </details>
 
+## 实验结果速览
+
+下表摘自当前论文的公共 benchmark 结果，并非本次更新重新运行所得。四行均使用 MuralPresenter 创作框架。
+
+| 基座／训练后模型 | PresentBench Overall ↑ | SlidesGen 内容准确率 (%) ↑ | SlidesGen 美学总分 ↑ |
+| --- | ---: | ---: | ---: |
+| Qwen-3.5-9B | 41.1 | 74.71 | 14.46 |
+| **MuralPresenter-9B** | **47.3** | **90.21** | **18.38** |
+| Qwen-3.8-27B | 69.4 | 93.33 | 18.58 |
+| **MuralPresenter-27B** | **72.6** | **94.92** | **19.12** |
+
+PresentBench 覆盖 238 个任务，SlidesGen-Bench 覆盖 189 个任务，各项指标的量纲不同。
+理解结果时需结合 checkpoint 选择与生成条件，详见[评测协议](#评测)。
+
+<details>
+<summary><strong>分析配图 · 责任分配工作量与选择性监督</strong></summary>
+
+**责任分配工作量。** 35 个匹配任务中，每个任务制作阶段记录到的输入与输出 token 均值，不含共享准备阶段。
+统计值是下界，不能据此推断实际耗时加速。
+
+<p align="center">
+  <a href="assets/figures/responsibility-workload.png"><img src="assets/figures/responsibility-workload.png" width="800" alt="Whole-deck、All-Single 与 Unit-adaptive 三种策略按角色划分的制作 token"></a>
+</p>
+
+**选择性监督。** Global 相对 Full 的质量变化及配对 95% bootstrap 区间，以及各角色输入 token。
+这些探索性结果来自工具条件存在差异的运行，不能单独归因为训练策略。
+
+<p align="center">
+  <a href="assets/figures/supervision-ablation.png"><img src="assets/figures/supervision-ablation.png" width="640" alt="Global 与 Full 监督的质量差异及各角色输入 token 对比"></a>
+</p>
+
+</details>
+
 ## 评测
 
 | 评测 | 当前论文覆盖范围 | 评测内容 |
@@ -168,22 +226,21 @@ batch size 为 64。监督策略对比使用训练 4 轮的 27B 模型，与主�
 | PresentBench | 238 个任务 | 按任务专属 rubric 评估交付演示文稿的质量。 |
 | SlidesGen-Bench | 189 个任务 | 内容准确率与计算美学。 |
 | DECKBench | 294 个任务，每个任务修改 5 轮 | 使用 benchmark 定义的相似度变化衡量多轮编辑结果。 |
-| ThreadEval | 6 个领域的 35 个中英文请求，每个要求 20–40 页 | 分别评估长演示文稿的最终质量与过程证据。 |
+| 内部长演示任务 | 6 个领域的 35 个中英文请求，每个要求 20–40 页 | 分别评估长演示文稿的最终质量与过程证据。 |
 
-**ThreadEval** 分开报告两条评测轨道。**Final = 70% Deck + 30% Page**，Knowledge 属于 Deck。
+内部评测分别报告质量与过程。**Overall = 70% Deck + 30% Page**，Knowledge 属于 Deck。
 **Process** 独立评估研究支持与采纳（**R**）、可执行规划（**P**）、素材准备与实际使用交接（**I**），
-以及计划落地、渲染检查和讲稿与页面对应（**S**）。Process 不计入 Final；缺少兼容动作记录，
-本身不能证明 Agent 没有执行对应动作。
+以及计划落地、渲染检查和讲稿与页面对应（**S**）。Process 不计入 Overall。当前过程分析排除了
+依赖创作轨迹的评分条目，包含正式和诊断记录；缺少兼容动作记录，本身不能证明 Agent 没有执行对应动作。
 
 <details>
 <summary>实验协议与结论适用范围</summary>
 
 实验结论应结合论文记录的协议理解：
 
-- PresentBench 的 10 个任务及 ThreadEval 的 10 个任务参与了 checkpoint 选择，并保留在各自报告均值中。
-- 27B 的 PresentBench 结果包含根据分数触发的重新生成与结果选择，不能解释为相同生成预算下的纯微调收益。
+- PresentBench 的 10 个任务及内部长演示任务中的 10 个任务参与了 checkpoint 选择，并保留在各自报告均值中；完整选择历史尚未重建。
 - DECKBench 每轮把上一轮产物导入新工作区，测试产物延续性，没有测试 Owner 历史的持续保留。
-- 自适应与逐页分配的 Final 均值接近，二者记录到的制作工作量都高于整册单 Owner；实验未建立耗时加速结论。
+- 自适应与逐页分配的 Overall 均值接近，二者记录到的制作工作量都高于整册单 Owner；实验未建立耗时加速结论。
 - 监督策略实验中的搜索可用性、生图服务和配额存在差异，限制了将结果变化单独归因于训练策略。
 
 </details>
@@ -196,7 +253,7 @@ batch size 为 64。监督策略对比使用训练 4 轮的 27B 模型，与主�
 | WebUI 与启动器 | 已提供：便携配置、命令行入口与 `/studio` 部署支持。 |
 | 正式 logo 与方法配图 | 已提供：[街头壁画品牌素材](assets/logo/exports/street-v2/README.md)及[论文配图来源](assets/figures/README.md)。 |
 | 9B / 27B 模型权重 | 本仓库未附带，尚无公开 checkpoint 下载链接。 |
-| 训练数据、ThreadEval 案例与评测流水线 | 未纳入本次运行系统源码发布。 |
+| 训练数据、内部评测案例与评测流水线 | 未纳入本次运行系统源码发布。 |
 | 论文链接与引用信息 | 等待作者提供最终公开元数据。 |
 
 运行时源码 pin 与训练模型 checkpoint 分别维护。0919 源码 pin 不能证明后续每组论文实验

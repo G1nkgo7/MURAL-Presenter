@@ -5,7 +5,7 @@
   </picture>
 </p>
 
-<h1 align="center"><img src="assets/logo/exports/street-v2/mural-mark.png" width="40" height="40" align="absmiddle" alt=""> MuralPresenter</h1>
+<h1 align="center"><img src="assets/logo/exports/street-v2/mural-avatar-circle.png" width="40" height="40" align="absmiddle" alt=""> MuralPresenter</h1>
 <p align="center"><strong>Multi-Agent Units of Responsibility for<br>Authoring Long-Horizon Presentations</strong></p>
 <p align="center">可编辑 HTML 演示文稿 · 持续负责的页面 Owner · 视觉检查与修订</p>
 
@@ -251,8 +251,8 @@ PresentBench 覆盖 238 个任务，SlidesGen-Bench 覆盖 189 个任务，各�
 独立标识、头像与画家吉祥物沿用顶部横幅的壁画风格。点击图片可打开原始 PNG。
 
 <table>
-  <tr><th width="33%">主标识 · 透明背景</th><th width="33%">头像 · 方形画布</th><th width="33%">画家吉祥物 · 透明背景</th></tr>
-  <tr><td align="center"><a href="assets/logo/exports/street-v2/mural-mark.png"><img src="assets/logo/exports/street-v2/mural-mark.png" width="160" alt="主标识 · 透明背景"></a></td><td align="center"><a href="assets/logo/exports/street-v2/mural-avatar.png"><img src="assets/logo/exports/street-v2/mural-avatar.png" width="160" alt="头像 · 方形画布"></a></td><td align="center"><a href="assets/logo/exports/street-v2/mural-mascot.png"><img src="assets/logo/exports/street-v2/mural-mascot.png" width="160" alt="画家吉祥物 · 透明背景"></a></td></tr>
+  <tr><th width="33%">主标识 · 透明背景</th><th width="33%">头像 · 彩色圆形徽章</th><th width="33%">画家吉祥物 · 透明背景</th></tr>
+  <tr><td align="center"><a href="assets/logo/exports/street-v2/mural-mark.png"><img src="assets/logo/exports/street-v2/mural-mark.png" width="160" alt="主标识 · 透明背景"></a></td><td align="center"><a href="assets/logo/exports/street-v2/mural-avatar-circle.png"><img src="assets/logo/exports/street-v2/mural-avatar-circle.png" width="160" alt="头像 · 彩色圆形徽章"></a></td><td align="center"><a href="assets/logo/exports/street-v2/mural-mascot.png"><img src="assets/logo/exports/street-v2/mural-mascot.png" width="160" alt="画家吉祥物 · 透明背景"></a></td></tr>
 </table>
 
 <details>

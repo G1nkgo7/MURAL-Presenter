@@ -87,16 +87,25 @@
       "transparent": true,
       "bytes": 1412087,
       "sha256": "3644c15c311e116afa67eab23904308e20750b446e94a34ef2faf0f8220f1928"
+    },
+    {
+      "file": "mural-avatar-circle.png",
+      "width": 1254,
+      "height": 1254,
+      "mode": "RGBA",
+      "transparent": true,
+      "bytes": 1889362,
+      "sha256": "6d189498ff96788e496bb5f337c7e0ba7b12438dda4ef5670d2b41c730988b56"
     }
   ],
-  "revision": 7,
-  "updated": "2026-10-10",
-  "previous_revision_commit": "20815e409b75b16c266d0568b461605b743e907b",
+  "revision": 8,
+  "updated": "2026-10-11",
+  "previous_revision_commit": "9049798a9a8a86c1150435c1672b1025d0710986",
   "visual_rules": {
     "mark": "Open uppercase M without facial features.",
     "robot": "Two attached round-tipped antennae per robot. Painter has closed smiling arches; assembler and reader have expressive dark pupils, cyan irises, small catchlights and varied natural gazes. Face screens have matte navy foreheads without blue or white specular patches; retain tiny catchlights inside the open eyes.",
     "quality": "Keep native lossless PNG masters. Start from original references for a new redraw, not a chain of patched outputs. No artificial upscaling, post-sharpening or lossy re-encoding."
   },
-  "last_edit_method": "Targeted built-in image_gen edits to remove forehead reflections from the four campaign images. Selected generated PNGs copied at native size without resizing or re-encoding.",
+  "last_edit_method": "Added a standalone circular badge with built-in image_gen, referenced to the navy circular mark in the overview and original high-resolution M. All nine existing PNG masters are unchanged.",
   "historical_repair_report": "pixel-repair.json (revision 5 only; superseded)"
 }

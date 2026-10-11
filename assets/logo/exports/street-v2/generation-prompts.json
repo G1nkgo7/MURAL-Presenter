@@ -333,6 +333,24 @@
           "transparent_background": false
         }
       ]
+    },
+    {
+      "revision": 8,
+      "date": "2026-10-11",
+      "base_commit": "9049798a9a8a86c1150435c1672b1025d0710986",
+      "method": "built-in image_gen",
+      "summary": "Standalone navy circular M badge with colored perimeter brush strokes, transparent outside the circle. Used for README title icon and avatar preview.",
+      "prompts": [
+        {
+          "file": "mural-avatar-circle.png",
+          "prompt": "Use case: precise-object-edit / logo-brand extraction. Create one standalone high-resolution circular M logo badge from the specific existing design in image 1: the round navy badge on the RIGHT side of the MARK panel (middle-left panel of the reference brand board). Image 2 is the high-resolution letterform reference. Reproduce this SAME circular badge faithfully as a clean production asset, not a new logo concept. The badge has a near-black deep navy circular painted background with a few restrained cobalt-blue, teal and golden-yellow street-mural brush strokes around its perimeter; in front is the strong faceless geometric uppercase M, teal top planes, cobalt left stem, golden right stem, fine ivory separator/rim and dark navy outlines, matching the M in image 2. The lower central opening MUST remain empty navy, never a face, eye, smile or extra chevron. The M fills roughly 76% of the circle diameter and remains readable at 40px. The complete circle fills roughly 94% of a square canvas, perfectly centered, with a narrow transparent margin outside. Actual alpha transparency OUTSIDE the circle only; the circle interior is solid navy. Crisp circular silhouette and crisp letterform, premium opaque hand-painted pigment texture, restrained fine brush detail, preserve strong flat color areas. No glow, no cast shadow outside the badge, no bevel, no 3D, no extra text, no robot, no mockup, no brand board. Output one square transparent PNG at highest available native resolution; render large and sharp without artificial sharpening.",
+          "referenced_image_paths": [
+            "/mnt/afs_vqa2/gaozhenxi/ppt_agent_static/MURAL-Presenter/.runtime/paper-public/assets/logo/exports/street-v2/mural-brand-overview.png",
+            "/mnt/afs_vqa2/gaozhenxi/ppt_agent_static/MURAL-Presenter/.runtime/paper-public/assets/logo/exports/street-v2/mural-avatar.png"
+          ],
+          "transparent_background": true
+        }
+      ]
     }
   ]
 }

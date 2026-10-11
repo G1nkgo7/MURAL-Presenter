@@ -5,7 +5,7 @@
   </picture>
 </p>
 
-<h1 align="center"><img src="assets/logo/exports/street-v2/mural-mark.png" width="40" height="40" align="absmiddle" alt=""> MuralPresenter</h1>
+<h1 align="center"><img src="assets/logo/exports/street-v2/mural-avatar-circle.png" width="40" height="40" align="absmiddle" alt=""> MuralPresenter</h1>
 <p align="center"><strong>Multi-Agent Units of Responsibility for<br>Authoring Long-Horizon Presentations</strong></p>
 <p align="center">Editable HTML decks · Persistent page Owners · Visual inspection and revision</p>
 
@@ -269,8 +269,8 @@ Interpret the experiments under their recorded protocols:
 The standalone mark, avatar and painter mascot share the banner’s street-mural identity. Click a preview to open its original PNG.
 
 <table>
-  <tr><th width="33%">Primary mark · Transparent</th><th width="33%">Avatar · Square</th><th width="33%">Painter mascot · Transparent</th></tr>
-  <tr><td align="center"><a href="assets/logo/exports/street-v2/mural-mark.png"><img src="assets/logo/exports/street-v2/mural-mark.png" width="160" alt="Primary mark · Transparent"></a></td><td align="center"><a href="assets/logo/exports/street-v2/mural-avatar.png"><img src="assets/logo/exports/street-v2/mural-avatar.png" width="160" alt="Avatar · Square"></a></td><td align="center"><a href="assets/logo/exports/street-v2/mural-mascot.png"><img src="assets/logo/exports/street-v2/mural-mascot.png" width="160" alt="Painter mascot · Transparent"></a></td></tr>
+  <tr><th width="33%">Primary mark · Transparent</th><th width="33%">Avatar · Circular badge</th><th width="33%">Painter mascot · Transparent</th></tr>
+  <tr><td align="center"><a href="assets/logo/exports/street-v2/mural-mark.png"><img src="assets/logo/exports/street-v2/mural-mark.png" width="160" alt="Primary mark · Transparent"></a></td><td align="center"><a href="assets/logo/exports/street-v2/mural-avatar-circle.png"><img src="assets/logo/exports/street-v2/mural-avatar-circle.png" width="160" alt="Avatar · Circular badge"></a></td><td align="center"><a href="assets/logo/exports/street-v2/mural-mascot.png"><img src="assets/logo/exports/street-v2/mural-mascot.png" width="160" alt="Painter mascot · Transparent"></a></td></tr>
 </table>
 
 <details>

@@ -12,6 +12,7 @@ teal and cobalt strokes, warm ivory and small golden-yellow accents connect ever
 | --- | --- | --- | --- |
 | [Primary M mark](mural-mark.png) | 1254 × 1254 | Transparent | Compact project identity and interface mark. |
 | [Avatar](mural-avatar.png) | 1254 × 1254 | Ivory | Square or circular profile display. |
+| [Circular badge](mural-avatar-circle.png) | 1254 × 1254 | Navy circle; transparent outside | README title icon and compact avatar, with colored perimeter brush strokes. |
 | [Painter mascot](mural-mascot.png) | 1254 × 1254 | Transparent | Illustration, stickers and supporting project visuals. |
 | [Light wordmark](mural-wordmark-light.png) | 2172 × 724 | Transparent | Wordmark on light surfaces. |
 | [Dark wordmark](mural-wordmark-dark.png) | 2172 × 724 | Transparent | Wordmark on dark surfaces. |
@@ -21,12 +22,13 @@ teal and cobalt strokes, warm ivory and small golden-yellow accents connect ever
 | [Identity overview](mural-brand-overview.png) | 1536 × 1024 | Ivory | Visual direction and presentation of the system. |
 
 The individual PNGs are the production masters. The generated overview illustrates their
-relationship; use the individual files for exact application artwork. Four masters have real
+relationship; use the individual files for exact application artwork. Five masters have real
 alpha transparency. These are raster illustrations, not editable vector artwork.
 
 ## Use and composition
 
 - Use the M mark for small interface placements. Use the mascot where its tools and pose can remain readable.
+- Prefer the circular badge for the README title icon and avatar preview. Its navy background and colored perimeter frame the M at small sizes; the transparent mark remains available for other placements.
 - Keep the M a pure letterform: its central opening has no eyes, face panel or lower smile-shaped chevron.
 - Draw each robot with two attached, round-tipped antennae. Painters have closed smiling arches; the assembler and reader have substantial dark pupils, cyan irises, small catchlights and varied natural gazes. Do not simplify these into blank ovals or identical centered dots.
 - Keep the forehead area of each navy face screen matte, without blue or white specular patches. Preserve the small catchlights inside the open eyes.
@@ -66,7 +68,7 @@ while retaining coherent open eyes on the assembler and reader. Expression varie
 the faceless M and repaired antennae are retained. The full revision-2 artwork remains in Git at
 [`8061b20`](https://github.com/G1nkgo7/MURAL-Presenter/tree/8061b207e0a0ee13a0921aa33258653fd635f75e/assets/logo/exports/street-v2).
 
-The root English and Chinese READMEs use the banners and standalone M title mark. Their brand
+The root English and Chinese READMEs use the banners and circular M title badge. Their brand
 sections preview the mark, avatar and mascot, with theme-aware wordmarks and a sharing-card download.
 Website and WebUI application assets
 are a separate integration step. Earlier PNG/SVG exports in the parent directory remain intact;
@@ -95,7 +97,7 @@ resizing, sharpening or re-encoding; the banners are 2172 × 724, not 4K. The ot
 remain byte-identical. Revision 5 and its repair report remain available for historical reference
 at [`e2823a4`](https://github.com/G1nkgo7/MURAL-Presenter/tree/e2823a4b51e8f8c11b341b40760e93dffd63b3d8/assets/logo/exports/street-v2).
 
-Revision 7 is the current production artwork. Targeted built-in `image_gen` edits remove the
+Revision 7 supplies the current campaign artwork. Targeted built-in `image_gen` edits remove the
 blue/white forehead reflections from the four campaign images while retaining the varied eye
 expressions and small catchlights inside open eyes. The overview also uses matte face screens.
 These are generated edits, not pixel-identical repairs outside a mask. Selected PNGs are saved
@@ -103,8 +105,13 @@ at their native dimensions without resizing or re-encoding; the dark banner is n
 The other five masters are unchanged. Revision 6 remains in Git at
 [`20815e4`](https://github.com/G1nkgo7/MURAL-Presenter/tree/20815e4/assets/logo/exports/street-v2).
 
-中文说明：本套包含主标识、头像、吉祥物、两版透明字标、两版横幅、论文分享图及视觉总览。
-中英文 README 已接入横幅、标题旁的 M 标识、主标识／头像／吉祥物预览、深浅色字标和分享图下载。
+Revision 8 adds a standalone circular badge, following the navy circular M in the overview and
+the high-resolution original M. Colored perimeter brush strokes frame the letter; the area outside
+the circle is transparent. Both READMEs use it at 40 pixels beside the title and in the avatar
+preview. All nine previous masters, including the ivory avatar and transparent mark, are unchanged.
+
+中文说明：本套包含主标识、方形头像、圆形徽章、吉祥物、两版透明字标、两版横幅、论文分享图及视觉总览。
+中英文 README 已接入横幅、标题旁的圆形 M 徽章、主标识／头像／吉祥物预览、深浅色字标和分享图下载。
 原网站、WebUI 与旧版素材保留，后续应用时以本目录的独立文件为准。
 第 2 次修订移除了 M 内部的人脸元素，并统一机器人的双天线、椭圆眼睛；上一版可从 Git 历史恢复。
 第 3 次修订恢复画家与独立吉祥物的眯眼笑，保留另外两位角色的睁眼表情，只要求睁眼画法协调，不统一所有表情。
@@ -113,5 +120,6 @@ The other five masters are unchanged. Revision 6 remains in Git at
 第 6 次修订：因局部修补后的表情不协调，重新参考原始壁画绘制两版横幅、论文分享图和视觉总览。
 保留画家的眯眼笑，为睁眼角色绘制协调的瞳孔、高光和不同视线；使用原生无损 PNG，不放大或锐化。
 其余五项独立素材保持原样；第 5 次修订及其像素报告仅为历史记录，不描述当前图像。
-当前采用第 7 次修订：去掉四张宣传图中机器人额头的块状反光，保留眼睛内的小高光和不同表情。
+第 7 次修订：去掉四张宣传图中机器人额头的块状反光，保留眼睛内的小高光和不同表情。
 使用 image_gen 定向编辑并保存原生无损 PNG，未进行放大、锐化或有损转码；不声称其他区域逐像素不变。
+当前第 8 次修订新增深藏蓝圆底和彩色笔触的独立 M 徽章，用于 README 标题旁小标识及头像预览；原有九张素材保持不变。

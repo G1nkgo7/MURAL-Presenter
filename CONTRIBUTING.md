@@ -133,3 +133,54 @@ Docker 构建、Windows/macOS 启动和完整 238 案例实验未由这些打包
 本机真实生成冒烟测试也不能替代论文实验复现。
 
 </details>
+
+## Repository layout
+
+```text
+MURAL-Presenter/
+├── README.md / README_zh-CN.md
+├── skills/mural-presenter-v1/       # Frozen authoring Skill and tools
+├── harnesses/mural-presenter-v1/    # Frozen inference and delivery runtime
+├── webui/                          # UI, server, dependency locks and launchers
+├── assets/                         # Public logos, icons and method diagrams
+├── configs/                        # Runtime template, MinerU and release provenance
+├── fonts/                          # Bundled rendering fonts
+├── scripts/                        # Portable CLI and configuration adapters
+├── tools/                          # Source verification and integration freezing
+├── tests/                          # Public integration regression tests
+└── .github/                        # CI and contribution templates
+```
+
+The core directory names and internal assets, references, docs and tests are part of its frozen
+identity. Keep them intact. Public logos and diagrams live in `assets/logo/exports/` and
+`assets/figures/`; [figure provenance](assets/figures/README.md) records the current manuscript exports.
+Design drafts remain local. Root-level `benchmark/`, `docs/`, `examples/`,
+`paper/`, training material and the independent `site/` are not included in this release.
+Deployment credentials, environments, databases and generated cases remain local and ignored.
+Usage is in the root README; maintenance and validation records are kept here.
+
+## 公开目录
+
+```text
+MURAL-Presenter/
+├── README.md / README_zh-CN.md
+├── skills/mural-presenter-v1/       # 冻结的创作 Skill 与工具
+├── harnesses/mural-presenter-v1/    # 冻结的推理与交付运行时
+├── webui/                          # 前端、服务端、依赖锁和启动器
+├── assets/                         # 正式 logo、图标与方法配图
+├── configs/                        # 运行配置模板、MinerU、版本来源清单
+├── fonts/                          # 渲染所需字体
+├── scripts/                        # 便携命令行入口和配置适配
+├── tools/                          # 源码校验和集成版本冻结
+├── tests/                          # 公开集成回归测试
+└── .github/                        # 持续集成与贡献模板
+```
+
+Skill/Harness 的目录名及其内部 assets、references、docs、tests 都属于冻结版本，保持完整。
+正式品牌素材位于 `assets/logo/exports/`，方法配图位于 `assets/figures/`；
+[配图来源记录](assets/figures/README.md)说明当前论文配图与历史版本。设计草稿保留本地。
+根目录 `benchmark/`、`docs/`、`examples/`、`paper/`、训练材料和独立
+`site/` 不纳入本次发布。密钥、环境、数据库和生成 case 也不上传。使用说明见根目录 README，维护与验证记录保留在本文件。
+本机保留这些目录不代表它们会进入 Git 提交。
+
+Keep the provisional BibTeX in both READMEs aligned with `CITATION.cff`. Until the authors provide final metadata, retain Anonymous Authors and do not add a venue, DOI or publication URL.

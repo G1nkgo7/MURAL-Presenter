@@ -9,7 +9,7 @@
 
 <h1 align="center"><img src="assets/logo/exports/street-v2/mural-avatar-circle.png" width="40" height="40" align="absmiddle" alt=""> MuralPresenter</h1>
 <p align="center"><strong>Multi-Agent Units of Responsibility for Authoring Long-Horizon Presentations</strong></p>
-<p align="center">Editable HTML decks · Persistent page Owners · Visual inspection and revision</p>
+<p align="center">From a prompt or documents to slides you can inspect and revise</p>
 
 <p align="center">
   <strong>English</strong> · <a href="README_zh-CN.md">简体中文</a>
@@ -20,22 +20,24 @@
   <a href="webui/README_EN.md"><img src="webui/studio/static/logo.svg" width="18" height="18" align="absmiddle" alt=""> WebUI</a>
 </p>
 
-**MuralPresenter turns a request and source materials into an editable HTML presentation,
-with evidence grounding, visual inspection and follow-up revision.** It combines persistent
-deck state with page Owners whose responsibility continues through production and editing.
+<a name="overview"></a>
 
-This repository accompanies the paper and provides the authoring **Skill**, execution **Harness**
-and **WebUI**. See [release status](#release-status) for the scope of the available artifacts.
+## About
 
-## Overview
+**MuralPresenter turns your request and source materials into an editable HTML presentation.**
+It researches the topic, creates slides, checks how they look, and handles follow-up edits.
 
-- **Grounded content.** Research findings, sources and factual conditions become shared inputs for page authoring.
-- **Adaptive responsibility.** Single Owners handle independent pages; Group Owners coordinate pages that need joint decisions.
-- **Visual revision.** Owners render, inspect and revise their pages, and retain responsibility for later edits.
+- **Start in the WebUI:** enter a request and optionally attach documents.
+- **Keep editing:** ask for content or design changes in the same case.
+- **Inspect and export:** preview the slides and download the deliverables.
+
+The repository includes the authoring Skill, execution Harness and WebUI. Model weights are not bundled.
+
+## News
+
+Paper and release announcements will be added here.
 
 ## See it in action
-
-### Animal compasses · the paper's running example
 
 > **Request, condensed:** Create 40 teaching slides for senior life-sciences undergraduates on
 > geomagnetic, sun and star compasses, with scientific diagrams, real photographs and a comparison table.
@@ -55,21 +57,7 @@ Pages 19 and 37 from one completed 40-slide Chinese deck; click to view the orig
 Original 1600 × 900 renders, copied without editing from an archived run.
 
 <details>
-<summary>How this task illustrates shared decisions and persistent Owners</summary>
-
-- **One change, several pages.** Changing a heading reference from north to the Sun affects both the navigation diagram's angle labels and the comparison table's explanation.
-- **Assign the joint decision.** A Group Owner handles calibration and comparison pages while their conventions remain unresolved. Pages based on settled decisions can proceed with Single Owners.
-- **Continue with the same Owners.** Later feedback returns to the responsible Owners for revision and another visual inspection.
-
-<p align="center">
-  <a href="assets/figures/ownership-workflow.png"><img src="assets/figures/ownership-workflow.png" width="100%" alt="Animal-compass illustration: shared evidence and plans, Single and Group Owners, and visual revision"></a>
-</p>
-
-The bullets and workflow figure illustrate the paper's method; they do not reconstruct the archived run's exact Owner assignments or a recorded north-to-Sun edit.
-
-</details>
-
-### From paper to slides · actual revision
+<summary>Another example: revise an existing presentation</summary>
 
 **The same deck, revised through its existing Owners.** The manuscript's qualitative case expands
 a presentation of this paper from ten to twelve slides, then changes its blackboard styling to
@@ -86,6 +74,8 @@ light blue and white while refining diagrams. Below is page 3 before and after r
 [View all six before/after pairs](assets/figures/revision-case/README.md) ·
 [Figure sources](assets/figures/README.md). These are manuscript exports, not a live WebUI demo;
 the qualitative case is excluded from benchmark means.
+
+</details>
 
 ## Quick start
 
@@ -142,106 +132,9 @@ Use a new workspace; preserve historical workspaces and their pinned runtime.
 
 </details>
 
-## Method
+## Research
 
-<details>
-<summary>Responsibility units and cross-page dependencies</summary>
-
-A whole-deck Owner retains one production history that grows with the presentation and its edits.
-Per-slide Owners distribute production, while cross-page decisions require coordination between
-separate contexts. MuralPresenter supports both single-page and multi-page units within one deck.
-Topic or style similarity alone is insufficient for grouping: the relevant question is whether
-content or design choices still need to be adjusted together.
-
-<p align="center">
-  <img src="assets/figures/cross-page-dependencies.png" width="880" alt="Cross-page factual, visual and narrative dependencies; growing whole-deck history and fragmented per-slide contexts">
-</p>
-
-<p align="center"><em>Cross-page dependencies motivate a responsibility assignment that combines shared deck state with bounded page ownership.</em></p>
-
-</details>
-
-<details>
-<summary>Agent roles, tools and handoffs</summary>
-
-| Role | Responsibility |
-| --- | --- |
-| **Orchestrator** | Maintains shared knowledge and the blueprint, assigns units, reviews the deck and routes revisions; can also handle light research, routine assets and unassigned pages. |
-| **Research** | Retrieves and synthesizes evidence, preserving sources, factual conditions and unresolved questions. |
-| **Image** | Acquires or generates assets, inspects them and provides paths, intended uses, restrictions and target pages. |
-| **Slide** | Authors HTML, inspects renders and repairs assigned pages; Single and Group Owners use the same authoring capabilities. |
-
-Tools handle retrieval, file operations, asset processing and rendering. Agents make content and
-design decisions. Handoffs carry artifact paths and usage information. Confirmed assets can reach
-page Owners before the entire asset batch is ready.
-
-<p align="center">
-  <img src="assets/figures/roles-and-tools.png" width="680" alt="Orchestrator, Research, Image and Slide roles, their tools and shared deck state">
-</p>
-
-</details>
-
-<details>
-<summary>Authoring, responsibility assignment and revision</summary>
-
-The current workflow figure shows six activities, which may overlap or recur:
-
-1. **Knowledge Grounding:** resolve factual questions and record adopted evidence, conditions and open questions.
-2. **Deck Planning:** establish the narrative, page briefs, notes, design rules and visual requests.
-3. **Asset Preparation:** acquire or create visuals, inspect them and record their intended use.
-4. **Delegate Page Units:** assign independent slides or coupled groups to their Owners.
-5. **Parallel Authoring:** produce independent units as their shared inputs become ready, while preparation continues elsewhere.
-6. **Iterative Refinement:** render, inspect and repair pages; review the assembled deck and route findings to the responsible Owners.
-
-Content edits resume the relevant Owners. Structural edits can change units and ownership scopes.
-Shared-style edits update the common state before affected pages are revised. Updated pages are
-rendered and inspected again. Delivery assembles checked pages, assets and notes in deck order,
-checks file completeness and exports the requested formats.
-
-</details>
-
-<details>
-<summary>Editable HTML and export formats</summary>
-
-MURAL uses HTML/CSS/SVG as its authoring source so that text, layout, graphics, media, and
-interactions remain separately addressable. Browser rendering provides the pixel-level ground
-truth for inspection, while the structured source supports targeted revision. PPTX, PDF, and
-images are delivery adapters; export fidelity is evaluated rather than assumed.
-
-</details>
-
-## Models and trajectory training
-
-The paper trains **MuralPresenter-9B** and **MuralPresenter-27B** on **9,000 quality-filtered
-execution segments from 686 native source records**. These counts describe segments and sources,
-not 9,000 completed presentations. Each segment keeps its preceding history as input context.
-
-The public-benchmark checkpoints use **Global Selective**:
-
-| Model | Backbone | Evaluated checkpoint |
-| --- | --- | --- |
-| MuralPresenter-9B | Qwen-3.5-9B | 4 epochs, 128 optimizer steps |
-| MuralPresenter-27B | Qwen-3.8-27B | 2 epochs, 64 optimizer steps |
-
-Model weights are not bundled with this source release.
-
-<details>
-<summary>Training recipe and supervision policies</summary>
-
-| Supervision policy | Assistant actions receiving training loss |
-| --- | --- |
-| Full | Historical and current-segment actions. |
-| Global Selective | Only current-segment actions, for every role. |
-| Role-wise Selective | Current-segment actions for Slide; Full supervision for the other roles. |
-
-Training uses MS-SWIFT, Megatron and BF16 with frozen vision encoders and mergers, a maximum
-sequence length of 131,072 tokens and batch size 64. The supervision-policy comparison uses
-four-epoch 27B models, distinct from the two-epoch 27B public-benchmark checkpoint.
-These are paper experiment settings, not WebUI generation defaults.
-
-</details>
-
-## Results at a glance
+<a name="results-at-a-glance"></a>
 
 Scores below are transcribed from the current manuscript's public-benchmark tables, not new
 runs of this repository. All four rows use the MuralPresenter authoring framework.
@@ -277,7 +170,60 @@ tool conditions; they do not isolate the effect of training.
 
 </details>
 
-## Evaluation
+<a name="method"></a>
+
+<details>
+<summary>How it works: shared knowledge and page Owners</summary>
+
+The Orchestrator maintains shared facts, page plans and assets. A page's **Owner** is the agent
+responsible for creating, checking and revising it. Independent pages use Single Owners;
+pages whose content or design decisions need joint adjustment share a Group Owner.
+Later changes return to the responsible Owners, followed by another visual check and deck review.
+
+<p align="center">
+  <a href="assets/figures/ownership-workflow.png"><img src="assets/figures/ownership-workflow.png" width="100%" alt="Shared knowledge and plans, Single and Group Owners, visual inspection and revision"></a>
+</p>
+
+The animal-compass figure illustrates the method, not the archived example run's exact grouping
+or a recorded edit sequence. See [cross-page dependencies](assets/figures/cross-page-dependencies.png) and [agent roles](assets/figures/roles-and-tools.png).
+HTML/CSS/SVG is the editable authoring source; PPTX, PDF and image exports are delivery formats.
+
+</details>
+
+<a name="models-and-trajectory-training"></a>
+
+<details>
+<summary>Models and training details</summary>
+
+The paper trains **MuralPresenter-9B** and **MuralPresenter-27B** on **9,000 quality-filtered
+execution segments from 686 native source records**. These counts describe segments and sources,
+not 9,000 completed presentations. Each segment keeps its preceding history as input context.
+
+The public-benchmark checkpoints use **Global Selective**:
+
+| Model | Backbone | Evaluated checkpoint |
+| --- | --- | --- |
+| MuralPresenter-9B | Qwen-3.5-9B | 4 epochs, 128 optimizer steps |
+| MuralPresenter-27B | Qwen-3.8-27B | 2 epochs, 64 optimizer steps |
+
+Model weights are not bundled with this source release.
+
+**Training recipe and supervision policies**
+
+| Supervision policy | Assistant actions receiving training loss |
+| --- | --- |
+| Full | Historical and current-segment actions. |
+| Global Selective | Only current-segment actions, for every role. |
+| Role-wise Selective | Current-segment actions for Slide; Full supervision for the other roles. |
+
+Training uses MS-SWIFT, Megatron and BF16 with frozen vision encoders and mergers, a maximum
+sequence length of 131,072 tokens and batch size 64. The supervision-policy comparison uses
+four-epoch 27B models, distinct from the two-epoch 27B public-benchmark checkpoint.
+These are paper experiment settings, not WebUI generation defaults.
+
+</details>
+
+<a name="evaluation"></a>
 
 <details>
 <summary>Benchmark coverage, metrics and interpretation</summary>
@@ -340,21 +286,15 @@ See the [brand guide](assets/logo/exports/street-v2/README.md) for the full asse
 
 ## Release status
 
-| Artifact | Availability |
-| --- | --- |
-| Authoring Skill and Harness | Included: frozen 0919 source pair, verified against its original inventory. |
-| WebUI and launchers | Included: portable configuration, CLI and `/studio` deployment support. |
-| Public logos and method figures | Included: [street-mural brand kit](assets/logo/exports/street-v2/README.md) and [figure provenance](assets/figures/README.md). |
-| 9B / 27B model weights | Not included; no public checkpoint download is linked yet. |
-| Training data, internal evaluation cases and evaluation pipelines | Not included in this runtime release. |
-| Paper link and citation metadata | Awaiting final author-supplied publication metadata. |
+**Available:** the frozen 0919 Skill/Harness, WebUI, launchers and public artwork. Training data,
+internal evaluation pipelines and model weights are not bundled. Paper link and final metadata: to be added.
+
+<details>
+<summary>Source versions and paper-score reproduction</summary>
 
 The runtime source pin and trained model checkpoints are separate version identities.
 The 0919 source pin does not establish that every later paper experiment used an identical
 runtime and configuration.
-
-<details>
-<summary>What is needed to reproduce paper scores?</summary>
 
 Score reproduction additionally requires exact inputs and checksums, weights and chat templates,
 evaluation adapters, font shims, Judge settings and output-selection/coverage records.
@@ -363,46 +303,27 @@ Running the application or passing source checks does not reproduce the paper's 
 
 </details>
 
-## Repository layout
+<a name="repository-layout"></a>
+<a name="versioning-and-validation"></a>
 
-```text
-MURAL-Presenter/
-├── README.md / README_zh-CN.md
-├── skills/mural-presenter-v1/       # Frozen authoring Skill and tools
-├── harnesses/mural-presenter-v1/    # Frozen inference and delivery runtime
-├── webui/                          # UI, server, dependency locks and launchers
-├── assets/                         # Public logos, icons and method diagrams
-├── configs/                        # Runtime template, MinerU and release provenance
-├── fonts/                          # Bundled rendering fonts
-├── scripts/                        # Portable CLI and configuration adapters
-├── tools/                          # Source verification and integration freezing
-├── tests/                          # Public integration regression tests
-└── .github/                        # CI and contribution templates
+Directory layout, source checks and known limitations: [Contributing](CONTRIBUTING.md#repository-layout) · [CI](.github/workflows/public-surface.yml).
+
+<a name="license-and-citation"></a>
+
+## Citation
+
+Provisional citation for the manuscript, which has not yet been submitted. Author and publication details will be updated.
+
+```bibtex
+@misc{muralpresenter2026,
+  title  = {MuralPresenter: Multi-Agent Units of Responsibility for Authoring Long-Horizon Presentations},
+  author = {Anonymous Authors},
+  year   = {2026}
+}
 ```
 
-The core directory names and internal assets, references, docs and tests are part of its frozen
-identity. Keep them intact. Public logos and diagrams live in `assets/logo/exports/` and
-`assets/figures/`; [figure provenance](assets/figures/README.md) records the current manuscript exports.
-Design drafts remain local. Root-level `benchmark/`, `docs/`, `examples/`,
-`paper/`, training material and the independent `site/` are not included in this release.
-Deployment credentials, environments, databases and generated cases remain local and ignored.
-Necessary usage, provenance and validation information is consolidated in these READMEs.
+Machine-readable metadata: [CITATION.cff](CITATION.cff).
 
-## Versioning and validation
+## License
 
-The 254 core files retain the 0919 source snapshot
-`mural-presentbench-qwen35-9b-20260919T163556Z`. Deployment paths are resolved at launch;
-portable integration updates are recorded separately in `configs/releases/mural-paper-v1.json`.
-
-```bash
-python tools/check_paper_release.py
-```
-
-Source hashes, historical test results and known failures are recorded in
-[Contributing](CONTRIBUTING.md#release-verification-record); see [packaging CI](.github/workflows/public-surface.yml) for the tested scope.
-
-## License and citation
-
-Project-wide licensing awaits confirmation by the rights holders. Third-party terms remain
-applicable; see [third-party notices](webui/THIRD_PARTY_NOTICES.md) and [font records](fonts/FONTS.md).
-Final authors, paper URL/DOI, citation metadata and the immutable paper tag remain to be confirmed.
+Project license: to be confirmed. Existing [third-party terms](webui/THIRD_PARTY_NOTICES.md) and [font licenses](fonts/FONTS.md) apply.

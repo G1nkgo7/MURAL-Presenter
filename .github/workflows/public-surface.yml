@@ -38,7 +38,7 @@ jobs:
           PYTHONPATH: ${{ github.workspace }}/webui:${{ github.workspace }}/webui/studio
         run: uv run --project webui/studio --with pytest python -m pytest webui/tests/test_service_config.py webui/studio/tests/test_harness_retirement.py webui/studio/tests/test_mural_profiles.py -q -p no:cacheprovider --basetemp=.runtime/tests/webui
       - name: Install browser for WebUI regressions
-        run: uv run --project webui/studio python -m playwright install --with-deps --only-shell chromium
+        run: uv run --project webui/inference python -m playwright install --with-deps --only-shell chromium
       - name: WebUI live feed, preview and font regressions
         env:
           PYTHONPATH: ${{ github.workspace }}/webui:${{ github.workspace }}/webui/studio

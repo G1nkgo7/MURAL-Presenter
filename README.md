@@ -16,6 +16,7 @@
   <strong>English</strong> · <a href="README_zh-CN.md">简体中文</a>
 </p>
 <p align="center">
+  <a href="https://mural-presenter.github.io/">🌐 Project page</a> ·
   <a href="#see-it-in-action">🖼️ Examples</a> ·
   <a href="#quick-start">🚀 Quick start</a> ·
   <a href="webui/README_EN.md"><img src="webui/studio/static/logo.svg" width="18" height="18" align="absmiddle" alt=""> WebUI</a>

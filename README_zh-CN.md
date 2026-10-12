@@ -14,6 +14,7 @@
   <a href="https://github.com/G1nkgo7/MURAL-Presenter#readme-en">English</a> · <strong>简体中文</strong>
 </p>
 <p align="center">
+  <a href="https://mural-presenter.github.io/">🌐 论文主页</a> ·
   <a href="#生成与修改示例">🖼️ 效果示例</a> ·
   <a href="#安装与启动">🚀 快速开始</a> ·
   <a href="webui/README.md"><img src="webui/studio/static/logo.svg" width="18" height="18" align="absmiddle" alt=""> WebUI</a>

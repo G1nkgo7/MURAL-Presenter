@@ -67,6 +67,14 @@ CI commands are in [.github/workflows/public-surface.yml](.github/workflows/publ
 They cover portable configuration, HTTP and `/studio` routing, release/configuration contracts,
 and active WebUI configuration. Use isolated test data, not an existing Studio database.
 
+The frozen configuration tests run with `-p tools.pytest_portable_runtime`. This test-only
+adapter redirects the `runtime.env` configuration path into the existing isolated fixture;
+all deployment timeout assertions and the 0919 source bytes remain unchanged. Without it,
+three tests read an upstream machine path and fail on a clean runner.
+On 2026-10-12, local validation with this adapter passed 9 portable integration tests,
+95 runtime contract tests and 139 WebUI tests, with one browser test skipped. Source
+verification and the example launcher preflight also passed; no model requests were made.
+
 The compact public tree was checked on Linux on 2026-10-10: 10 portable/source-digest tests,
 95 release/configuration tests and 139 WebUI tests passed; one browser test was skipped.
 The example launcher preflight passed. These checks used an isolated Git worktree and existing
@@ -115,6 +123,12 @@ python tools/check_paper_release.py
 
 自动检查命令见 [.github/workflows/public-surface.yml](.github/workflows/public-surface.yml)，
 覆盖便携配置、HTTP 和 `/studio` 路由、版本/配置合约及当前 WebUI 配置。测试应使用独立数据目录。
+
+冻结配置测试通过 `-p tools.pytest_portable_runtime` 加载测试适配层，将 `runtime.env`
+中的配置路径指向已有的隔离 fixture。全部部署超时断言与 0919 源码字节保持不变；
+缺少该适配时，三项测试会读取上游机器路径，在干净环境中失败。
+2026-10-12 使用该适配进行本地验证：9 项便携集成、95 项运行时合约和 139 项 WebUI
+测试通过，1 项浏览器测试跳过；源码校验与示例启动预检通过，未调用模型。
 
 2026-10-10 在 Linux 上验证精简公开文件树：便携入口及源码摘要测试 10 项、版本/配置测试 95 项、
 WebUI 测试 139 项通过，1 项浏览器测试跳过；示例启动预检通过。验证使用独立 Git 工作树和已有的

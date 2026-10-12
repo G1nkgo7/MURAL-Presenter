@@ -1,7 +1,7 @@
 {
   "channel": "paper-release-candidate",
   "git": {
-    "source_commit": "94ccc636ecf0ea8fd4d8112151290414b935bd37",
+    "source_commit": "e346291d624622e4543b799c6ee5ed515a049cd4",
     "worktree_state": "Portable integration snapshot; original frozen core verified independently by publication inventory."
   },
   "harness": {
@@ -12,6 +12,12 @@
   },
   "integration": {
     "files": [
+      "LICENSE",
+      "LICENSES/Apache-ECharts-NOTICE.txt",
+      "LICENSES/Apache-ECharts-d3.txt",
+      "LICENSES/Apache-ECharts.txt",
+      "LICENSES/OFL-1.1.txt",
+      "LICENSES/font-notices.md",
       "configs/mineru/cpu_service.sh",
       "configs/mineru/prepare_models.py",
       "configs/mineru/serve.sh",
@@ -26,6 +32,7 @@
       "webui/.env.example",
       "webui/Dockerfile",
       "webui/RELEASE_MANIFEST.json",
+      "webui/THIRD_PARTY_NOTICES.md",
       "webui/compose.yaml",
       "webui/inference/attachments_runtime.py",
       "webui/inference/openai_backend.py",
@@ -33,6 +40,7 @@
       "webui/inference/runtime.py",
       "webui/inference/serve_one.py",
       "webui/inference/uv.lock",
+      "webui/scripts/build-ui-fonts.py",
       "webui/scripts/cci-gateway.mjs",
       "webui/scripts/launch.py",
       "webui/start.ps1",
@@ -65,6 +73,37 @@
       "webui/studio/static/app.js",
       "webui/studio/static/fonts/InstrumentSans.ttf",
       "webui/studio/static/fonts/SchibstedGrotesk.ttf",
+      "webui/studio/static/fonts/mural-ui-cjk-00ad00aeec55a4fa.woff2",
+      "webui/studio/static/fonts/mural-ui-cjk-11237b19b2280605.woff2",
+      "webui/studio/static/fonts/mural-ui-cjk-1ec3456822a3a9b7.woff2",
+      "webui/studio/static/fonts/mural-ui-cjk-2a4239b271e595ac.woff2",
+      "webui/studio/static/fonts/mural-ui-cjk-2e4b30817926b815.woff2",
+      "webui/studio/static/fonts/mural-ui-cjk-2fbafe32447dd19a.woff2",
+      "webui/studio/static/fonts/mural-ui-cjk-48a3ac87c3858a1c.woff2",
+      "webui/studio/static/fonts/mural-ui-cjk-52fdab22a3df4499.woff2",
+      "webui/studio/static/fonts/mural-ui-cjk-5d9e83ccbb67bef9.woff2",
+      "webui/studio/static/fonts/mural-ui-cjk-6e5280b33e378c39.woff2",
+      "webui/studio/static/fonts/mural-ui-cjk-709242a60264cbfc.woff2",
+      "webui/studio/static/fonts/mural-ui-cjk-794ec1cd5173475c.woff2",
+      "webui/studio/static/fonts/mural-ui-cjk-7c02312492ed93aa.woff2",
+      "webui/studio/static/fonts/mural-ui-cjk-7cfbb22375efded1.woff2",
+      "webui/studio/static/fonts/mural-ui-cjk-82a13f65c63f8b2c.woff2",
+      "webui/studio/static/fonts/mural-ui-cjk-842a932d1ccde526.woff2",
+      "webui/studio/static/fonts/mural-ui-cjk-95a4820d91813a52.woff2",
+      "webui/studio/static/fonts/mural-ui-cjk-95b4f2a8eb991331.woff2",
+      "webui/studio/static/fonts/mural-ui-cjk-ae4514ab8e809bf9.woff2",
+      "webui/studio/static/fonts/mural-ui-cjk-be1ee086526c6698.woff2",
+      "webui/studio/static/fonts/mural-ui-cjk-c2faf888af6c623b.woff2",
+      "webui/studio/static/fonts/mural-ui-cjk-ceadb2702a38dc64.woff2",
+      "webui/studio/static/fonts/mural-ui-cjk-d8a08b497b58f414.woff2",
+      "webui/studio/static/fonts/mural-ui-cjk-db50d208944d40e7.woff2",
+      "webui/studio/static/fonts/mural-ui-cjk-de126b66ff6f0d5e.woff2",
+      "webui/studio/static/fonts/mural-ui-cjk-e3f66a6d9c528877.woff2",
+      "webui/studio/static/fonts/mural-ui-cjk-ebc0f359a83bd6fa.woff2",
+      "webui/studio/static/fonts/mural-ui-cjk-fa5a8dff030fd632.woff2",
+      "webui/studio/static/fonts/mural-ui-cjk-ff7fb8ef6f7bc66a.woff2",
+      "webui/studio/static/fonts/ui-cjk.css",
+      "webui/studio/static/fonts/ui-cjk.json",
       "webui/studio/static/logo.svg",
       "webui/studio/static/neuro-apple-icon.png",
       "webui/studio/static/neuro-icon.png",
@@ -82,7 +121,7 @@
       "webui/studio/templates/register.html",
       "webui/studio/uv.lock"
     ],
-    "tree_sha256": "4f69a19cd23a9995c40bc7d3a5df55e3e47177602d5cf5c824455dcf50094e93"
+    "tree_sha256": "8052dfd9eba028f79edb312d5a8cba615a9006c006f2411b017d2f55af4b476a"
   },
   "lineage": {
     "note": "Skill/Harness unchanged; portable WebUI and public brand assets included; benchmark and internal documentation remain local.",
@@ -94,7 +133,7 @@
     "upstream_release": "mural-presentbench-qwen35-9b-20260919T163556Z"
   },
   "pair_tree_sha256": "378c3ac7fa26d06b91f5408c7a25e7350b9b37e712611a322e387ae13a2d64e3",
-  "release": "mural-paper-0919-public-v3",
+  "release": "mural-paper-0919-public-v4",
   "schema": "mural.release.v2",
   "skill": {
     "key": "mural-presenter-v1",

@@ -19,11 +19,15 @@
   <a href="webui/README.md"><img src="webui/studio/static/logo.svg" width="18" height="18" align="absmiddle" alt=""> WebUI</a>
 </p>
 
-## News · 最新动态
+<a name="news--最新动态"></a>
+
+## 📅 News · 最新动态
 
 论文与版本动态将在这里更新。
 
-## 生成与修改示例
+<a name="生成与修改示例"></a>
+
+## 🖼️ 生成与修改示例
 
 > **需求摘要：** 为生命科学高年级本科生制作 40 页教学演示，讲解地磁、太阳与星辰罗盘，
 > 包含科学示意图、真实照片和对比表。
@@ -61,7 +65,9 @@
 
 </details>
 
-## 安装与启动
+<a name="安装与启动"></a>
+
+## 🚀 安装与启动
 
 需要 Python 3.12、uv，以及自己的模型服务和凭据。
 
@@ -113,7 +119,9 @@ webui/inference/.venv/bin/python scripts/run_inference.py \
 
 </details>
 
-## Research · 论文研究
+<a name="research--论文研究"></a>
+
+## 🔬 Research · 论文研究
 
 <a name="实验结果速览"></a>
 
@@ -226,7 +234,9 @@ batch size 为 64。监督策略对比使用训练 4 轮的 27B 模型，与主�
 
 </details>
 
-## 品牌素材
+<a name="品牌素材"></a>
+
+## 🎨 品牌素材
 
 独立标识、头像与画家吉祥物沿用顶部横幅的壁画风格。点击图片可打开原始 PNG。
 
@@ -257,7 +267,9 @@ batch size 为 64。监督策略对比使用训练 4 轮的 27B 模型，与主�
 
 完整素材、使用说明与版本记录见[品牌指南](assets/logo/exports/street-v2/README.md)。
 
-## 发布状态
+<a name="发布状态"></a>
+
+## 📦 发布状态
 
 **已提供：** 0919 冻结版 Skill/Harness、WebUI、启动器与正式配图。训练数据、内部评测流水线和模型权重暂未附带。
 论文链接及最终公开信息待补充。
@@ -281,7 +293,9 @@ batch size 为 64。监督策略对比使用训练 4 轮的 27B 模型，与主�
 
 <a name="许可与引用"></a>
 
-## Citation · 引用
+<a name="citation--引用"></a>
+
+## 📖 Citation · 引用
 
 以下为尚未投稿稿件的临时引用，作者及正式发表信息后续更新。
 
@@ -295,6 +309,8 @@ batch size 为 64。监督策略对比使用训练 4 轮的 27B 模型，与主�
 
 机器可读引用信息：[CITATION.cff](CITATION.cff)。
 
-## License · 许可
+<a name="license--许可"></a>
+
+## ⚖️ License · 许可
 
 项目许可证待确认；现有[第三方条款](webui/THIRD_PARTY_NOTICES.md)与[字体许可](fonts/FONTS.md)继续适用。

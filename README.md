@@ -21,11 +21,15 @@
   <a href="webui/README_EN.md"><img src="webui/studio/static/logo.svg" width="18" height="18" align="absmiddle" alt=""> WebUI</a>
 </p>
 
-## News
+<a name="news"></a>
+
+## 📅 News
 
 Paper and release announcements will be added here.
 
-## See it in action
+<a name="see-it-in-action"></a>
+
+## 🖼️ See it in action
 
 > **Request, condensed:** Create 40 teaching slides for senior life-sciences undergraduates on
 > geomagnetic, sun and star compasses, with scientific diagrams, real photographs and a comparison table.
@@ -65,7 +69,9 @@ the qualitative case is excluded from benchmark means.
 
 </details>
 
-## Quick start
+<a name="quick-start"></a>
+
+## 🚀 Quick start
 
 Use Python 3.12 and `uv`. Provide your own model endpoint and credentials.
 
@@ -120,7 +126,9 @@ Use a new workspace; preserve historical workspaces and their pinned runtime.
 
 </details>
 
-## Research
+<a name="research"></a>
+
+## 🔬 Research
 
 <a name="results-at-a-glance"></a>
 
@@ -241,7 +249,9 @@ Interpret the experiments under their recorded protocols:
 
 </details>
 
-## Brand assets
+<a name="brand-assets"></a>
+
+## 🎨 Brand assets
 
 The standalone mark, avatar and painter mascot share the banner’s street-mural identity. Click a preview to open its original PNG.
 
@@ -272,7 +282,9 @@ The wordmark follows your reader’s light or dark theme.
 
 See the [brand guide](assets/logo/exports/street-v2/README.md) for the full asset set, usage and version history.
 
-## Release status
+<a name="release-status"></a>
+
+## 📦 Release status
 
 **Available:** the frozen 0919 Skill/Harness, WebUI, launchers and public artwork. Training data,
 internal evaluation pipelines and model weights are not bundled. Paper link and final metadata: to be added.
@@ -298,7 +310,9 @@ Directory layout, source checks and known limitations: [Contributing](CONTRIBUTI
 
 <a name="license-and-citation"></a>
 
-## Citation
+<a name="citation"></a>
+
+## 📖 Citation
 
 Provisional citation for the manuscript, which has not yet been submitted. Author and publication details will be updated.
 
@@ -312,6 +326,8 @@ Provisional citation for the manuscript, which has not yet been submitted. Autho
 
 Machine-readable metadata: [CITATION.cff](CITATION.cff).
 
-## License
+<a name="license"></a>
+
+## ⚖️ License
 
 Project license: to be confirmed. Existing [third-party terms](webui/THIRD_PARTY_NOTICES.md) and [font licenses](fonts/FONTS.md) apply.

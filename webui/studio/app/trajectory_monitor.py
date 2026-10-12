@@ -1397,6 +1397,7 @@ def trajectory_deck_livefeed(deck_id: int, cursor: int = Query(0, ge=0)):
             run_dir=str(sample),
             deck_status=summary["status"],
             live_cursor=cursor,
+            live_limit=500,
         )
         payload["specialist_artifacts"] = trace.specialist_artifacts(str(sample))
         return payload
@@ -1419,6 +1420,15 @@ def trajectory_deck_live_events(
     if record["sample"] is None:
         return trace.live_events("", cursor=cursor, limit=limit)
     return trace.live_events(str(record["sample"]), cursor=cursor, limit=limit)
+
+
+@router.get("/api/trajectory-monitor/decks/{deck_id}/live-events/{sequence}")
+def trajectory_deck_live_event_detail(deck_id: int, sequence: int):
+    record = _resolve_catalog_deck(deck_id)
+    event = trace.live_event_detail(str(record["sample"]), sequence) if record["sample"] is not None and sequence > 0 else None
+    if event is None:
+        raise HTTPException(status_code=404, detail="event not found")
+    return event
 
 
 @router.get("/api/trajectory-monitor/decks/{deck_id}/agent-trace/{agent_key}")

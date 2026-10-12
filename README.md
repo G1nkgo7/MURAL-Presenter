@@ -330,4 +330,5 @@ Machine-readable metadata: [CITATION.cff](CITATION.cff).
 
 ## ⚖️ License
 
-Project license: to be confirmed. Existing [third-party terms](webui/THIRD_PARTY_NOTICES.md) and [font licenses](fonts/FONTS.md) apply.
+Project code is available under the [MIT License](LICENSE). Third-party components and fonts
+retain their [original licenses and notices](webui/THIRD_PARTY_NOTICES.md).

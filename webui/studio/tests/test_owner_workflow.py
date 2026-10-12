@@ -306,8 +306,9 @@ bindWorkflowCenterControls();
     ui_fonts = {
         "/static/fonts/InstrumentSans.ttf": studio / "static/fonts/InstrumentSans.ttf",
         "/static/fonts/SchibstedGrotesk.ttf": studio / "static/fonts/SchibstedGrotesk.ttf",
-        "/api/preview-fonts/NotoSansSC.ttf": main.preview_fonts.catalog()["NotoSansSC.ttf"],
     }
+    ui_fonts.update({f"/fonts/{font.name}": font for font in (studio / "static/fonts").iterdir()
+                     if font.suffix in {".ttf", ".woff2", ".css"}})
     response_status = 200
     requests = []
     errors = []
@@ -327,11 +328,13 @@ bindWorkflowCenterControls();
                 elif "/files/" in url:
                     route.fulfill(content_type="image/png", body=(case["root"] / url.split("/files/", 1)[1].split("?", 1)[0]).read_bytes())
                 elif path in ui_fonts:
-                    route.fulfill(content_type="font/ttf", body=ui_fonts[path].read_bytes())
+                    media = "text/css" if path.endswith(".css") else "font/woff2" if path.endswith(".woff2") else "font/ttf"
+                    route.fulfill(content_type=media, body=ui_fonts[path].read_bytes())
                 else:
                     route.fulfill(content_type="text/html; charset=utf-8", body=html)
             page.route("**/*", serve)
             page.goto("http://workflow.test/")
+            page.add_style_tag(url="http://workflow.test/fonts/ui-cjk.css")
             page.add_style_tag(path=str(studio / "static/app.css"))
             page.add_script_tag(content="\n".join(functions) + setup)
             node = page.locator('.workflow-node[data-agent-key="slide_group_a"]')

@@ -313,4 +313,4 @@ batch size 为 64。监督策略对比使用训练 4 轮的 27B 模型，与主�
 
 ## ⚖️ License · 许可
 
-项目许可证待确认；现有[第三方条款](webui/THIRD_PARTY_NOTICES.md)与[字体许可](fonts/FONTS.md)继续适用。
+项目代码采用 [MIT 许可证](LICENSE)；第三方组件与字体保留各自的[原始许可及声明](webui/THIRD_PARTY_NOTICES.md)。

@@ -1,17 +1,17 @@
 {
   "product": "MURAL Presenter WebUI",
   "edition": "V1 static / no authentication",
-  "version": "v1.0.1-paper.0919",
-  "built_at_utc": "2026-09-14T15:10:42Z",
-  "source_revision": "mural-paper-0919-public-v3",
-  "source_worktree": "Matching 0919 backend with portable deployment boundary",
+  "version": "v1.0.2-paper.0919",
+  "built_at_utc": "2026-10-12T06:29:00Z",
+  "source_revision": "mural-paper-0919-public-v4",
+  "source_worktree": "Frozen 0919 core with portable WebUI, incremental live feed and UI font subsets",
   "default_skill": "mural-presenter-v1",
   "skills": [
     "mural-presenter-v1"
   ],
   "harness": "mural-presenter-v1",
   "harness_entry": "infer.py",
-  "display_name": "MURAL Presenter v1 · Native Critic",
+  "display_name": "MURAL Presenter v1 \u00b7 Native Critic",
   "canonical_skill_root": "../skills/mural-presenter-v1",
   "canonical_harness_root": "../harnesses/mural-presenter-v1",
   "historical_versions": {

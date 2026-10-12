@@ -11,6 +11,7 @@ the same run_dir. Only decks with no live process and no result get requeued.
 """
 import asyncio
 from collections import Counter, deque
+from functools import lru_cache
 import errno
 import glob
 import hashlib
@@ -23,6 +24,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path, PurePosixPath
+from urllib.parse import unquote, urlsplit
 
 from . import custom_models, dynamic, engine, service_config, titles, trace
 from .db import connect
@@ -131,6 +133,27 @@ def _offline_runtime(root: Path) -> tuple[str, dict]:
 
 
 def resolve_shared_font(workspace: Path, reference: str) -> tuple[Path, str]:
+    # 缓存只复用同一工作区和文件版本的成功校验；授权仍由 HTTP 层逐次核对。
+    target = Path(unquote(urlsplit(reference).path))
+    paths = [workspace / "_state" / name for name in (
+        "workspace.json", "font-manifest.json", "skill-ref.json")]
+    try:
+        identity = tuple(_font_stat_identity(path) for path in [*paths, target])
+    except OSError as exc:
+        raise DeliveryExportError("固定字体不可用或未通过 workspace 授权校验") from exc
+    return _verified_shared_font(workspace, reference, identity,
+                                 engine._engine_python(), int(time.monotonic() // 60))
+
+
+def _font_stat_identity(path):
+    if not path.exists():
+        return None
+    stat = path.stat()
+    return (stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns)
+
+
+@lru_cache(maxsize=256)
+def _verified_shared_font(workspace, reference, identity, python_path, minute):
     """正式环境只读校验固定字体引用，不运行 doctor、模型或字体生成。"""
     python, environment = _offline_runtime(workspace)
     bootstrap = (

@@ -15,17 +15,18 @@ def main() -> None:
     release = json.loads(json.dumps(original))
     files = set(original["integration"]["files"])
     files = {name for name in files if name.startswith(("webui/", "configs/mineru/"))}
-    files.add("configs/runtime.json")
+    files.update({"configs/runtime.json", "LICENSE", "webui/THIRD_PARTY_NOTICES.md"})
+    files.update(str(path.relative_to(ROOT)) for path in (ROOT / "LICENSES").glob("*") if path.is_file())
     files.update(str(path.relative_to(ROOT)) for path in (ROOT / "webui/studio/app").glob("*.py"))
     for directory in ("webui/studio/static", "webui/studio/templates"):
         files.update(str(path.relative_to(ROOT)) for path in (ROOT / directory).rglob("*") if path.is_file())
     files.update({"webui/.env.example", "webui/Dockerfile", "webui/compose.yaml",
                   "webui/start.sh", "webui/start.ps1", "webui/RELEASE_MANIFEST.json",
-                  "webui/scripts/cci-gateway.mjs"})
+                  "webui/scripts/cci-gateway.mjs", "webui/scripts/build-ui-fonts.py"})
     files.update({"scripts/runtime_environment.py", "scripts/run_inference.py",
                   "tools/check_paper_release.py", "tools/freeze_paper_integration.py",
                   "tools/content_archive.py", "tools/freeze_mural_release.py"})
-    release["release"] = "mural-paper-0919-public-v3"
+    release["release"] = "mural-paper-0919-public-v4"
     release["channel"] = "paper-release-candidate"
     release["git"] = {
         "source_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),

@@ -97,6 +97,31 @@ def test_font_worker_uses_formal_runtime_without_model_configuration(font_case, 
     assert kwargs["timeout"] == 30
 
 
+def test_font_verification_cache_invalidates_for_source_and_manifest_changes(font_case, monkeypatch):
+    monkeypatch.setattr(main.engine, "render_env", lambda env: dict(env))
+    calls = []
+    def worker(command, **kwargs):
+        calls.append(command)
+        return subprocess.CompletedProcess(command, 0,
+            json.dumps({"path": str(font_case["font"]), "sha256": font_case["digest"]}), "")
+    monkeypatch.setattr(main.jobs, "_run_noninteractive", worker)
+    monkeypatch.setattr(main.jobs.time, "monotonic", lambda: 600)
+    resolve = lambda: _REAL_RESOLVE(font_case["root"], font_case["font"].as_uri())
+    assert resolve() == resolve() and len(calls) == 1
+    font_case["font_manifest"].write_text(font_case["font_manifest"].read_text() + " ")
+    resolve()
+    assert len(calls) == 2
+    font_case["font"].write_bytes(b"changed-font-content")
+    resolve()
+    assert len(calls) == 3
+    def rejected(command, **kwargs):
+        return subprocess.CompletedProcess(command, 1, "", "hash mismatch")
+    monkeypatch.setattr(main.jobs, "_run_noninteractive", rejected)
+    font_case["font"].write_bytes(b"tampered-font")
+    with pytest.raises(main.jobs.DeliveryExportError):
+        resolve()
+
+
 _REAL_RESOLVE = main.jobs.resolve_shared_font
 
 

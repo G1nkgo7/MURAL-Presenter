@@ -79,7 +79,7 @@ def _asset_ver() -> str:
     static = BASE_DIR / "static"
     try:
         digest = hashlib.sha256()
-        for name in ("app.css", "app.js", "page-editor.css", "page-editor.js"):
+        for name in ("app.css", "app.js", "page-editor.css", "page-editor.js", "fonts/ui-cjk.css"):
             digest.update(name.encode("utf-8"))
             digest.update((static / name).read_bytes())
         return digest.hexdigest()[:12]
@@ -3043,6 +3043,7 @@ def deck_livefeed(
         deck_started_at=row["started_at"],
         deck_finished_at=row["finished_at"],
         live_cursor=max(0, cursor),
+        live_limit=500,
     )
     # A workspace is reused by in-place revisions. Keep this turn's process
     # feed scoped to the Agents that actually appear in its current job log.
@@ -3067,6 +3068,18 @@ def deck_live_events(
     return trace.live_events(
         row["run_dir"], cursor=max(0, cursor), limit=max(1, limit)
     )
+
+
+@app.get("/api/decks/{deck_id}/live-events/{sequence}")
+def deck_live_event_detail(deck_id: int, sequence: int,
+                           user=Depends(require_user), con=Depends(get_db)):
+    row = _own_deck(con, deck_id, user["id"])
+    if not row:
+        raise HTTPException(status_code=404, detail="deck 不存在")
+    event = trace.live_event_detail(row["run_dir"], sequence) if sequence > 0 else None
+    if event is None:
+        raise HTTPException(status_code=404, detail="事件不存在")
+    return event
 
 
 @app.get("/api/decks/{deck_id}/tool-output/{tool_use_id}")

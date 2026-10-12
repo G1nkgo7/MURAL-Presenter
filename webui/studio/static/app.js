@@ -2870,7 +2870,7 @@ async function openDeck(id) {
   Object.assign(ed, { id, kind: "static", total: 0, authored: new Set(), rendered: new Set(), sel: null, follow: true, status: null,
                       lastPhase: null, feedSeen: new Set(), finalized: false, planCache: {},
                       ppCollapsed: true,
-                      feed: {}, pageAgents: {}, workflow: {}, muralRuntime: {}, liveEventCursor: 0, liveEventSchema: "", workspaceView: "workflow", viewMode: "ppt",
+                      feed: {}, pageAgents: {}, workflow: {}, muralRuntime: {}, liveEventCursor: 0, liveEventSchema: "", liveFeedLoaded: false, liveFeedRequest: null, liveToolDetails: new Map(), workspaceView: "workflow", viewMode: "ppt",
                       workflowPane: "page", workflowPage: 1, workflowNodeOffsets: {}, workflowPanelCollapsed: { files: false, conversation: false }, workflowArtifactRel: "", workflowArtifactFallback: null,
                       workflowSplitRatio: workflowSplitRatio(localStorage.getItem("studio_workflow_split_ratio")),
                       workflowOwnerAgent: "", workflowOwnerTask: "", workflowSelectedNodeId: "",
@@ -2913,9 +2913,11 @@ async function openDeck(id) {
     const p = await progressPromise;
     clearTimeout(timeout);
     if (!isCurrent()) return;
+    if (p.status === "completed") await workspaceTransition;
+    if (!isCurrent()) return;
     $("#ed-title").textContent = p.title || "演示文稿";
     apply(p);
-    if (ed.status === "completed" && ed.staticDeckReady) setWorkspaceView("ppt");
+    if (ed.status === "completed" && ed.staticDeckReady && ed.workspaceView !== "ppt") setWorkspaceView("ppt");
     setTopbar(
       p.title || "演示文稿",
       `${editorPresentationKind() === "dynamic" ? "动态" : "静态"}演示 · AI 生成内容请注意核验`,
@@ -3406,8 +3408,14 @@ function apply(p) {
   // 选中页的规划 md 可能刚写出来 → 补拉(含 00=deck.md)
   if (ed.sel != null && !ed.planCache[ed.sel]) loadPlan(ed.sel);
 
-  // 首次载入先准备 Workflow，完成任务重开后的默认视图由 openDeck 决定。
-  if (ed.sel == null) select(0, { byUser: false });
+  // 完成任务直接准备成稿，历史轨迹在进入 Workflow 后再读取。
+  if (ed.sel == null) {
+    if (p.status === "completed" && ed.staticDeckReady) {
+      ed.workspaceView = "ppt";
+      $("#canvas-empty").replaceChildren();
+      select(ed.authored.size ? Math.min(...ed.authored) : 1, { byUser: false });
+    } else select(0, { byUser: false });
+  }
 
   // 终态
   if (["completed", "failed", "rejected", "interrupted", "paused_recoverable"].includes(p.status)) {
@@ -7182,6 +7190,7 @@ function setWorkspaceView(view) {
   }
   if (workflowMode) {
     $("#canvas-empty").replaceChildren();
+    if (ed.kind === "static" && !ed.liveTimer && !ed.liveFeedLoaded) fetchLive();
     syncViewToggle();
     return;
   }
@@ -7581,6 +7590,7 @@ function playStaticSlide(frame, n) {
     const player = deckWindow?.cleanDeck;
     if (!player?.go || (player.provisional && Number(player.count) < 1)) return false;
     const dynamicHtml = editorPresentationKind() === "dynamic";
+    if (!dynamicHtml && !staticInlinePlayerIsUsable(frame, n)) return false;
     if (dynamicHtml) stabilizeDynamicDeckPlayer(frame);
     else prepareStaticDeckMotion(frame);
     player.go(n);
@@ -7608,6 +7618,18 @@ function playStaticSlide(frame, n) {
   } catch {
     return false;
   }
+}
+
+// 完整 HTML 被直接拼进片段播放器时，额外的固定舞台会覆盖所有正常页面。
+// 此类产物只展示已渲染 PNG；不修改作者源码，也不将空背景误判为成功预览。
+function staticInlinePlayerIsUsable(frame, n) {
+  const doc = frame.contentDocument;
+  const deck = doc?.getElementById("deck");
+  if (!deck?.querySelector(":scope > .slide[data-slide]")) return true;
+  if (![...deck.children].some(page => page.matches(".slide[data-slide]") && Number(page.dataset.slide) === Number(n))) return false;
+  return ![...doc.querySelectorAll(".stage")].some(stage =>
+    !stage.contains(deck) && !stage.closest(".slide[data-slide]")
+  );
 }
 
 // Keep the hidden bitmap fallback on the selected page even while live HTML is
@@ -7697,6 +7719,8 @@ function scheduleStaticPreviewFallback(frame, n, deckId, deckStamp) {
 
 async function revealStaticDeckWhenFontsReady(frame, deckWindow) {
   const deckId = frame.dataset.deckId;
+  const deckDocument = frame.contentDocument;
+  const deckStamp = frame.dataset.deckStamp;
   const dynamicHtml = editorPresentationKind() === "dynamic";
   if (!deckWindow.cleanDeck && typeof deckWindow.__deckGo === "function") {
     const count = frame.contentDocument?.querySelectorAll(".slide").length || 0;
@@ -7719,7 +7743,10 @@ async function revealStaticDeckWhenFontsReady(frame, deckWindow) {
       // A failed FontFace is checked below; preserve the stable PNG on failure.
     }
   }
-  if (frame.dataset.deckKind !== "static" || frame.dataset.deckId !== deckId || frame.contentWindow !== deckWindow) return;
+  if (ed.kind !== "static" || String(ed.id) !== deckId || ed.workspaceView !== "ppt"
+      || ed.viewMode === "console" || frame.dataset.deckKind !== "static"
+      || frame.dataset.deckId !== deckId || frame.dataset.deckStamp !== deckStamp
+      || frame.contentDocument !== deckDocument) return;
   const player = deckWindow.cleanDeck;
   const expectsSharedPreviewFonts = !!frame.contentDocument?.querySelector(
     'meta[name="studio-preview-fonts"]'
@@ -7777,33 +7804,41 @@ async function revealStaticDeckWhenFontsReady(frame, deckWindow) {
   fitWorkspaceCanvas();
   fitDeckViewport(frame);
   requestAnimationFrame(() => {
-    if (frame.dataset.deckKind !== "static" || frame.dataset.deckId !== deckId
-        || frame.contentWindow !== deckWindow || Number(ed.sel) !== Number(pending)) return;
-    fitWorkspaceCanvas();
-    fitDeckViewport(frame);
-    frame.classList.remove("font-pending");
-    frame.classList.add("font-ready");
-    $("#canvas-img").hidden = true;
+    if (frame.dataset.deckStamp !== deckStamp) return;
+    promoteStaticDeck(frame, pending, deckDocument);
   });
+}
+
+// 确认当前文档、页码与可见画布，再一起切换 HTML 和 PNG 的显示状态。
+function promoteStaticDeck(frame, n, deckDocument) {
+  if (ed.kind !== "static" || String(ed.id) !== frame.dataset.deckId
+      || ed.workspaceView !== "ppt" || ed.viewMode === "console"
+      || Number(ed.sel) !== Number(n) || frame.contentDocument !== deckDocument) return;
+  frame.hidden = false;
+  fitWorkspaceCanvas();
+  fitDeckViewport(frame);
+  if (frame.getBoundingClientRect().width < 1 || frame.getBoundingClientRect().height < 1) return;
+  frame.classList.remove("font-pending");
+  frame.classList.add("font-ready");
+  $("#canvas-img").hidden = true;
 }
 
 function revealStaticSlideAfterLazyLoad(frame, n, deckId, attempt = 0) {
   if (ed.kind !== "static" || String(ed.id) !== String(deckId) || Number(ed.sel) !== Number(n)
+      || ed.workspaceView !== "ppt" || ed.viewMode === "console"
       || frame.dataset.deckKind !== "static" || frame.dataset.deckId !== String(deckId)) return;
   if (!staticHtmlCheckpointReady(n)) {
     keepStaticPng(n);
     return;
   }
   if (playStaticSlide(frame, n)) {
+    const deckDocument = frame.contentDocument;
     delete frame.dataset.pendingSlide;
     frame.hidden = false;
     fitWorkspaceCanvas();
     fitDeckViewport(frame);
     requestAnimationFrame(() => {
-      if (Number(ed.sel) !== Number(n) || frame.dataset.deckId !== String(deckId)) return;
-      frame.classList.remove("font-pending");
-      frame.classList.add("font-ready");
-      $("#canvas-img").hidden = true;
+      promoteStaticDeck(frame, n, deckDocument);
     });
     return;
   }
@@ -7852,7 +7887,7 @@ function showStaticDeck(n) {
     frame.hidden = false;
     if (playStaticSlide(frame, n)) {
       delete frame.dataset.pendingSlide;
-      $("#canvas-img").hidden = true;
+      promoteStaticDeck(frame, n, frame.contentDocument);
     } else {
       frame.classList.add("font-pending");
       frame.classList.remove("font-ready");
@@ -9468,12 +9503,37 @@ function liveToolTransactionMarkup(transaction, { showAgent = false, open = fals
       </div><em>${escapeHtml(displayStatus)}</em><i class="live-transaction-chevron" aria-hidden="true"></i>
     </summary>
     <div class="live-transaction-detail">
-      ${argsDetail ? `<section><b>调用参数</b><pre>${escapeHtml(argsDetail)}</pre></section>` : ""}
-      ${outputDetail ? `<section><b>执行结果</b><pre>${escapeHtml(outputDetail)}</pre></section>` : !result ? `<p>${running ? "工具仍在执行，结果返回后会显示在这里。" : "本次运行已结束或暂停；此工具没有结束回执，不能判为成功。"}</p>` : ""}
+      ${argsDetail || transaction.use?.details_available ? `<section${transaction.use?.details_available ? ` data-live-event-seq="${Number(transaction.use.seq)}" data-live-detail-field="args"` : ""}><b>调用参数</b><pre>${escapeHtml(argsDetail || "展开后读取完整参数…")}</pre></section>` : ""}
+      ${outputDetail || result?.details_available ? `<section${result?.details_available ? ` data-live-event-seq="${Number(result.seq)}" data-live-detail-field="result"` : ""}><b>执行结果</b><pre>${escapeHtml(outputDetail || "展开后读取完整结果…")}</pre></section>` : !result ? `<p>${running ? "工具仍在执行，结果返回后会显示在这里。" : "本次运行已结束或暂停；此工具没有结束回执，不能判为成功。"}</p>` : ""}
       ${childFailure && !failed ? `<p class="live-transaction-error">子任务后续失败（非本工具失败）：${escapeHtml(childFailureText || "未记录具体原因")}</p>` : ""}
       ${failed && result.error_code ? `<p class="live-transaction-error">错误代码：${escapeHtml(result.error_code)}</p>` : ""}
     </div>
   </details>`;
+}
+
+async function loadLiveToolDetails(details) {
+  const deckId = ed.id;
+  const cache = ed.liveToolDetails ||= new Map();
+  await Promise.all([...details.querySelectorAll("[data-live-event-seq]")].map(async section => {
+    const sequence = Number(section.dataset.liveEventSeq);
+    if (!sequence || section.dataset.loaded === "1") return;
+    const pre = section.querySelector("pre");
+    pre.textContent = "正在读取完整内容…";
+    if (!cache.has(sequence)) {
+      const suffix = `/live-events/${sequence}`;
+      cache.set(sequence, jget(trajectoryMode ? trajectoryDeckApi(deckId, suffix)
+        : `${globalThis.STUDIO_BASE_PATH || ""}/api/decks/${deckId}${suffix}`));
+    }
+    try {
+      const event = await cache.get(sequence);
+      if (ed.id !== deckId || ed.liveToolDetails !== cache || !section.isConnected) return;
+      pre.textContent = workflowTraceSafeJson(event[section.dataset.liveDetailField]);
+      section.dataset.loaded = "1";
+    } catch {
+      cache.delete(sequence);
+      if (section.isConnected) pre.textContent = "完整内容读取失败，收起后展开可重试。";
+    }
+  }));
 }
 
 function reconcileAgentStories(list, stories) {
@@ -10935,11 +10995,15 @@ function mergeIncrementalLiveFeed(current, delta, { reset = false } = {}) {
 async function fetchLive() {
   if (!ed.id) return;
   const deckId = ed.id;
+  if (ed.liveFeedRequest?.deckId === deckId) return;
+  const request = { deckId };
+  ed.liveFeedRequest = request;
   const cursor = Number(ed.liveEventCursor || 0);
+  let hasMore = false;
   try {
     const suffix = `/livefeed?cursor=${encodeURIComponent(cursor)}`;
     const payload = await jget(trajectoryMode ? trajectoryDeckApi(deckId, suffix) : `${globalThis.STUDIO_BASE_PATH || ""}/api/decks/${deckId}${suffix}`);
-    if (ed.id !== deckId) return;
+    if (ed.id !== deckId || ed.liveFeedRequest !== request) return;
     if (payload.live_event_schema === "mural.live-event.v1") {
       const reset = payload.live_cursor_reset === true;
       ed.feed = mergeIncrementalLiveFeed(ed.feed, payload.agents || {}, { reset });
@@ -10955,12 +11019,15 @@ async function fetchLive() {
     ed.agentTimings = payload.agent_timings || {};
     ed.overallTiming = payload.overall_timing || null;
     ed.workflow = payload.workflow || {};
-    if (payload.live_has_more === true) setTimeout(fetchLive, 0);
+    ed.liveFeedLoaded = true;
+    hasMore = payload.live_has_more === true;
   }
   catch { return; }
+  finally { if (ed.liveFeedRequest === request) ed.liveFeedRequest = null; }
   renderLive();
   if (ed.workspaceView === "workflow") renderWorkflowCanvas();
   if (ed.kind === "static" && ed.sel > 0) loadPageHistory(ed.sel, { quiet: true });
+  if (hasMore) setTimeout(() => { if (ed.id === deckId) fetchLive(); }, 0);
 }
 
 function renderLive() {
@@ -11855,6 +11922,10 @@ document.addEventListener("click", (event) => {
   const button = event.target.closest(".outline-query-copy");
   if (button) copyOutlineQuery(button);
 });
+document.addEventListener("toggle", (event) => {
+  const details = event.target;
+  if (details.matches?.(".live-transaction") && details.open) loadLiveToolDetails(details);
+}, true);
 const compactWorkspaceMedia = matchMedia("(max-width: 1180px)");
 const procRailDrawerMedia = matchMedia("(max-width: 1799px)");
 const syncResponsiveSidebar = (media = compactWorkspaceMedia) => {

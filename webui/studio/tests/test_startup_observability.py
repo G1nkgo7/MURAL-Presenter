@@ -187,8 +187,8 @@ const toolProgress = ev => ['写入文件',ev.hint];
     assert result[1][0] == "Agent 已启动"
     assert result[2] == result[1]
     assert result[3][0] == "等待模型资源" and "尚未发送" in result[3][1]
-    assert result[4][0] == "等待模型响应" and "未开启流式" in result[4][1]
-    assert result[5][0] == "模型已响应"
+    assert result[4][0] == "模型请求 · 等待模型响应" and "未开启流式" in result[4][1]
+    assert result[5][0] == "模型请求 · 已响应"
     assert result[6] == result[7] == ["写入文件", "deck.md"]
     assert result[8][0] == "写入文件已完成"
 

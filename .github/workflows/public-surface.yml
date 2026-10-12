@@ -10,6 +10,7 @@ jobs:
       TMPDIR: ${{ github.workspace }}/.runtime/tmp
       MURAL_RUNTIME_CONFIG: ${{ github.workspace }}/configs/runtime.local.json
       MURAL_SECRETS_ENV_PATH: ${{ github.workspace }}/.runtime/no-secrets.env
+      PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.runtime/browsers
       STUDIO_DATA_DIR: ${{ github.workspace }}/.runtime/studio-test
     steps:
       - uses: actions/checkout@v7
@@ -36,5 +37,20 @@ jobs:
         env:
           PYTHONPATH: ${{ github.workspace }}/webui:${{ github.workspace }}/webui/studio
         run: uv run --project webui/studio --with pytest python -m pytest webui/tests/test_service_config.py webui/studio/tests/test_harness_retirement.py webui/studio/tests/test_mural_profiles.py -q -p no:cacheprovider --basetemp=.runtime/tests/webui
+      - name: Install browser for WebUI regressions
+        run: uv run --project webui/studio python -m playwright install --with-deps --only-shell chromium
+      - name: WebUI live feed, preview and font regressions
+        env:
+          PYTHONPATH: ${{ github.workspace }}/webui:${{ github.workspace }}/webui/studio
+        run: >-
+          uv run --project webui/studio --with pytest --with httpx python -m pytest
+          webui/studio/tests/test_livefeed_performance.py
+          webui/studio/tests/test_static_preview_race.py
+          webui/studio/tests/test_static_preview_geometry.py
+          webui/studio/tests/test_pinned_font_preview.py
+          webui/studio/tests/test_owner_workflow.py
+          webui/studio/tests/test_startup_observability.py
+          webui/tests/test_font_release_hermetic.py::FontDeclarationParityTests
+          -q -p no:cacheprovider --basetemp=.runtime/tests/webui-regressions
       - name: Example deployment configuration
         run: python webui/scripts/launch.py --check --no-install --no-browser-install --env-file webui/.env.example

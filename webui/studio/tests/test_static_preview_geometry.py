@@ -18,7 +18,7 @@ def test_inline_player_preserves_page_geometry_and_navigation(tmp_path, monkeypa
     for name in (
         "activeCanvasSize", "setCanvasSpec", "fitCanonicalStaticFrame",
         "resetCanonicalStaticFrame", "guardSlideDocument", "stabilizeStaticDeckPlayer",
-        "stabilizeDynamicDeckPlayer", "fitDeckViewport",
+        "stabilizeDynamicDeckPlayer", "fitDeckViewport", "staticInlinePlayerIsUsable",
     ):
         start = re.search(rf"^function {name}\(", source, re.M).start()
         end = re.search(r"^(?:async )?function ", source[start + 1:], re.M)
@@ -111,6 +111,15 @@ const editorPresentationKind = () => 'static', scheduleDeckViewportFit = () => {
             assert bounds["top"] == pytest.approx(0, abs=1)
             assert bounds["width"] == pytest.approx(width * 1.2, abs=1)
             assert bounds["height"] == pytest.approx(height * 1.2, abs=1)
+
+            assert page.evaluate("staticInlinePlayerIsUsable(document.querySelector('#canvas-deck'), 3)")
+            assert not page.evaluate("staticInlinePlayerIsUsable(document.querySelector('#canvas-deck'), 6)")
+            page.locator("#canvas-deck").evaluate("""f => {
+                const stage = f.contentDocument.createElement('div');
+                stage.className = 'stage';stage.innerHTML = '<div class="deck">Standalone page</div>';
+                f.contentDocument.body.appendChild(stage);
+            }""")
+            assert not page.evaluate("staticInlinePlayerIsUsable(document.querySelector('#canvas-deck'), 3)")
 
             legacy = '<html><body><main id="deck"><div class="slide-shell" data-slide="1"><iframe></iframe></div></main></body></html>'
             page.locator("#canvas-deck").evaluate("(f, html) => f.srcdoc = html", legacy)

@@ -52,7 +52,7 @@ def _literal_assignment(source: Path, target: str):
 
 
 def _preview_families() -> set[str]:
-    spec = importlib.util.spec_from_file_location('preview_fonts_parity_test', PREVIEW_FONTS)
+    spec = importlib.util.spec_from_file_location('webui.studio.app.preview_fonts_parity_test', PREVIEW_FONTS)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return {family for family, *_rest in module.FACE_SPECS}
@@ -76,15 +76,24 @@ class FontDeclarationParityTests(unittest.TestCase):
         )
 
     def test_preview_face_candidates_weights_and_styles_match_export(self):
-        spec = importlib.util.spec_from_file_location('preview_fonts_faces_test', PREVIEW_FONTS)
+        spec = importlib.util.spec_from_file_location('webui.studio.app.preview_fonts_faces_test', PREVIEW_FONTS)
         preview = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(preview)
         bundle = _load_font_bundle()
         expected = tuple((family, face.source_names, face.weight, face.style)
                          for family, faces in bundle.FAMILY_FACES.items() for face in faces)
         self.assertEqual(preview.FACE_SPECS, expected)
+        # 公开字库只包含已审核字体；CSS 仅声明实际随仓库提供的字体。
+        preview.SOURCE_DIRS = (REPO / "fonts",)
+        available = preview.catalog()
+        expected_families = {
+            family for family, candidates, _weight, _style in expected
+            if any(name in available for name in candidates)
+        }
         css = preview.stylesheet()
-        self.assertTrue(all(f'font-family: {family!r}' in css for family in bundle.FAMILY_FACES))
+        declared = {family for family in bundle.FAMILY_FACES if f"font-family: {family!r}" in css}
+        self.assertIn("Noto Sans SC", expected_families)
+        self.assertEqual(declared, expected_families)
 
     def test_export_and_licenses_stay_in_lockstep(self):
         fb = _load_font_bundle()

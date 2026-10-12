@@ -15,8 +15,11 @@ import json
 import os
 import re
 import time
+from bisect import bisect_right
+from collections import OrderedDict
 from datetime import datetime, timezone
 from pathlib import Path
+from threading import RLock
 
 from .workspace_layout import WorkspaceLayout
 
@@ -2048,7 +2051,142 @@ def _project_shared_v1_live_event(event, agent_key, *, critic_context=None,
     return projected
 
 
-def live_events(run_dir, *, cursor=0, limit=500, response_language=None):
+def _compact_live_value(value):
+    if isinstance(value, dict):
+        return {key: _compact_live_value(item) for key, item in value.items()
+                if key not in {"content", "html", "new_text", "old_text", "data"}}
+    if isinstance(value, list):
+        return [_compact_live_value(item) for item in value[:50]]
+    if isinstance(value, str):
+        return value if len(value) <= 512 else value[:512] + "…"
+    return value
+
+
+def _compact_journal_event(event):
+    payload = dict(event.get("payload") or {})
+    kind = event["event_type"]
+    if kind == "agent_context":
+        payload = {key: payload[key] for key in ("group_id", "task_id", "metadata", "provenance") if key in payload}
+        payload["system"] = "present" if str((event.get("payload") or {}).get("system") or "").strip() else ""
+    elif kind == "tool_use":
+        payload["arguments"] = _compact_live_value(payload.get("arguments"))
+    elif kind == "tool_result":
+        result = payload.get("result")
+        if isinstance(result, str):
+            try:
+                result = json.dumps(_compact_live_value(json.loads(result)), ensure_ascii=False)
+            except ValueError:
+                result = _compact_live_value(result)
+        else:
+            result = _compact_live_value(result)
+        payload["result"] = result
+    return {**event, "payload": payload, "details_available": kind in {"tool_use", "tool_result"}}
+
+
+class _LiveJournalIndex:
+    def __init__(self):
+        self.lock = RLock()
+        self.stamp = None
+        self.offset = 0
+        self.head = b""
+        self.tail = b""
+        self.events = []
+        self.positions = {}
+        self.seen_ids = set()
+
+    def refresh(self, path):
+        stat = os.stat(path)
+        stamp = (stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns)
+        if stamp == self.stamp:
+            return False
+        with open(path, "rb") as source:
+            replaced = self.stamp is not None and (
+                stamp[:2] != self.stamp[:2] or stat.st_size < self.offset
+                or (stat.st_size == self.stamp[2] and stamp != self.stamp)
+            )
+            if self.offset and not replaced:
+                replaced = source.read(len(self.head)) != self.head
+                source.seek(self.offset - len(self.tail))
+                replaced = replaced or source.read(len(self.tail)) != self.tail
+            if replaced:
+                self.offset = 0
+                self.events = []
+                self.positions = {}
+                self.seen_ids = set()
+            source.seek(self.offset)
+            while True:
+                position = source.tell()
+                raw = source.readline()
+                if not raw or not raw.endswith(b"\n"):
+                    break
+                self.offset = source.tell()
+                try:
+                    event = json.loads(raw)
+                    if not isinstance(event, dict) or event.get("schema") != _LIVE_EVENT_SCHEMA:
+                        continue
+                    sequence = int(event.get("sequence") or 0)
+                    event_id = str(event.get("event_id") or "")
+                    if sequence <= 0 or event.get("event_type") not in _LIVE_EVENT_TYPES:
+                        continue
+                    if event_id and event_id in self.seen_ids:
+                        continue
+                    if event_id:
+                        self.seen_ids.add(event_id)
+                    self.positions[sequence] = position
+                    self.events.append(_compact_journal_event(event))
+                except (UnicodeDecodeError, TypeError, ValueError):
+                    continue
+            self.events.sort(key=lambda event: int(event["sequence"]))
+            source.seek(0)
+            self.head = source.read(min(64, self.offset))
+            source.seek(max(0, self.offset - 64))
+            self.tail = source.read(min(64, self.offset))
+        self.stamp = stamp
+        return replaced
+
+
+_LIVE_JOURNAL_INDEXES = OrderedDict()
+_LIVE_JOURNAL_LOCK = RLock()
+
+
+def _journal_page(path, cursor, limit, *, compact):
+    # 只索引新追加的完整行；大工具正文留在原文件，按序号定位读取。
+    with _LIVE_JOURNAL_LOCK:
+        index = _LIVE_JOURNAL_INDEXES.setdefault(path, _LiveJournalIndex())
+        _LIVE_JOURNAL_INDEXES.move_to_end(path)
+        while len(_LIVE_JOURNAL_INDEXES) > 8:
+            _LIVE_JOURNAL_INDEXES.popitem(last=False)
+    with index.lock:
+        try:
+            replaced = index.refresh(path)
+            events = tuple(index.events)
+            maximum = int(events[-1]["sequence"]) if events else 0
+            reset = bool(replaced and cursor > 0) or (cursor > maximum and maximum > 0)
+            effective = 0 if reset else cursor
+            start = bisect_right(events, effective, key=lambda event: int(event["sequence"]))
+            selected = list(events[start:start + limit])
+            if not compact and selected:
+                with open(path, "rb") as source:
+                    for i, event in enumerate(selected):
+                        source.seek(index.positions[event["sequence"]])
+                        selected[i] = json.loads(source.readline())
+            return events, selected, effective, reset, maximum, start + len(selected) < len(events)
+        except OSError:
+            return (), [], cursor, False, 0, False
+
+
+def live_event_detail(run_dir, sequence):
+    _, selected, *_ = _journal_page(
+        os.path.join(run_dir, "_trace/live-events.jsonl"), sequence - 1, 1, compact=False)
+    if not selected or int(selected[0]["sequence"]) != sequence:
+        return None
+    event = selected[0]
+    owners, _ = _shared_v1_live_owners(run_dir)
+    return _project_shared_v1_live_event(event, _shared_v1_live_agent_key(event, owners),
+        response_language=_run_response_language(run_dir))
+
+
+def live_events(run_dir, *, cursor=0, limit=500, response_language=None, compact=False):
     """Read complete journal rows after ``cursor`` and return role-grouped deltas."""
     try:
         WorkspaceLayout.load(run_dir)
@@ -2067,46 +2205,8 @@ def live_events(run_dir, *, cursor=0, limit=500, response_language=None):
         response_language = _run_response_language(run_dir)
     owners, page_agents = _shared_v1_live_owners(run_dir)
     path = os.path.join(run_dir or "", "_trace", "live-events.jsonl")
-    all_events = []
-    seen_ids = set()
-    if os.path.isfile(path):
-        try:
-            with open(path, "rb") as source:
-                for raw in source:
-                    if not raw.endswith(b"\n"):
-                        continue
-                    try:
-                        value = json.loads(raw)
-                    except (UnicodeDecodeError, TypeError, ValueError):
-                        continue
-                    if not isinstance(value, dict) or value.get("schema") != _LIVE_EVENT_SCHEMA:
-                        continue
-                    try:
-                        sequence = int(value.get("sequence") or 0)
-                    except (TypeError, ValueError):
-                        continue
-                    event_type = str(value.get("event_type") or "")
-                    event_id = str(value.get("event_id") or "")
-                    if sequence <= 0 or event_type not in _LIVE_EVENT_TYPES:
-                        continue
-                    if event_id and event_id in seen_ids:
-                        continue
-                    if event_id:
-                        seen_ids.add(event_id)
-                    public = value
-                    if isinstance(public, dict):
-                        all_events.append(public)
-        except OSError:
-            all_events = []
-    all_events.sort(key=lambda item: int(item.get("sequence") or 0))
-    maximum = int(all_events[-1].get("sequence") or 0) if all_events else 0
-    cursor_reset = requested_cursor > maximum and maximum > 0
-    effective_cursor = 0 if cursor_reset else requested_cursor
-    remaining = [
-        event for event in all_events
-        if int(event.get("sequence") or 0) > effective_cursor
-    ]
-    selected = remaining[:page_limit]
+    all_events, selected, effective_cursor, cursor_reset, maximum, has_more = _journal_page(
+        path, requested_cursor, page_limit, compact=compact)
     next_cursor = (
         int(selected[-1].get("sequence") or effective_cursor)
         if selected else effective_cursor
@@ -2128,6 +2228,8 @@ def live_events(run_dir, *, cursor=0, limit=500, response_language=None):
         projected = _project_shared_v1_live_event(event, key,
             critic_context=critic_contexts.get((event.get("agent_id"), event.get("segment_id"))),
             response_language=response_language)
+        if event.get("details_available"):
+            projected["details_available"] = True
         if projected.get("k") == "text" and not str(projected.get("s") or "").strip():
             continue
         projections.append(projected)
@@ -2222,7 +2324,7 @@ def live_events(run_dir, *, cursor=0, limit=500, response_language=None):
         "cursor": effective_cursor,
         "next_cursor": next_cursor,
         "max_sequence": maximum,
-        "has_more": len(remaining) > len(selected),
+        "has_more": has_more,
         "cursor_reset": cursor_reset,
         "events": projections,
         "agents": grouped,
@@ -2861,6 +2963,7 @@ def livefeed(
     deck_started_at=None,
     deck_finished_at=None,
     live_cursor=0,
+    live_limit=5000,
 ):
     """Tail the runner log -> agents plus grouped page ownership.
 
@@ -2880,33 +2983,23 @@ def livefeed(
     except (ValueError, OSError, TypeError):
         return {"agents": {}, "page_agents": {}, "agent_keys": [], "agent_timings": {},
                 "workspace_error": "unsupported_workspace_layout", "events": []}
-    page_agents = _registry_page_agents(run_dir)
-    aliases = _trace_agent_aliases(run_dir)
-    agent_timings, overall_timing = _agent_timing_payload(
-        run_dir,
-        aliases,
-        deck_status=deck_status,
-        deck_started_at=deck_started_at,
-        deck_finished_at=deck_finished_at,
-    )
-    workflow = _workflow_payload(
-        run_dir, page_agents, aliases, agent_timings, deck_status
-    )
     response_language = _run_response_language(run_dir)
     live_path = os.path.join(run_dir or "", "_trace", "live-events.jsonl")
     if os.path.isfile(live_path):
         live_payload = live_events(
-            run_dir, cursor=live_cursor, limit=5000,
-            response_language=response_language,
+            run_dir, cursor=live_cursor, limit=live_limit,
+            response_language=response_language, compact=True,
         )
-        page_agents.update(live_payload.get("page_agents") or {})
-        agent_timings.update(live_payload.get("agent_timings") or {})
+        page_agents = live_payload.get("page_agents") or {}
+        agent_timings = live_payload.get("agent_timings") or {}
         overall_timing = _live_overall_timing(
             agent_timings,
             deck_status=deck_status,
             deck_started_at=deck_started_at,
             deck_finished_at=deck_finished_at,
-        ) or overall_timing
+        )
+        workflow = _workflow_payload(
+            run_dir, page_agents, _trace_agent_aliases(run_dir), agent_timings, deck_status)
         return {
             "agents": live_payload.get("agents") or {},
             "agent_keys": live_payload.get("agent_keys") or [],
@@ -2921,6 +3014,12 @@ def livefeed(
             "live_has_more": live_payload.get("has_more", False),
             "live_cursor_reset": live_payload.get("cursor_reset", False),
         }
+    page_agents = _registry_page_agents(run_dir)
+    aliases = _trace_agent_aliases(run_dir)
+    agent_timings, overall_timing = _agent_timing_payload(
+        run_dir, aliases, deck_status=deck_status,
+        deck_started_at=deck_started_at, deck_finished_at=deck_finished_at)
+    workflow = _workflow_payload(run_dir, page_agents, aliases, agent_timings, deck_status)
     if not log_path or not os.path.exists(log_path):
         return {
             "agents": agents,

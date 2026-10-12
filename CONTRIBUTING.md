@@ -7,7 +7,7 @@ a refreshed, explicitly named integration manifest. Record what was tested and w
 requests were made. Keep credentials, datasets, generated workspaces and the separate site local.
 
 Run `python tools/check_paper_release.py` before submitting changes. Follow the launch and
-validation commands in README.md. Licensing and final paper metadata remain author decisions.
+validation commands in README.md. Project code is MIT-licensed; retain third-party notices. Final paper metadata remains an author decision.
 
 The root `pytest.ini` selects portable integration tests. The CI workflow explicitly selects
 the release/configuration contracts and current WebUI tests as well. Upstream historical tests
@@ -80,6 +80,12 @@ The compact public tree was checked on Linux on 2026-10-10: 10 portable/source-d
 The example launcher preflight passed. These checks used an isolated Git worktree and existing
 locked-dependency test environments, without model requests or production data.
 
+The public WebUI regressions additionally cover live-feed paging and detail authorization,
+font-cache invalidation, browser preview geometry and font-ready races, UI subset coverage,
+and font declaration parity. `HermeticReleaseTests` still targets the larger historical
+font bundle and is not a public-package CI gate: its full-inventory checks fail on the
+intentionally smaller public font directory.
+
 The complete historical suite has not passed. The frozen source retains these known failures:
 
 - `test_agent_runtime.py::test_resume_preserves_inspect_feedback_as_tool_context_without_reconciliation`:
@@ -133,6 +139,10 @@ python tools/check_paper_release.py
 2026-10-10 在 Linux 上验证精简公开文件树：便携入口及源码摘要测试 10 项、版本/配置测试 95 项、
 WebUI 测试 139 项通过，1 项浏览器测试跳过；示例启动预检通过。验证使用独立 Git 工作树和已有的
 锁定依赖测试环境，不调用模型，不访问生产数据。
+
+公开 WebUI 回归还覆盖轨迹分页与详情授权、字体缓存失效、浏览器预览几何与字体就绪竞态、
+UI 字体分片覆盖和字体声明一致性。`HermeticReleaseTests` 针对更大的历史实验字库，
+其完整字库检查在精简公开字库上仍会失败，因此不作为公开包的 CI 门槛。
 
 完整历史测试套件尚未全部通过。冻结源码保留了以下已知失败：
 

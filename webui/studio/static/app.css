@@ -17,14 +17,6 @@
   font-stretch: 75% 100%;
   font-display: swap;
 }
-@font-face {
-  font-family: "MURAL UI CJK";
-  src: url("../api/preview-fonts/NotoSansSC.ttf") format("truetype");
-  font-weight: 100 900;
-  font-style: normal;
-  font-display: swap;
-}
-
 :root {
   --ui-scale: 1.08;
   --bg: #f8f8fa;

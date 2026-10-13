@@ -2,12 +2,12 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="assets/logo/exports/street-v2/mural-banner-dark.png">
-    <img src="assets/logo/exports/street-v2/mural-banner-light.png" width="1000" alt="MURAL Presenter — Multi-Agent Units of Responsibility for Authoring Long-Horizon Presentations">
+    <img src="assets/logo/exports/street-v2/mural-banner-light.png" width="1000" alt="MURAL Presenter — Dependency-Aware Multi-Agent Authoring for Long-Horizon Presentations">
   </picture>
 </p>
 
 <h1 align="center"><img src="assets/logo/exports/street-v2/mural-avatar-circle.png" width="40" height="40" align="absmiddle" alt=""> MuralPresenter</h1>
-<p align="center"><strong>Multi-Agent Units of Responsibility for Authoring Long-Horizon Presentations</strong></p>
+<p align="center"><strong>Dependency-Aware Multi-Agent Authoring for Long-Horizon Presentations</strong></p>
 <p align="center">从需求和资料出发，生成可预览、可修改的演示文稿</p>
 
 <p align="center">
@@ -50,7 +50,7 @@
 <details>
 <summary>另一个例子：修改已有演示文稿</summary>
 
-**同一份演示文稿，由原有 Owner 继续修改。** 论文中的定性案例先将介绍本论文的演示文稿从
+**同一份演示文稿，由原有 Owner 继续修改。** 这个独立定性示例先将介绍论文的演示文稿从
 10 页扩展到 12 页，再从黑板风格改为浅蓝白色，并调整解释性图示。下方展示第 3 页的前后对照，完整画廊保留六组。
 
 <table>
@@ -62,7 +62,7 @@
 </table>
 
 [查看全部六组前后对照](assets/figures/revision-case/README.md) · [配图来源](assets/figures/README.md)。
-这些图片直接导出自论文附录，不是在线 WebUI 演示；该定性案例不计入 benchmark 均值。
+这些图片来自归档案例，不是在线 WebUI 演示；该定性案例不计入 benchmark 均值。
 
 </details>
 
@@ -149,7 +149,7 @@ PresentBench 覆盖 238 个任务，SlidesGen-Bench 覆盖 189 个任务，各�
 </p>
 
 **选择性监督。** Global 相对 Full 的质量变化及配对 95% bootstrap 区间，以及各角色输入 token。
-这些探索性结果来自工具条件存在差异的运行，不能单独归因为训练策略。
+各模型的工具可用性相同，但记录中存在调用失败，历史预算也未完全重建，需谨慎解释因果关系。
 
 <p align="center">
   <a href="assets/figures/supervision-ablation.png"><img src="assets/figures/supervision-ablation.png" width="640" alt="Global 与 Full 监督的质量差异及各角色输入 token 对比"></a>
@@ -180,9 +180,9 @@ HTML/CSS/SVG 是可编辑的创作源文件，PPTX、PDF 和图片是交付格�
 <details>
 <summary>模型与训练细节</summary>
 
-论文基于 **686 条原生源记录中的 9,000 个质量筛选后执行片段**，训练
-**MuralPresenter-9B** 与 **MuralPresenter-27B**。这些数字表示片段和源记录数量，
-并不表示生成了 9,000 份完整演示文稿。每个片段保留此前历史作为输入上下文。
+论文基于 **686 个任务中的 9,000 个质量筛选后执行片段**，训练
+**MuralPresenter-9B** 与 **MuralPresenter-27B**，并非 9,000 份完整演示文稿。
+质量感知轨迹蒸馏结合最终演示与动作级筛选：仅对通过审核的当前动作计算训练损失，历史动作保留为输入上下文。
 
 公开 benchmark 主实验使用 **Global Selective** checkpoint：
 
@@ -203,7 +203,7 @@ HTML/CSS/SVG 是可编辑的创作源文件，PPTX、PDF 和图片是交付格�
 
 训练使用 MS-SWIFT、Megatron 和 BF16，冻结视觉编码器与 merger，最大序列长度为 131,072 tokens，
 batch size 为 64。监督策略对比使用训练 4 轮的 27B 模型，与主实验的 2 轮 27B checkpoint 不同。
-以上是论文实验设置，不是 WebUI 的生成默认值。本次源码发布不附带模型权重。
+以上是论文实验设置，不是 WebUI 的生成默认值。
 
 </details>
 
@@ -217,9 +217,9 @@ batch size 为 64。监督策略对比使用训练 4 轮的 27B 模型，与主�
 | PresentBench | 238 个任务 | 按任务专属 rubric 评估交付演示文稿的质量。 |
 | SlidesGen-Bench | 189 个任务 | 内容准确率与计算美学。 |
 | DECKBench | 294 个任务，每个任务修改 5 轮 | 使用 benchmark 定义的相似度变化衡量多轮编辑结果。 |
-| 内部长演示任务 | 6 个领域的 35 个中英文请求，每个要求 20–40 页 | 分别评估长演示文稿的最终质量与过程证据。 |
+| ThreadEval | 6 个领域的 35 个中英文请求，每个要求 20–40 页 | 分别评估长演示文稿的最终质量与过程证据。 |
 
-内部评测分别报告质量与过程。**Overall = 70% Deck + 30% Page**，Knowledge 属于 Deck。
+ThreadEval 分别报告质量与过程。**Overall = 70% Deck + 30% Page**，Knowledge 属于 Deck。
 **Process** 独立评估研究支持与采纳（**R**）、可执行规划（**P**）、素材准备与实际使用交接（**I**），
 以及计划落地、渲染检查和讲稿与页面对应（**S**）。Process 不计入 Overall。当前过程分析排除了
 依赖创作轨迹的评分条目，包含正式和诊断记录；缺少兼容动作记录，本身不能证明 Agent 没有执行对应动作。
@@ -228,10 +228,10 @@ batch size 为 64。监督策略对比使用训练 4 轮的 27B 模型，与主�
 
 实验结论应结合论文记录的协议理解：
 
-- PresentBench 的 10 个任务及内部长演示任务中的 10 个任务参与了 checkpoint 选择，并保留在各自报告均值中；完整选择历史尚未重建。
+- PresentBench 的 10 个任务及 ThreadEval 中的 10 个任务参与了 checkpoint 选择，并保留在各自报告均值中；完整选择历史尚未重建。
 - DECKBench 每轮把上一轮产物导入新工作区，测试产物延续性，没有测试 Owner 历史的持续保留。
 - 自适应与逐页分配的 Overall 均值接近，二者记录到的制作工作量都高于整册单 Owner；实验未建立耗时加速结论。
-- 监督策略实验中的搜索可用性、生图服务和配额存在差异，限制了将结果变化单独归因于训练策略。
+- 监督策略实验的工具可用性相同；执行记录中存在生图端点与配额故障，历史预算尚未完全重建。
 
 </details>
 
@@ -247,7 +247,7 @@ batch size 为 64。监督策略对比使用训练 4 轮的 27B 模型，与主�
 </table>
 
 <details>
-<summary>字标与论文分享图</summary>
+<summary>字标与历史分享图</summary>
 
 <p align="center">
   <picture>
@@ -258,11 +258,9 @@ batch size 为 64。监督策略对比使用训练 4 轮的 27B 模型，与主�
 
 字标随阅读器深浅色主题切换。
 
-<p align="center">
-  <a href="assets/logo/exports/street-v2/mural-social-card.png"><img src="assets/logo/exports/street-v2/mural-social-card.png" width="640" alt="MuralPresenter — Multi-Agent Units of Responsibility for Authoring Long-Horizon Presentations"></a>
-</p>
+[历史分享图](assets/logo/exports/street-v2/mural-social-card.png)保留原论文标题，暂不作为当前标题宣传图展示。
 
-[浅色字标](assets/logo/exports/street-v2/mural-wordmark-light.png) · [深色字标](assets/logo/exports/street-v2/mural-wordmark-dark.png) · [论文分享图](assets/logo/exports/street-v2/mural-social-card.png)
+[浅色字标](assets/logo/exports/street-v2/mural-wordmark-light.png) · [深色字标](assets/logo/exports/street-v2/mural-wordmark-dark.png)
 
 </details>
 
@@ -272,7 +270,7 @@ batch size 为 64。监督策略对比使用训练 4 轮的 27B 模型，与主�
 
 ## 📦 发布状态
 
-**已提供：** 0919 冻结版 Skill/Harness、WebUI、启动器与正式配图。训练数据、内部评测流水线和模型权重暂未附带。
+**已提供：** 0919 冻结版 Skill/Harness、WebUI、启动器与正式配图。训练数据、ThreadEval／Judge 评测流水线、评测记录和模型权重暂未附带。论文所述补充材料包与本运行代码发布分开。
 论文链接及最终公开信息待补充。
 
 <details>
@@ -302,7 +300,7 @@ batch size 为 64。监督策略对比使用训练 4 轮的 27B 模型，与主�
 
 ```bibtex
 @misc{muralpresenter2026,
-  title  = {MuralPresenter: Multi-Agent Units of Responsibility for Authoring Long-Horizon Presentations},
+  title  = {MuralPresenter: Dependency-Aware Multi-Agent Authoring for Long-Horizon Presentations},
   author = {Anonymous Authors},
   year   = {2026}
 }

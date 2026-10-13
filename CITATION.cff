@@ -1,13 +1,13 @@
 cff-version: 1.2.0
 license: MIT
 message: Provisional citation for a manuscript not yet submitted. Author and publication metadata will be updated.
-title: 'MuralPresenter: Multi-Agent Units of Responsibility for Authoring Long-Horizon Presentations'
+title: 'MuralPresenter: Dependency-Aware Multi-Agent Authoring for Long-Horizon Presentations'
 authors:
 - name: Anonymous Authors
 repository-code: https://github.com/G1nkgo7/MURAL-Presenter
 preferred-citation:
   type: generic
-  title: 'MuralPresenter: Multi-Agent Units of Responsibility for Authoring Long-Horizon Presentations'
+  title: 'MuralPresenter: Dependency-Aware Multi-Agent Authoring for Long-Horizon Presentations'
   authors:
   - name: Anonymous Authors
   year: 2026

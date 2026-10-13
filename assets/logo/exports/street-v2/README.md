@@ -36,7 +36,7 @@ alpha transparency. These are raster illustrations, not editable vector artwork.
 - Preserve aspect ratios and leave clear space around the mark. Avoid stretching, cropping letters or placing text across the robots' faces.
 - Pair the light wordmark with light surfaces and the dark wordmark with navy or similarly dark surfaces.
 - The banners carry the stable name **MURAL Presenter**. Keep the full paper title as selectable text below the banner.
-- The sharing card embeds **Multi-Agent Units of Responsibility for Authoring Long-Horizon Presentations**; review that wording when the manuscript title changes.
+- The historical sharing card embeds **Multi-Agent Units of Responsibility for Authoring Long-Horizon Presentations**. It is preserved as an earlier export, not displayed as the current paper card. The current title is **Dependency-Aware Multi-Agent Authoring for Long-Horizon Presentations**.
 - Use one banner per placement. The light/dark pair is selected by the reader's theme, not displayed as two competing headers.
 
 ## Palette

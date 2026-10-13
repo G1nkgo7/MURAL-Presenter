@@ -2,12 +2,12 @@
 
 [Project overview](https://github.com/G1nkgo7/MURAL-Presenter#readme-en) · [中文介绍](../../../README_zh-CN.md) · [Figure provenance](../README.md)
 
-The manuscript follows a MuralPresenter-27B presentation of the paper: it expands from ten to twelve
+This archived MuralPresenter-27B example presents the paper: it expands from ten to twelve
 slides, then changes from blackboard styling to light blue and white while revising explanatory diagrams.
 The runtime retains assigned Owners across revisions. The six pairs below show pages 1–6 of the
 same twelve-slide deck; this qualitative case is excluded from benchmark means. Click any image to enlarge.
 
-论文案例先将演示文稿从 10 页扩展至 12 页，再修改风格和解释性图示。下方是同一份 12 页演示文稿
+这个归档示例先将演示文稿从 10 页扩展至 12 页，再修改风格和解释性图示。下方是同一份 12 页演示文稿
 中第 1–6 页的前后对照，并非两份各有六页的完整演示文稿。点击图片可查看大图。
 
 | Page / 页码 | Before · 黑板风格 | After · 浅蓝白色 |
@@ -18,6 +18,9 @@ same twelve-slide deck; this qualitative case is excluded from benchmark means. 
 | 04 | [![Before, page 4](before-04.png)](before-04.png) | [![After, page 4](after-04.png)](after-04.png) |
 | 05 | [![Before, page 5](before-05.png)](before-05.png) | [![After, page 5](after-05.png)](after-05.png) |
 | 06 | [![Before, page 6](before-06.png)](before-06.png) | [![After, page 6](after-06.png)](after-06.png) |
+
+Retained as an independent repository example; the current manuscript disables this appendix display.
+当前论文暂不展示这组附录图片，仓库继续保留为独立修改示例。
 
 Source: `figures/revision_case.pdf`. Source pages 1–6 map to `before-01`–`before-06`;
 pages 7–12 map to `after-01`–`after-06`. Exports are native-size 1,200 × 675 PNGs without cropping.

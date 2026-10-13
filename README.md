@@ -4,12 +4,12 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="assets/logo/exports/street-v2/mural-banner-dark.png">
-    <img src="assets/logo/exports/street-v2/mural-banner-light.png" width="1000" alt="MURAL Presenter — Multi-Agent Units of Responsibility for Authoring Long-Horizon Presentations">
+    <img src="assets/logo/exports/street-v2/mural-banner-light.png" width="1000" alt="MURAL Presenter — Dependency-Aware Multi-Agent Authoring for Long-Horizon Presentations">
   </picture>
 </p>
 
 <h1 align="center"><img src="assets/logo/exports/street-v2/mural-avatar-circle.png" width="40" height="40" align="absmiddle" alt=""> MuralPresenter</h1>
-<p align="center"><strong>Multi-Agent Units of Responsibility for Authoring Long-Horizon Presentations</strong></p>
+<p align="center"><strong>Dependency-Aware Multi-Agent Authoring for Long-Horizon Presentations</strong></p>
 <p align="center">From a prompt or documents to slides you can inspect and revise</p>
 
 <p align="center">
@@ -52,7 +52,7 @@ Original 1600 × 900 renders, copied without editing from an archived run.
 <details>
 <summary>Another example: revise an existing presentation</summary>
 
-**The same deck, revised through its existing Owners.** The manuscript's qualitative case expands
+**The same deck, revised through its existing Owners.** This independent qualitative example expands
 a presentation of this paper from ten to twelve slides, then changes its blackboard styling to
 light blue and white while refining diagrams. Below is page 3 before and after revision; the gallery contains six pairs.
 
@@ -65,7 +65,7 @@ light blue and white while refining diagrams. Below is page 3 before and after r
 </table>
 
 [View all six before/after pairs](assets/figures/revision-case/README.md) ·
-[Figure sources](assets/figures/README.md). These are manuscript exports, not a live WebUI demo;
+[Figure sources](assets/figures/README.md). These are archived case exports, not a live WebUI demo;
 the qualitative case is excluded from benchmark means.
 
 </details>
@@ -158,8 +158,8 @@ elapsed-time speedup.
 </p>
 
 **Selective supervision.** Global versus Full quality differences with paired 95% bootstrap
-intervals, alongside input tokens by role. These exploratory results describe runs with differing
-tool conditions; they do not isolate the effect of training.
+intervals, alongside input tokens by role. Tool availability is shared across models, but recorded
+call failures and incompletely reconstructed budgets limit causal interpretation.
 
 <p align="center">
   <a href="assets/figures/supervision-ablation.png"><img src="assets/figures/supervision-ablation.png" width="640" alt="Global versus Full supervision: quality differences and input tokens by agent role"></a>
@@ -193,8 +193,9 @@ HTML/CSS/SVG is the editable authoring source; PPTX, PDF and image exports are d
 <summary>Models and training details</summary>
 
 The paper trains **MuralPresenter-9B** and **MuralPresenter-27B** on **9,000 quality-filtered
-execution segments from 686 native source records**. These counts describe segments and sources,
-not 9,000 completed presentations. Each segment keeps its preceding history as input context.
+execution segments from 686 tasks**. These are not 9,000 completed presentations.
+Quality-aware trajectory distillation combines final-deck and action-level filtering with selective
+supervision: approved current actions receive loss, while earlier actions remain as input context.
 
 The public-benchmark checkpoints use **Global Selective**:
 
@@ -230,9 +231,9 @@ These are paper experiment settings, not WebUI generation defaults.
 | PresentBench | 238 tasks | Delivered presentation quality under task-specific rubrics. |
 | SlidesGen-Bench | 189 tasks | Content accuracy and computational aesthetics. |
 | DECKBench | 294 tasks, five editing turns each | Response to multi-turn editing through benchmark-defined similarity changes. |
-| Internal long-deck tasks | 35 Chinese/English requests across six domains, requiring 20–40 pages | Long-deck final quality and separate process evidence. |
+| ThreadEval | 35 Chinese/English requests across six domains, requiring 20–40 pages | Long-deck final quality and separate process evidence. |
 
-The internal evaluation separates quality and process. **Overall = 70% Deck + 30% Page**; Knowledge is part of Deck.
+ThreadEval separates quality and process. **Overall = 70% Deck + 30% Page**; Knowledge is part of Deck.
 **Process** independently evaluates research support and adoption (**R**), executable planning
 (**P**), asset preparation and actual-use handoffs (**I**), and plan realization, render inspection
 and slide–speech alignment (**S**). Process is not included in Overall. The current process
@@ -243,10 +244,10 @@ records. Missing compatible action records do not by themselves establish that a
 
 Interpret the experiments under their recorded protocols:
 
-- Ten PresentBench tasks and ten internal long-deck tasks informed checkpoint selection and remain in the respective reported means. The complete selection history has not been reconstructed.
+- Ten PresentBench tasks and ten ThreadEval tasks informed checkpoint selection and remain in the respective reported means. The complete selection history has not been reconstructed.
 - DECKBench imports preceding artifacts into a fresh workspace each turn, evaluating artifact continuity rather than persistent Owner history.
 - Adaptive and per-slide ownership achieve similar mean Overall scores; both use more recorded production work than whole-deck ownership. The study does not establish elapsed-time speedup.
-- Search availability, image services and quotas differ across the supervision-study runs, limiting causal attribution to the training policy.
+- Supervision-study models share tool availability. Recorded executions include image-endpoint and quota failures; historical budgets are not fully reconstructed.
 
 </details>
 
@@ -262,7 +263,7 @@ The standalone mark, avatar and painter mascot share the banner’s street-mural
 </table>
 
 <details>
-<summary>Wordmarks and paper sharing card</summary>
+<summary>Wordmarks and historical sharing card</summary>
 
 <p align="center">
   <picture>
@@ -273,11 +274,9 @@ The standalone mark, avatar and painter mascot share the banner’s street-mural
 
 The wordmark follows your reader’s light or dark theme.
 
-<p align="center">
-  <a href="assets/logo/exports/street-v2/mural-social-card.png"><img src="assets/logo/exports/street-v2/mural-social-card.png" width="640" alt="MuralPresenter — Multi-Agent Units of Responsibility for Authoring Long-Horizon Presentations"></a>
-</p>
+The [historical sharing card](assets/logo/exports/street-v2/mural-social-card.png) retains the previous paper title.
 
-[Light wordmark](assets/logo/exports/street-v2/mural-wordmark-light.png) · [Dark wordmark](assets/logo/exports/street-v2/mural-wordmark-dark.png) · [Paper sharing card](assets/logo/exports/street-v2/mural-social-card.png)
+[Light wordmark](assets/logo/exports/street-v2/mural-wordmark-light.png) · [Dark wordmark](assets/logo/exports/street-v2/mural-wordmark-dark.png)
 
 </details>
 
@@ -288,7 +287,8 @@ See the [brand guide](assets/logo/exports/street-v2/README.md) for the full asse
 ## 📦 Release status
 
 **Available:** the frozen 0919 Skill/Harness, WebUI, launchers and public artwork. Training data,
-internal evaluation pipelines and model weights are not bundled. Paper link and final metadata: to be added.
+ThreadEval/Judge pipelines, evaluation records and model weights are not bundled. The supplementary
+package described in the manuscript is separate from this runtime release. Paper link and final metadata: to be added.
 
 <details>
 <summary>Source versions and paper-score reproduction</summary>
@@ -319,7 +319,7 @@ Provisional citation for the manuscript, which has not yet been submitted. Autho
 
 ```bibtex
 @misc{muralpresenter2026,
-  title  = {MuralPresenter: Multi-Agent Units of Responsibility for Authoring Long-Horizon Presentations},
+  title  = {MuralPresenter: Dependency-Aware Multi-Agent Authoring for Long-Horizon Presentations},
   author = {Anonymous Authors},
   year   = {2026}
 }
